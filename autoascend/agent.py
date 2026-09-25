@@ -58,6 +58,7 @@ class Agent:
         self.last_bfs_dis = None
         self.last_bfs_step = None
         self.last_prayer_turn = None
+        self.prayer_failed = False
         self._monk_meat_meals = 0
         self._previous_glyphs = None
         self._last_turn = -1
@@ -738,9 +739,21 @@ class Agent:
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
+    # angrygods() messages -- after one of them the god stays angry, so waiting for a safe prayer is pointless
+    PRAYER_FAILURE_MESSAGES = ('is displeased', 'is bummed', 'Thou hast angered me', 'Thou must relearn thy lessons',
+                               'Thou art arrogant', 'Thou hast strayed', 'Thou durst')
+
+    # prayer timeout is rnz(350) after a successful prayer and hunger is fixed only if it is below 200,
+    # so a hunger prayer fails in ~7% of cases after 900 turns but only in ~2% after 1200 turns
+    SAFE_HUNGER_PRAYER_GAP = 1200
+
     def pray(self):
+        history_len = len(self._message_history)
         self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
+        messages = ' '.join(self._message_history[history_len:] + [self.message])
+        if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
+            self.prayer_failed = True
         # TODO: return value
         return True
 
@@ -1451,6 +1464,8 @@ class Agent:
                                             # value while avoiding divine wrath.
                                             self._monk_meat_meals == 0 else 8)))
                 or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
+                or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and
+                    self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP))
         ):
             yield True
             self.pray()
@@ -1472,6 +1487,14 @@ class Agent:
     @Strategy.wrap
     def eat_from_inventory(self):
         if self.blstats.hunger_state < Hunger.HUNGRY:
+            yield False
+        # hypothesis: prayer is the main food source, but a hunger prayer made on the bare ~900-1100 turn
+        # starvation cycle comes too soon in ~4-7% of cases -- the hunger is not fixed and the god gets angry,
+        # so the character usually starves or dies while fainting (a common cause of early deaths); keeping
+        # the stored food as a reserve that is eaten only when a prayer would be risky (and praying already
+        # when Weak if it is safe) should make those failures rarer and raise progression for every character
+        if not self.prayer_failed and self.blstats.hunger_state < Hunger.FAINTING and \
+                (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)):
             yield False
         for item in flatten_items(self.inventory.items):
             if item.category == nh.FOOD_CLASS and \
