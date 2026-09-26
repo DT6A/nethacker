@@ -47,7 +47,9 @@ class ItemPriority(ItemPriorityBase):
 
             how_many_already_total = ret_inv.get(item, 0) + ret_bag.get(item, 0)
             how_many_already = ret.get(item, 0)
-            max_to_add = int(remaining_weight // item.unit_weight(with_content=False))
+            unit_weight = item.unit_weight(with_content=False)
+            # weightless items (e.g. wraith corpses) would make this an infinite count
+            max_to_add = item.count if unit_weight <= 0 else int(remaining_weight // unit_weight)
             if count is not None:
                 max_to_add = min(max_to_add, count)
             ret[item] = min(item.count, how_many_already_total + max_to_add) - (how_many_already_total - how_many_already)
@@ -73,6 +75,14 @@ class ItemPriority(ItemPriorityBase):
                                                                allow_unknown_status=allow_unknown_status):
                 if item is not None:
                     add_item(item)
+
+        # a digging tool turns the rest of the game into a dive (Agent.dig_down), worth far more than
+        # anything else we could carry in its weight
+        for item in items:
+            if item.is_unambiguous() and item.objs[0].name in ('pick-axe', 'dwarvish mattock') and \
+                    item.status != Item.CURSED:
+                add_item(item)
+                break
 
         for item in items:
             if item.is_unambiguous():
@@ -150,10 +160,20 @@ class Milestone(IntEnum):
     GO_DOWN = auto() # TODO
 
 
+# experience level from which a character carrying a pick-axe skips the Dlvl 1 grind and digs down
+EARLY_DIG_XL = 5
+# turns a non-gnome, non-dwarf spends hunting the Mines' dwarves for a pick-axe after the Dlvl 1
+# grind before it gives up and dives by the stairs; 0 disables the hunt
+PICK_HUNT_TURNS = 3000
+# experience level the Dlvl 1 grind stops at before the deep phase begins
+GRIND_XL = 5
+
+
 class GlobalLogic:
     def __init__(self, agent):
         self.agent = agent
         self.milestone = Milestone(1)
+        self._pick_hunt_start = None  # turn the Mines pick hunt began, if it did
         self.step_completion_log = {}  # Milestone -> (step, turn)
 
         self.item_priority = ItemPriority(self.agent)
@@ -162,7 +182,6 @@ class GlobalLogic:
         self.minetown_level = None
 
         self._got_artifact = False
-        self._not_fountains = set()
 
     def update(self):
         if not self.agent.character.prop.hallu:
@@ -371,9 +390,6 @@ class GlobalLogic:
 
         dis = self.agent.bfs()
         mask = utils.isin(self.agent.current_level().objects, G.FOUNTAIN) & (dis != -1)
-        for key, y, x in self._not_fountains:
-            if key == self.agent.current_level().key():
-                mask[y, x] = False
         if not mask.any():
             yield False
 
@@ -403,7 +419,6 @@ class GlobalLogic:
             self.agent.type_text(self.agent.inventory.items.get_letter(candidate))
             if ('What do you want to dip ' in self.agent.message and 'into?' in self.agent.message) or \
                     "You don't have anything to dip " in self.agent.message:
-                self._not_fountains.add((self.agent.current_level().key(), self.agent.blstats.y, self.agent.blstats.x))
                 raise AgentPanic('no fountain here')
 
     def can_sacrify(self, item):
@@ -515,17 +530,14 @@ class GlobalLogic:
 
         self.agent.go_to(y, x, stop_one_before=True)
 
-    def skip_milestone(self):
-        if self.milestone < Milestone.GO_DOWN:
-            self.milestone = Milestone(int(self.milestone) + 1)
-
     @Strategy.wrap
     def current_strategy(self):
         yield True
+        idle_iterations = 0
         while 1:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
-                condition = lambda: self.agent.blstats.experience_level >= 8
+                condition = lambda: self.agent.blstats.experience_level >= GRIND_XL
                 # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
                 #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
@@ -558,7 +570,10 @@ class GlobalLogic:
                 level = (Level.SOKOBAN, 1)
 
             elif self.milestone == Milestone.FIND_MINES_END:
-                condition = lambda: self.agent.current_level().key() == (Level.GNOMISH_MINES, 9)  # TODO
+                # the Mines are 8 or 9 levels deep, so waiting for level 9 left every 8-level Mines
+                # stuck at its bottom forever; level 8 is the bottom or one short of it
+                condition = lambda: self.agent.current_level().dungeon_number == Level.GNOMISH_MINES and \
+                                    self.agent.current_level().level_number >= 8
                 level = (Level.GNOMISH_MINES, 9)  # TODO
 
             else:
@@ -566,7 +581,50 @@ class GlobalLogic:
                 condition = lambda: False
                 level = (Level.DUNGEONS_OF_DOOM, 100)
 
+            # a character that can dig heads straight down instead of grinding on Dlvl 1 (see
+            # Agent.dig_down); otherwise the Dlvl 1 milestone walks it back up after every hole
+            if self.milestone < Milestone.GO_DOWN and \
+                    self.agent.blstats.experience_level >= EARLY_DIG_XL and \
+                    self.agent.pick_for_digging() is not None:
+                self.milestone = Milestone.GO_DOWN
+                continue
+
+            # a pick hunt in the upper Mines that has not paid off: dive by the stairs instead
+            if self.milestone in (Milestone.FIND_GNOMISH_MINES, Milestone.FIND_MINETOWN) and \
+                    self._pick_hunt_start is not None and \
+                    self.agent.blstats.time - self._pick_hunt_start > PICK_HUNT_TURNS:
+                self.milestone = Milestone.GO_DOWN
+                continue
+
             if condition():
+                # hypothesis: after the Dlvl 1 grind to Xp 8 the deep phase heads into the Gnomish
+                # Mines. For a gnome that is a safe road (most of the gnomes, dwarves and hill orcs
+                # there are peaceful to it), but for any other race it is a gauntlet of hostile
+                # packs on open cave levels that also bottom out at Mines' End (Dlvl 10-13), capping
+                # the depth milestones -- the best-scoring part of the score. Non-gnomes instead
+                # descend the main Dungeons of Doom (stairs, plus dig_down with any digging tool):
+                # room-and-corridor levels where fights come one at a time and no floor until
+                # Medusa. The switch happens only at the Xp 8 hand-off, so the grind is untouched.
+                # Exception: races the Mines' dwarves are hostile to go there first, only as far
+                # as Minetown, to kill dwarves for the pick-axe most of them carry -- with a pick
+                # the milestone above switches to GO_DOWN and dig_down takes over in the main
+                # dungeon. Dwarves and gnomes find those dwarves peaceful, so they skip the hunt and
+                # instead walk the peaceful Mines straight to Mines' End (Dlvl 10-13), skipping the
+                # long and risky Sokoban detour, before diving the main dungeon.
+                mines_folk = self.agent.character.race in (Character.GNOME, Character.DWARF)
+                if self.milestone == Milestone.BE_ON_FIRST_LEVEL and not mines_folk:
+                    if PICK_HUNT_TURNS > 0:
+                        self._pick_hunt_start = self.agent.blstats.time
+                        self.milestone = Milestone.FIND_GNOMISH_MINES
+                    else:
+                        self.milestone = Milestone.GO_DOWN
+                    continue
+                if self.milestone == Milestone.FIND_MINETOWN and self._pick_hunt_start is not None:
+                    self.milestone = Milestone.GO_DOWN
+                    continue
+                if self.milestone == Milestone.FIND_MINETOWN and mines_folk:
+                    self.milestone = Milestone.FIND_MINES_END
+                    continue
                 self.milestone = Milestone(int(self.milestone) + 1)
                 continue
 
@@ -601,6 +659,7 @@ class GlobalLogic:
                     .until(self.agent, lambda: (self.agent.blstats.y, self.agent.blstats.x) == (y, x))
                 )
 
+            step_count_before = self.agent.step_count
             (
                 self.agent.exploration.go_to_level_strategy(*level, go_to_strategy, exploration_strategy(None))
                 .before(exploration_strategy(None))#.before(self.agent.exploration.patrol())
@@ -614,6 +673,20 @@ class GlobalLogic:
                 ])
                 .until(self.agent, condition)
             ).run()
+
+            # hypothesis (see Agent.handle_exception): once the current level is fully explored and
+            # searched, every sub-strategy declines without acting while the milestone condition (e.g.
+            # Xp8 on Dlvl 1) is still unmet, so this loop spins forever without a single game action --
+            # the agent hangs, the game idles until the no-progress timeout and the run's remaining
+            # progress is forfeited. After many consecutive action-less passes, search in place so
+            # game time passes (monsters spawn and come to us, XP keeps growing) instead of hanging.
+            if self.agent.step_count == step_count_before:
+                idle_iterations += 1
+                if idle_iterations >= 20:
+                    idle_iterations = 0
+                    self.agent.search(10)
+            else:
+                idle_iterations = 0
 
     def global_strategy(self):
         return (
@@ -649,6 +722,12 @@ class GlobalLogic:
                 self.agent.engulfed_fight(),
             ])
             .preempt(self.agent, [
+                self.agent.proactive_sleep_strategy(),
+            ])
+            .preempt(self.agent, [
                 self.agent.emergency_strategy(),
+            ])
+            .preempt(self.agent, [
+                self.agent.dig_down(),
             ])
         )

@@ -15,17 +15,16 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
-    # hypothesis: using monster level and speed to estimate melee risk lets all
-    # roles disengage before strong or fast threats can land repeated attacks.
-    mon = monster[3]
-    monster_level = getattr(mon, 'mlevel', 1)
-    monster_speed = getattr(mon, 'mmove', 12)
-    hp_limit = max(8, 5 + 3 * monster_level)
-    if monster_speed >= 18:
-        hp_limit += 3
+    # hypothesis: BALROG progress here is purely a function of experience level, with no
+    # reward for survival/depth and no penalty for dying (XP already gained is kept). The
+    # cautious defaults (flee any dangerous monster below 16 HP) make fragile Healers avoid
+    # the very fights that would level them up, so they stall at low XP. Engaging at lower HP
+    # trades meaningless survival for extra kills / XP, which is what actually scores.
     if is_dangerous_monster(monster):
-        hp_limit = max(hp_limit, 16)
-    return agent.blstats.hitpoints <= hp_limit
+        return agent.blstats.hitpoints <= 16
+    # hypothesis: retreating from ordinary monsters below 10 HP avoids the
+    # common two-hit deaths while retaining normal aggression at full health.
+    return agent.blstats.hitpoints <= 10
 
 
 def is_dangerous_monster(monster):

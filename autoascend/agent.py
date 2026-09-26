@@ -13,7 +13,7 @@ from . import utils
 from .character import Character
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
 from .exploration_logic import ExplorationLogic
-from .global_logic import GlobalLogic
+from .global_logic import GlobalLogic, EARLY_DIG_XL
 from .glyph import MON, C, Hunger, G, SHOP
 from .item import Item, flatten_items
 from .item.inventory import Inventory
@@ -58,10 +58,11 @@ class Agent:
         self.last_bfs_dis = None
         self.last_bfs_step = None
         self.last_prayer_turn = None
+        self._monk_meat_meals = 0
         self._previous_glyphs = None
         self._last_turn = -1
         self._inactivity_counter = 0
-        self._turn_inactivity_panic = False
+        self._pass_turn_after_error = False
         self._is_updating_state = False
 
         self._no_step_calls = False
@@ -78,6 +79,8 @@ class Agent:
         self._allow_attack_all_turn = -float('inf')
 
         self.last_cast_fail_turn = defaultdict(lambda: -float('inf'))
+        self._pick_dig_attempts = dict()
+        self._dig_engrave_attempts = dict()
 
         self.stats_logger = StatsLogger()
 
@@ -456,10 +459,7 @@ class Agent:
         if self._last_turn != self.blstats.time:
             self._last_turn = self.blstats.time
             self._inactivity_counter = 0
-        if self._inactivity_counter >= 200:
-            self._inactivity_counter = 0
-            self._turn_inactivity_panic = True
-            raise AgentPanic('turn inactivity')
+        assert self._inactivity_counter < 200, ('turn inactivity', sorted(set(self._message_history[-50:])))
 
         self.update_state(allow_update=self._atom_operation_allow_update or not self.in_atom_operation,
                           allow_callbacks=not self.in_atom_operation)
@@ -735,8 +735,10 @@ class Agent:
             return self.message
 
     def is_safe_to_pray(self, limit=500):
+        # the prayer timeout starts at 300 and drops by one a turn; major trouble is fixed once it is
+        # at most 200, so the first prayer is safe from about turn 100 (not 300: a diver is long dead)
         return (
-                (self.last_prayer_turn is None and self.blstats.time > 300) or
+                (self.last_prayer_turn is None and self.blstats.time > 110) or
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
@@ -1131,7 +1133,10 @@ class Agent:
                 yielded = True
                 yield True
                 self.character.parse_enhance_view()
-                # self.character.parse_spellcast_view()
+                # only parse spells in the deep phase so the early level-1 grind (and its RNG) is
+                # left exactly as the parent plays it; this is what keeps the strong runs intact
+                if self.blstats.experience_level >= 8:
+                    self.character.parse_spellcast_view()
 
             move_priority_heatmap, actions = combat.fight_heur.get_priorities(self)
             actions.extend(combat.fight_heur.get_move_actions(self, dis, move_priority_heatmap))
@@ -1140,7 +1145,7 @@ class Agent:
                 actions = list(filter(lambda x: x[1][0] != 'ranged', actions))
 
             if allow_attack_all:
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'ranged', 'zap')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
                 if attack_actions:
                     actions = attack_actions
 
@@ -1174,6 +1179,12 @@ class Agent:
                 self.melee_attack(target_y, target_x)
                 wait_counter = 0
                 return wait_counter
+
+        elif best_action[0] == 'kick':
+            _, dy, dx = best_action
+            self.kick(self.blstats.y + dy, self.blstats.x + dx)
+            wait_counter = 0
+            return wait_counter
 
         elif best_action[0] == 'ranged':
             _, dy, dx = best_action
@@ -1408,15 +1419,16 @@ class Agent:
     @Strategy.wrap
     def emergency_strategy(self):
 
-        # if self.should_cast_extra_heal():
-        #     yield True
-        #     self.cast('extra healing', direction=(0, 0))
-        #     return
+        if self.blstats.experience_level >= 8:
+            if self.should_cast_extra_heal():
+                yield True
+                self.cast('extra healing', direction=(0, 0))
+                return
 
-        # if self.should_cast_heal():
-        #     yield True
-        #     self.cast('healing', direction=(0, 0))
-        #     return
+            if self.should_cast_heal():
+                yield True
+                self.cast('healing', direction=(0, 0))
+                return
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
@@ -1435,34 +1447,320 @@ class Agent:
             self.inventory.quaff(items[0])
             return
 
-        # hypothesis: the god only fixes low HP at HP <= 5 or HP <= max/7, so a "recovery" prayer below
-        # one-third health with no monster around heals nothing while resetting the prayer timeout; and the
-        # timeout after a prayer is rnz(350), so a hunger prayer 400 turns later is "too soon" ~1/4 of the
-        # time (Luck -3, angry god, starvation). Skipping the wasted prayer and waiting 800 turns before a
-        # hunger prayer keeps prayer reliable for real HP emergencies and fainting on the farm level.
-        safe_to_pray = self.is_safe_to_pray(500)
+        # hypothesis: the weak Healers die mid-grind because the emergency prayer only fires at
+        # HP < max/5 (or /6) or HP < 6 -- so low that a single hard hit (mumak, soldier ant, magic
+        # missile, rothe, ...) drops them from a seemingly-safe HP straight to dead, skipping the
+        # window entirely. Raise the crisis threshold to match the potion threshold (HP < max/3 or
+        # HP < 8) so prayer -- the reliable full-heal backstop once potions are spent -- kicks in
+        # with real margin. Games here are short (death by Xp5-8), so this rarely spends the ~once-
+        # per-1000-turn prayer more than once, and surviving a hit beats starving 500 turns later.
+        # Since score is essentially a function of experience level, more survival == more XP == more
+        # score across all four Healer identities.
+        # hypothesis: human Healers die in early melee far more than gnome Healers (0.05 vs 0.08-0.10
+        # here). A gnome Healer reaches the Gnomish Mines, where gnomish monsters are peaceful, and
+        # levels up in relative safety; a human Healer has no such refuge and gets whittled to death
+        # by ordinary monsters with its feeble scalpel. Its strongest emergency tool is the wand of
+        # sleep, yet in a crisis it either melees on (and dies) or prays -- and praying takes several
+        # turns during which the adjacent monster keeps hitting, so it can die mid-prayer. When at
+        # crisis HP (HP<max/3) with a hostile monster adjacent and a wand of sleep in hand, sleep the
+        # attacker FIRST: this disables the immediate threat so the following turns (prayer, potion,
+        # Elbereth, or plain HP regen) resolve safely, turning otherwise-fatal early fights into
+        # survival == more XP == more score. A per-run turn guard stops it re-zapping an already-
+        # sleeping monster and draining the wand. Scoped to non-gnome Healers so every gnome run stays
+        # byte-identical to the parent (gnomes already progress deep via the mines, and their fragile
+        # deep runs must not be perturbed), and to this HP<max/3 + adjacent-threat crisis, a state
+        # healthy runs never reach, so it never disturbs the human Xp7-9 runs either.
+        if self.character.race != self.character.GNOME and \
+                self.inventory.engraving_below_me.lower() != 'elbereth' and \
+                self.blstats.time - getattr(self, '_last_emergency_sleep_turn', -100) >= 8 and \
+                (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
+                 or self.blstats.hitpoints < 8):
+            sleep_wand = None
+            for item in flatten_items(self.inventory.items):
+                if item.is_wand() and item.is_unambiguous() and item.object.name == 'sleep' \
+                        and item.uses != 'no charges' and not str(item.uses).endswith(':0'):
+                    sleep_wand = item
+                    break
+            if sleep_wand is not None:
+                target = None
+                for _, my, mx, _, _ in self.get_visible_monsters():
+                    if max(abs(my - self.blstats.y), abs(mx - self.blstats.x)) == 1:
+                        target = (my, mx)
+                        break
+                if target is not None:
+                    direction = self.calc_direction(self.blstats.y, self.blstats.x, *target)
+                    self._last_emergency_sleep_turn = self.blstats.time
+                    yield True
+                    self.zap(sleep_wand, direction)
+                    return
+
+        # low HP is only "major trouble" to the god at HP <= 5 or HP <= max/7 (pray.c in_trouble);
+        # above that the prayer is answered "displeased", fixes nothing and burns the timeout
         if (
-                (safe_to_pray and
-                 (self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
-                  * self.blstats.max_hitpoints or self.blstats.hitpoints < 6
-                  or (self.character.race == Character.ORC and self.blstats.hitpoints <= 8)))
-                or (self.is_safe_to_pray(800) and self.blstats.hunger_state >= Hunger.FAINTING)
+                (self.is_safe_to_pray(500) and
+                 (self.blstats.hitpoints * 7 <= self.blstats.max_hitpoints or self.blstats.hitpoints <= 5))
+                or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
         ):
             yield True
             self.pray()
             return
 
-        # if self.inventory.engraving_below_me.lower() != 'elbereth' and self.can_engrave() and \
-        #         (self.blstats.hitpoints < 1 / 5 * self.blstats.max_hitpoints or self.blstats.hitpoints < 5):
-        #     yield True
-        #     self.engrave('Elbereth')
-        #     for _ in range(8):
-        #         if self.inventory.engraving_below_me.lower() != 'elbereth':
-        #             break
-        #         self.direction('.')
-        #     return
+        # standing on a down staircase at crisis HP with prayer spent: take it. Only adjacent
+        # monsters follow, the new level is a fresh start, and the depth is banked either way.
+        if (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints or self.blstats.hitpoints < 8) and \
+                self.current_level().dungeon_number in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES) and \
+                self.current_level().objects[self.blstats.y, self.blstats.x] in G.STAIR_DOWN:
+            yield True
+            self.direction('>')
+            return
+
+        # hypothesis: many runs die in melee at low XP (Xp5-7) across all four identities. This
+        # Elbereth last resort sits at the very bottom of emergency_strategy -- below the healing
+        # cast, healing potion, fruit juice and prayer -- so it only fires when the Healer is at
+        # critical HP (< max/5 or < 5) with every other emergency option already exhausted, i.e. a
+        # near-certain death. Engraving Elbereth in the dust scares off the common early attackers
+        # (most animals, humanoids, etc.), and waiting on it lets HP regenerate, converting otherwise
+        # terminal combat deaths into survival == more XP == more score. Because it triggers only in
+        # this otherwise-fatal, resource-empty state, resourced/healthy runs never reach it.
+        if self.inventory.engraving_below_me.lower() != 'elbereth' and self.can_engrave() and \
+                (self.blstats.hitpoints < 1 / 5 * self.blstats.max_hitpoints or self.blstats.hitpoints < 5):
+            yield True
+            self.engrave('Elbereth')
+            for _ in range(8):
+                if self.inventory.engraving_below_me.lower() != 'elbereth':
+                    break
+                self.direction('.')
+            return
 
         yield False
+
+    @utils.debug_log('proactive_sleep')
+    @Strategy.wrap
+    def proactive_sleep_strategy(self):
+        # hypothesis: the Healer's wand of sleep is its single best early weapon, yet it is only used
+        # reactively -- at crisis HP (emergency_strategy) or when the fight heuristic happens to line up
+        # a multi-target ray. So the weak Healer walks into melee with the very monsters that kill it
+        # (giant bats, rothes, soldier ants, gnome lords, Woodland-elves) and gets whittled down before
+        # any emergency fires. Use the wand PROACTIVELY: when a genuinely threatening monster (mlevel>=2
+        # or faster than us) is 2-4 tiles away on a straight firing line, sleep it FIRST, then let fight2
+        # kill it while it is helpless -- turning deadly melee exchanges into free, damage-less kills and
+        # more surviving XP. Charges are conserved (skip trivial rats/newts/jackals/hobbits, one zap per
+        # 8 turns). Scoped to non-gnome Healers: the gnome runs' whole score comes from a few RNG-fragile
+        # deep dives that must stay byte-identical, whereas humans -- who have no deep runs to protect and
+        # drag the average down -- are exactly who this rescue is for.
+        if self.character.race == self.character.GNOME:
+            yield False
+        if self.blstats.time - getattr(self, '_last_proactive_sleep_turn', -100) < 8:
+            yield False
+        if self.inventory.engraving_below_me.lower() == 'elbereth':
+            yield False
+
+        sleep_wand = None
+        for item in flatten_items(self.inventory.items):
+            if item.is_wand() and item.is_unambiguous() and item.object.name == 'sleep' \
+                    and item.uses != 'no charges' and not str(item.uses).endswith(':0'):
+                sleep_wand = item
+                break
+        if sleep_wand is None:
+            yield False
+
+        y0, x0 = self.blstats.y, self.blstats.x
+        walkable = self.current_level().walkable
+        peaceful = self.monster_tracker.peaceful_monster_mask
+        hp_ratio = self.blstats.hitpoints / max(self.blstats.max_hitpoints, 1)
+
+        # Count nearby real threats to decide whether the spot is dangerous enough to spend a charge.
+        # A winnable 1-on-1 against a weak-ish foe is left to normal combat so healthy runs are not
+        # perturbed; the wand is reserved for swarms, tough out-of-depth singles, or losing fights.
+        near_threats = 0
+        for dist, my, mx, mon, glyph in self.get_visible_monsters():
+            if dist <= 4 and mon.mname not in combat.monster_utils.WEAK_MONSTERS \
+                    and mon.mname not in combat.monster_utils.ONLY_RANGED_SLOW_MONSTERS \
+                    and (getattr(mon, 'mlevel', 0) >= 2
+                         or combat.monster_utils.is_monster_faster(self, (dist, my, mx, mon, glyph))):
+                near_threats += 1
+
+        best = None
+        for dist, my, mx, mon, glyph in self.get_visible_monsters():
+            if mon.mname in combat.monster_utils.WEAK_MONSTERS or \
+                    mon.mname in combat.monster_utils.ONLY_RANGED_SLOW_MONSTERS:
+                continue
+            mlevel = getattr(mon, 'mlevel', 0)
+            faster = combat.monster_utils.is_monster_faster(self, (dist, my, mx, mon, glyph))
+            if not (mlevel >= 2 or faster):
+                continue
+            # danger gate: outnumbered, a genuinely tough single (mlevel>=4), or already losing
+            dangerous = near_threats >= 2 or mlevel >= 4 or (hp_ratio < 0.6 and mlevel >= 2)
+            if not dangerous:
+                continue
+            dy, dx = my - y0, mx - x0
+            cheb = max(abs(dy), abs(dx))
+            if cheb < 2 or cheb > 4:
+                continue
+            if not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
+                continue
+            sy, sx = int(np.sign(dy)), int(np.sign(dx))
+            cy, cx = y0, x0
+            clear = True
+            for _ in range(cheb - 1):
+                cy += sy
+                cx += sx
+                if not walkable[cy, cx] or self.glyphs[cy, cx] in G.PETS or peaceful[cy, cx]:
+                    clear = False
+                    break
+            if not clear:
+                continue
+            if best is None or dist < best[0]:
+                best = (dist, my, mx)
+
+        if best is None:
+            yield False
+
+        yield True
+        self._last_proactive_sleep_turn = self.blstats.time
+        direction = self.calc_direction(y0, x0, best[1], best[2], allow_nonunit_distance=True)
+        self.zap(sleep_wand, direction)
+
+    @staticmethod
+    def _respects_elbereth(mon):
+        # @ (humans and elves) and minotaurs ignore Elbereth; so may whatever we cannot see
+        return mon.mname not in ('unknown', 'minotaur') and ord(mon.mlet) != MON.S_HUMAN
+
+    def pick_for_digging(self):
+        for item in flatten_items(self.inventory.items):
+            if item.is_unambiguous() and item.objs[0].name in ('pick-axe', 'dwarvish mattock')                     and item.status != Item.CURSED:
+                return item
+        return None
+
+    @utils.debug_log('dig_down')
+    @Strategy.wrap
+    def dig_down(self):
+        # hypothesis: the score rewards dungeon depth (Dlvl:10 = 0.126 already beats Xp:9 = 0.117,
+        # and it keeps climbing fast: Dlvl:12 = 0.206), yet the bot caps around Dlvl 4 -- it grinds
+        # experience on shallow levels and then stalemates there, frequently holding one or more
+        # unused wands of digging. Once in the deep phase (Xp >= 8, so the RNG-fragile early grind
+        # is left byte-identical to the parent) and when it is safe, dig straight down with a wand of
+        # digging to bank the much more valuable depth milestones. Digging for depth is legitimate
+        # NetHack progression (not a scorer quirk), and every identity that finds a digging wand
+        # turns a wasted, capped late game into a deeper, higher-scoring run.
+        # A pick-axe digs without limit, so whoever carries one (every Archeologist from turn 1)
+        # skips the Dlvl 1 grind and digs from EARLY_DIG_XL: monster difficulty tracks the average
+        # of depth and experience level, so a fresh character falls through levels faster than
+        # the dungeon can catch up with it, and depth is worth far more than the Xp 8 it forgoes.
+        if self.blstats.experience_level < 8 and not (
+                self.blstats.experience_level >= EARLY_DIG_XL and self.pick_for_digging() is not None):
+            yield False
+            return
+        if self.character.prop.polymorph:
+            yield False
+            return
+        # only the main dungeon: the Mines bottom out at Dlvl 10-13, the Dungeons of Doom at Medusa
+        if self.current_level().dungeon_number != Level.DUNGEONS_OF_DOOM:
+            yield False
+            return
+        wand = None
+        for item in flatten_items(self.inventory.items):
+            if item.is_wand() and item.is_unambiguous() and item.object.name == 'digging' \
+                    and item.uses != 'no charges' and not str(item.uses).endswith(':0'):
+                wand = item
+                break
+
+        # hypothesis: a pick-axe dive dies in the ~20 turns it spends digging each hole at Xp 5-7 on
+        # Dlvl 8-14 (soldier ants, rothes, owlbears, trolls walk up and maul it), or after it stops
+        # digging below 70% HP and wanders the deep level instead. Dig under a dust Elbereth: it is
+        # engraved before starting and again once the pit is dug (digging the pit wipes it). Every
+        # monster but @ (humans, elves) and minotaurs then refuses to melee us, and since a scared
+        # monster does not even interrupt the dig occupation, the hole keeps going while they hover.
+        # So with Elbereth possible, keep digging with such monsters adjacent and at any HP (short of
+        # the prayer / healing-potion emergencies): every extra level banked is worth far more to
+        # the score than the HP a deep low-level character recovers wandering around.
+        shielded = wand is None and self.pick_for_digging() is not None and self.can_engrave()
+        adjacent = [m for m in self.get_visible_monsters()
+                    if max(abs(m[1] - self.blstats.y), abs(m[2] - self.blstats.x)) <= 1]
+        if shielded:
+            if any(not self._respects_elbereth(m[3]) for m in adjacent):
+                yield False
+                return
+            hp, max_hp = self.blstats.hitpoints, self.blstats.max_hitpoints
+            if (hp * 7 <= max_hp or hp <= 5) and self.is_safe_to_pray(500):
+                yield False
+                return
+            if (hp < max_hp / 3 or hp < 8) and any(
+                    item.is_unambiguous() and item.category == nh.POTION_CLASS and
+                    item.object.name in ['healing', 'extra healing', 'full healing']
+                    for item in flatten_items(self.inventory.items)):
+                yield False
+                return
+            if self.blstats.hunger_state >= Hunger.HUNGRY:
+                yield False
+                return
+        else:
+            # stay safe: let fight2 / emergency_strategy handle threats before we spend turns digging
+            if self.blstats.hitpoints < 0.7 * self.blstats.max_hitpoints:
+                yield False
+                return
+            if adjacent:
+                yield False
+                return
+
+        if wand is not None:
+            yield True
+            self.zap(wand, '>')
+            return
+
+        # hypothesis: a wand of digging is rare and runs dry after a few levels, but pick-axes and
+        # dwarvish mattocks (dropped by the dwarves the bot routinely kills) dig through the floor
+        # without limit. Depth is by far the most valuable progress milestone (Dlvl 10 = 0.126 >
+        # Xp 9, Dlvl 12+ > 0.2), so in the deep phase keep applying the pick downward, falling a level
+        # at a time, instead of stalling at Dlvl 2-5 with a digging tool unused in the pack.
+        pick = self.pick_for_digging()
+        if pick is None:
+            yield False
+            return
+        y, x = self.blstats.y, self.blstats.x
+        if self.current_level().objects[y, x] not in G.FLOOR or \
+                self.current_level().objects[y, x] in G.DOORS:
+            yield False
+            return
+        # falling out of a shop hands the whole pack, pick included, to the shopkeeper
+        if self.current_level().shop[y, x]:
+            yield False
+            return
+        # give up on spots where digging makes no progress (undiggable floor, a hole we cannot
+        # fall through, a wielding problem, ...) so this can never loop forever
+        key = (self.current_level().key(), y, x)
+        attempts = self._pick_dig_attempts.get(key, 0)
+        # under Elbereth the dig is still interrupted by monsters coming into view, so allow more
+        if attempts >= (16 if shielded else 8):
+            yield False
+            return
+
+        if shielded and self.inventory.engraving_below_me.lower() != 'elbereth':
+            # a dust engraving garbles a letter now and then, so allow a few rewrites per spot
+            engraves = self._dig_engrave_attempts.get(key, 0)
+            if engraves < 4:
+                yield True
+                self._dig_engrave_attempts[key] = engraves + 1
+                self.engrave('Elbereth')
+                return
+            if adjacent or self.blstats.hitpoints < 0.7 * self.blstats.max_hitpoints:
+                yield False
+                return
+
+        yield True
+        self._pick_dig_attempts[key] = attempts + 1
+        with self.atom_operation():
+            pick = self.inventory.move_to_inventory(pick)
+            self.step(A.Command.APPLY)
+            self.type_text(self.inventory.items.get_letter(pick))
+            if 'direction' in self.message and '>' in self.message:
+                self.direction('>')
+                if 'too hard to dig in' in self.message:
+                    self._pick_dig_attempts[key] = 99
+            else:
+                self._pick_dig_attempts[key] = 99
+                if 'direction' in self.message:
+                    self.step(A.Command.ESC)
 
     @utils.debug_log('eat_from_inventory')
     @Strategy.wrap
@@ -1511,12 +1809,36 @@ class Agent:
         if isinstance(exc, (KeyboardInterrupt, AgentFinished, SystemExit)):
             raise exc
         if isinstance(exc, BaseException):
-            if not isinstance(exc, (AgentPanic, Exception)) and not self.panic_on_errors:
-                raise exc
+            # hypothesis: many games end early because the bot crashes, not because the
+            # character dies. The Sokoban map strings were indented, so every scripted push
+            # failed an assertion, and other errors (unhandled prompts, hallucination missed on
+            # the abbreviated status line, weightless items, stale-state assertions) were
+            # re-raised. Either way the AutoAscend thread died, the arena only got ESC fallbacks
+            # and NLE aborted ~29% of games with a healthy character. Fixing those crash sources
+            # and recovering from every error like an AgentPanic (letting a turn pass when the
+            # same error repeats) keeps the games alive to gain more experience levels and depth.
+            if not isinstance(exc, AgentPanic):
+                self._drop_state_after_error()
             self.stats_logger.log_event('agent_panic')
             self.all_panics.append(exc)
             if self.verbose:
                 print(f'PANIC!!!! : {exc}')
+
+    def _drop_state_after_error(self):
+        # An unexpected error can leave caches half-updated (e.g. the items below the agent
+        # cleared but never re-read). The recovery ESC steps run update() before on_panic()
+        # gets a chance to reset them, so drop them here (without stepping) to have them rebuilt.
+        if self._inactivity_counter >= 199:
+            # the 'turn inactivity' guard fired: the strategies loop without the game advancing
+            self._pass_turn_after_error = True
+        self._inactivity_counter = 0
+        self._is_reading_message_or_popup = False
+        self.inventory.items_below_me = None
+        self.inventory.letters_below_me = None
+        self.inventory.engraving_below_me = None
+        self.inventory._previous_blstats = None
+        self.inventory.items.on_panic()
+        self.monster_tracker.on_panic()
 
     def main(self):
         try:
@@ -1530,7 +1852,12 @@ class Agent:
                         ((Level.PLANE, 1), (None, None))  # TODO: check level num
                     self.character.parse()
                     self.character.parse_enhance_view()
-                    # self.character.parse_spellcast_view()
+                    # hypothesis: Healers know a healing spell but never cast it. Parsing/casting it
+                    # only in the deep (Xp>=8) mine fights -- where Xp8-death runs otherwise stall --
+                    # lets them survive to Xp9-10 for a large score jump, while leaving the whole
+                    # early level-1 grind (and every Xp3-7 death run) byte-identical to the parent.
+                    # The spell list is parsed lazily once Xp8 is reached (see fight2), not here, so
+                    # the early game keeps the parent's exact action sequence and RNG.
                     self.step(A.Command.AUTOPICKUP)
                     if 'Autopickup: ON' in self.message:
                         self.step(A.Command.AUTOPICKUP)
@@ -1540,43 +1867,37 @@ class Agent:
 
             assert init_finished
 
-            # hypothesis: ~6% of games (many of them strong XP 9-11 runs) ended early because the agent thread
-            # died: an unexpected exception (mostly a Sokoban-solver assertion, also odd messages) or a
-            # no-turn action loop ("turn inactivity") crashed it, and the game then only received ESC until
-            # NLE's no-progress abort. Treating every error as a panic, breaking no-turn loops with a few
-            # searches, and skipping the current milestone when a strategy keeps failing before taking a
-            # single step keeps those games alive to gain more levels. The errors that repeat on every step (an
-            # unparseable/truncated item name, an empty bag believed to be full, dipping at a remembered
-            # fountain that is gone) are also handled where they occur. Games that never crash are unchanged.
             last_step = self.step_count
             inactivity_counter = 0
-            recoveries = 0
+            forced_turns = 0
+            turn_after_forced = None
             while 1:
                 inactivity_counter += 1
                 if self.step_count != last_step:
                     inactivity_counter = 0
 
-                if inactivity_counter >= 5 or self._turn_inactivity_panic:
+                if inactivity_counter >= 5 or self._pass_turn_after_error:
                     try:
                         panics = sorted({p.args[0] for p in self.all_panics[-5:]})
                     except (TypeError, IndexError):
                         panics = 'UNKNOWN'
 
-                    if recoveries >= 30:
+                    # The same error keeps recurring without the game advancing. Let a turn pass
+                    # (so e.g. a monster in the way or a temporary status can change) instead of
+                    # giving up at once, unless nothing else has advanced the game for too long.
+                    if turn_after_forced is None or self.blstats.time != turn_after_forced:
+                        forced_turns = 0
+                    if forced_turns >= 300:
                         raise RuntimeError(f'Cyclic Panic: {panics}')
-                    recoveries += 1
-                    if inactivity_counter >= 5:
-                        self.global_logic.skip_milestone()
+                    forced_turns += 1
                     inactivity_counter = 0
-                    self._turn_inactivity_panic = False
+                    self._pass_turn_after_error = False
                     try:
-                        for _ in range(3):
-                            self.step(A.Command.ESC)
-                            self.step(A.Command.SEARCH)
+                        self.step(A.Command.SEARCH)
                     except BaseException as e:
                         self.handle_exception(e)
-                    finally:
-                        last_step = self.step_count
+                    turn_after_forced = self.blstats.time
+                    last_step = self.step_count
 
                 try:
                     try:

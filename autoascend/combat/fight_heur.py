@@ -4,11 +4,10 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G
+from ..glyph import G, MON
 from ..utils import adjacent
 from .monster_utils import is_monster_faster, is_dangerous_monster, \
-    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full, \
-    imminent_death_on_melee
+    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
 
@@ -16,7 +15,7 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    if not imminent_death_on_melee(agent, monster):
+    if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
@@ -214,20 +213,14 @@ def elbereth_action(agent, monsters):
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
-        # hypothesis: ignoring weak monsters when scoring Elbereth avoids
-        # wasting defensive turns on harmless adjacent targets for all roles.
-        if mon.mname in WEAK_MONSTERS:
+        if mon in WEAK_MONSTERS:
+            adj_monsters_count += 0.1 * multiplier
             continue
         adj_monsters_count += 1 * multiplier
         if is_dangerous_monster(monster):
             adj_monsters_count += 2 * multiplier
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
-    # hypothesis: making Elbereth a decisive last resort at critical HP will
-    # prevent low-health rogues from taking a final, usually fatal melee turn.
-    critical_hp = max(6, agent.blstats.max_hitpoints / 3)
-    if agent.blstats.hitpoints <= critical_hp and adj_monsters_count > 0:
-        return [(100, ('elbereth',))]
     if agent.blstats.hitpoints < 30 and adj_monsters_count > 0:
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []
@@ -253,7 +246,17 @@ def get_available_actions(agent, monsters):
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
-            actions.append((priority, ('melee', dy, dx)))
+            # hypothesis: refusing all bare contact with cockatrices prevents
+            # instant petrification, while leaving ranged attacks and retreat
+            # available to both armed and unarmed characters.
+            bare_handed = agent.inventory.items.main_hand is None
+            bare_hands = agent.inventory.items.gloves is None
+            bare_feet = agent.inventory.items.boots is None
+            if ord(mon.mlet) == MON.S_COCKATRICE and bare_handed and bare_hands:
+                if not bare_feet:
+                    actions.append((priority, ('kick', dy, dx)))
+            else:
+                actions.append((priority, ('melee', dy, dx)))
 
     # ranged attack actions
     for dy, dx in product([-1, 0, 1], [-1, 0, 1]):
@@ -343,7 +346,7 @@ def get_priorities(agent):
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if not any(a[1][0] in ('melee', 'ranged') for a in actions):
+    if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
 
