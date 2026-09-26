@@ -24,6 +24,8 @@ class ItemPriority(ItemPriorityBase):
         self._drop_gold_till_turn = -float('inf')
 
     def _split(self, items, forced_items, weight_capacity):
+        if self.agent.global_logic.squeeze_cap:
+            weight_capacity = min(weight_capacity, SQUEEZE_WEIGHT_CAP)
         remaining_weight = weight_capacity
         ret_inv = {}
         for item in forced_items:
@@ -65,6 +67,18 @@ class ItemPriority(ItemPriorityBase):
                 if item.category == nh.COIN_CLASS:
                     add_item(item)
 
+        def add_pick():
+            for item in items:
+                if item.is_unambiguous() and item.objs[0].name in ('pick-axe', 'dwarvish mattock') and \
+                        item.status != Item.CURSED:
+                    add_item(item)
+                    break
+
+        # squeezing through is only needed to get the pick back to the main dungeon, so under the
+        # squeeze cap it goes first
+        if self.agent.global_logic.squeeze_cap:
+            add_pick()
+
         for allow_unknown_status in [False, True]:
             item = self.agent.inventory.get_best_melee_weapon(items=forced_items + items,
                                                               allow_unknown_status=allow_unknown_status)
@@ -78,11 +92,7 @@ class ItemPriority(ItemPriorityBase):
 
         # a digging tool turns the rest of the game into a dive (Agent.dig_down), worth far more than
         # anything else we could carry in its weight
-        for item in items:
-            if item.is_unambiguous() and item.objs[0].name in ('pick-axe', 'dwarvish mattock') and \
-                    item.status != Item.CURSED:
-                add_item(item)
-                break
+        add_pick()
 
         for item in items:
             if item.is_unambiguous():
@@ -167,6 +177,10 @@ EARLY_DIG_XL = 5
 PICK_HUNT_TURNS = 3000
 # experience level the Dlvl 1 grind stops at before the deep phase begins
 GRIND_XL = 5
+# NetHack refuses a diagonal squeeze between two rock squares to anyone carrying more than 600
+SQUEEZE_WEIGHT_LIMIT = 600
+# the inventory budget once squeezing is needed, a little under the limit for weight misestimates
+SQUEEZE_WEIGHT_CAP = 580
 
 
 class GlobalLogic:
@@ -183,7 +197,58 @@ class GlobalLogic:
 
         self._got_artifact = False
 
+        self.squeeze_cap = False  # carry at most SQUEEZE_WEIGHT_CAP (see _update_squeeze_cap)
+        self._squeeze_hits = 0
+        self._squeeze_check_turn = -float('inf')
+
+    def _update_squeeze_cap(self):
+        # hypothesis: a pick hunter that wins its digging tool in the Gnomish Mines often never turns
+        # it into a dive, stalling on a Mines level for 5k-20k turns and scoring only its Xp
+        # (~0.05-0.18) instead of the Dlvl 10-26 dive (0.13-0.5). Three things hold it there:
+        # 1. the bot fills its pack to its carrying capacity (usually 700-1000, and the pick adds
+        #    100-120), but NetHack forbids squeezing diagonally between two rock squares to anyone
+        #    carrying over 600, and the Mines' cave levels are full of such gaps, so the up stairs
+        #    are often unreachable. When a staircase of a Mines level stays reachable only by
+        #    squeezing, cap the pack below the limit (the pick first) for the rest of the Mines
+        #    visit, so the bot drops its least valued items and walks on (this method);
+        # 2. before heading for the stairs it first explores every corner of each item-strewn Mines
+        #    level, which with the fights and pickups along the way takes thousands of turns
+        #    (_leaving_mines_to_dig);
+        # 3. a dwarvish mattock is two-handed and cannot be applied under a shield, so a hunter
+        #    whose tool is a mattock tries to dig and fails on every square
+        #    (Inventory.get_best_armorset, Agent.pick_for_digging).
+        # Outside the Mines and without a digging tool nothing changes.
+        level = self.agent.current_level()
+        if level.dungeon_number != Level.GNOMISH_MINES:
+            self.squeeze_cap = False
+            self._squeeze_hits = 0
+            return
+        if self.squeeze_cap or self.agent.inventory.items.total_weight <= SQUEEZE_WEIGHT_LIMIT:
+            return
+        turn = self.agent.blstats.time
+        if turn - self._squeeze_check_turn < 10:
+            return
+        self._squeeze_check_turn = turn
+        only_squeezing = (self.agent.bfs(can_squeeze=True) != -1) & (self.agent.bfs(can_squeeze=False) == -1)
+        # a monster standing in a gap looks the same, and exploring may still turn up another way
+        # around, so the cut-off has to persist for a while
+        if (only_squeezing & utils.isin(level.objects, G.STAIR_UP, G.STAIR_DOWN)).any():
+            self._squeeze_hits += 1
+        else:
+            self._squeeze_hits = 0
+        if self._squeeze_hits >= 50:
+            self.squeeze_cap = True
+
+    def _leaving_mines_to_dig(self):
+        # (see _update_squeeze_cap) with the digging tool in hand the Mines level has nothing left
+        # to offer: walk straight back to the main dungeon rather than first exploring every corner
+        # of this item-strewn cave level, which with fights and pickups can take thousands of turns
+        return self.milestone == Milestone.GO_DOWN and \
+               self.agent.current_level().dungeon_number == Level.GNOMISH_MINES and \
+               self.agent.pick_for_digging() is not None
+
     def update(self):
+        self._update_squeeze_cap()
         if not self.agent.character.prop.hallu:
             if utils.isin(self.agent.glyphs, G.ORACLE).any():
                 if self.oracle_level is None:
@@ -664,7 +729,7 @@ class GlobalLogic:
                 self.agent.exploration.go_to_level_strategy(*level, go_to_strategy, exploration_strategy(None))
                 .before(exploration_strategy(None))#.before(self.agent.exploration.patrol())
                 .preempt(self.agent, [
-                    exploration_strategy(0),
+                    exploration_strategy(0).condition(lambda: not self._leaving_mines_to_dig()),
                     exploration_strategy(None).until(
                         self.agent, lambda: self.agent.blstats.hitpoints >= 0.8 * self.agent.blstats.max_hitpoints)
                 ])

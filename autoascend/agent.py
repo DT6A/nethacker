@@ -937,13 +937,15 @@ class Agent:
 
         return ret
 
-    def bfs(self, y=None, x=None):
+    def bfs(self, y=None, x=None, can_squeeze=None):
         if y is None:
             y = self.blstats.y
         if x is None:
             x = self.blstats.x
+        default_squeeze = can_squeeze is None
 
-        if self.last_bfs_step == self.step_count and y == self.blstats.y and x == self.blstats.x:
+        if default_squeeze and self.last_bfs_step == self.step_count and \
+                y == self.blstats.y and x == self.blstats.x:
             return self.last_bfs_dis.copy()
 
         level = self.current_level()
@@ -963,11 +965,11 @@ class Agent:
         dis = utils.bfs(y, x,
                         walkable=walkable,
                         walkable_diagonally=walkable & ~utils.isin(level.objects, G.DOORS) & (level.objects != -1),
-                        can_squeeze=self.inventory.items.total_weight <= 600 and \
+                        can_squeeze=(self.inventory.items.total_weight <= 600 if default_squeeze else can_squeeze) and \
                                     self.current_level().dungeon_number != Level.SOKOBAN,
                         )
 
-        if y == self.blstats.y and x == self.blstats.x:
+        if default_squeeze and y == self.blstats.y and x == self.blstats.x:
             self.last_bfs_dis = dis
             self.last_bfs_step = self.step_count
 
@@ -1627,9 +1629,11 @@ class Agent:
         return mon.mname not in ('unknown', 'minotaur') and ord(mon.mlet) != MON.S_HUMAN
 
     def pick_for_digging(self):
-        for item in flatten_items(self.inventory.items):
-            if item.is_unambiguous() and item.objs[0].name in ('pick-axe', 'dwarvish mattock')                     and item.status != Item.CURSED:
-                return item
+        # a pick-axe first: the two-handed mattock cannot be applied while wearing a shield
+        for name in ('pick-axe', 'dwarvish mattock'):
+            for item in flatten_items(self.inventory.items):
+                if item.is_unambiguous() and item.objs[0].name == name and item.status != Item.CURSED:
+                    return item
         return None
 
     @utils.debug_log('dig_down')
