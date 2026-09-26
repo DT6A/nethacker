@@ -211,6 +211,10 @@ class Inventory:
                 yield ' '
             assert 'You have no free hand.' not in self.agent.single_message, 'TODO: handle it'
             assert 'Do what with ' in self.agent.single_popup[0]
+            if items_to_take and ' is empty.' in ' '.join([self.agent.single_message, *self.agent.single_popup]):
+                # remembered content is stale
+                self.item_manager.container_contents.pop(container.container_id, None)
+                raise AgentPanic('container is empty')
             if items_to_put and items_to_take:
                 yield 'r'
             elif items_to_put and not items_to_take:

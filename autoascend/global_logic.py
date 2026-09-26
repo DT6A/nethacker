@@ -162,6 +162,7 @@ class GlobalLogic:
         self.minetown_level = None
 
         self._got_artifact = False
+        self._not_fountains = set()
 
     def update(self):
         if not self.agent.character.prop.hallu:
@@ -370,6 +371,9 @@ class GlobalLogic:
 
         dis = self.agent.bfs()
         mask = utils.isin(self.agent.current_level().objects, G.FOUNTAIN) & (dis != -1)
+        for key, y, x in self._not_fountains:
+            if key == self.agent.current_level().key():
+                mask[y, x] = False
         if not mask.any():
             yield False
 
@@ -397,7 +401,9 @@ class GlobalLogic:
             candidate = self.agent.inventory.move_to_inventory(candidate)
             self.agent.step(A.Command.DIP)
             self.agent.type_text(self.agent.inventory.items.get_letter(candidate))
-            if 'What do you want to dip ' in self.agent.message and 'into?' in self.agent.message:
+            if ('What do you want to dip ' in self.agent.message and 'into?' in self.agent.message) or \
+                    "You don't have anything to dip " in self.agent.message:
+                self._not_fountains.add((self.agent.current_level().key(), self.agent.blstats.y, self.agent.blstats.x))
                 raise AgentPanic('no fountain here')
 
     def can_sacrify(self, item):
@@ -508,6 +514,10 @@ class GlobalLogic:
         yield True
 
         self.agent.go_to(y, x, stop_one_before=True)
+
+    def skip_milestone(self):
+        if self.milestone < Milestone.GO_DOWN:
+            self.milestone = Milestone(int(self.milestone) + 1)
 
     @Strategy.wrap
     def current_strategy(self):

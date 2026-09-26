@@ -154,13 +154,13 @@ class ItemManager:
             objs, glyphs, count, status, modifier, *args = \
                 self.parse_text(text, category, glyph)
             category = O.get_category(objs[0])
-        except:
+        except Exception:
             # TODO: when blind, it may not work as expected, e.g. "a shield", "a gem", "a potion", etc
-            if self.agent.character.prop.blind:
-                obj = O.from_name('unknown')
-                glyphs = O.possible_glyphs_from_object(obj)
-                return Item([obj], glyphs, text=text)
-            raise
+            # Unparseable text (also when not blind, e.g. a menu line truncated at the screen width) is treated
+            # as an unknown item instead of crashing on every step
+            obj = O.from_name('unknown')
+            glyphs = O.possible_glyphs_from_object(obj)
+            return Item([obj], glyphs, text=text)
 
         possibilities_from_glyphs = set.union(*(set(self.possible_objects_from_glyph(glyph)) for glyph in glyphs))
         objs = [o for o in objs if o in possibilities_from_glyphs]

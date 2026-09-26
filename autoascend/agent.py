@@ -61,6 +61,7 @@ class Agent:
         self._previous_glyphs = None
         self._last_turn = -1
         self._inactivity_counter = 0
+        self._turn_inactivity_panic = False
         self._is_updating_state = False
 
         self._no_step_calls = False
@@ -455,7 +456,10 @@ class Agent:
         if self._last_turn != self.blstats.time:
             self._last_turn = self.blstats.time
             self._inactivity_counter = 0
-        assert self._inactivity_counter < 200, ('turn inactivity', sorted(set(self._message_history[-50:])))
+        if self._inactivity_counter >= 200:
+            self._inactivity_counter = 0
+            self._turn_inactivity_panic = True
+            raise AgentPanic('turn inactivity')
 
         self.update_state(allow_update=self._atom_operation_allow_update or not self.in_atom_operation,
                           allow_callbacks=not self.in_atom_operation)
@@ -1507,7 +1511,7 @@ class Agent:
         if isinstance(exc, (KeyboardInterrupt, AgentFinished, SystemExit)):
             raise exc
         if isinstance(exc, BaseException):
-            if not isinstance(exc, AgentPanic) and not self.panic_on_errors:
+            if not isinstance(exc, (AgentPanic, Exception)) and not self.panic_on_errors:
                 raise exc
             self.stats_logger.log_event('agent_panic')
             self.all_panics.append(exc)
@@ -1536,20 +1540,43 @@ class Agent:
 
             assert init_finished
 
+            # hypothesis: ~6% of games (many of them strong XP 9-11 runs) ended early because the agent thread
+            # died: an unexpected exception (mostly a Sokoban-solver assertion, also odd messages) or a
+            # no-turn action loop ("turn inactivity") crashed it, and the game then only received ESC until
+            # NLE's no-progress abort. Treating every error as a panic, breaking no-turn loops with a few
+            # searches, and skipping the current milestone when a strategy keeps failing before taking a
+            # single step keeps those games alive to gain more levels. The errors that repeat on every step (an
+            # unparseable/truncated item name, an empty bag believed to be full, dipping at a remembered
+            # fountain that is gone) are also handled where they occur. Games that never crash are unchanged.
             last_step = self.step_count
             inactivity_counter = 0
+            recoveries = 0
             while 1:
                 inactivity_counter += 1
                 if self.step_count != last_step:
                     inactivity_counter = 0
 
-                if inactivity_counter >= 5:
+                if inactivity_counter >= 5 or self._turn_inactivity_panic:
                     try:
                         panics = sorted({p.args[0] for p in self.all_panics[-5:]})
                     except (TypeError, IndexError):
                         panics = 'UNKNOWN'
 
-                    raise RuntimeError(f'Cyclic Panic: {panics}')
+                    if recoveries >= 30:
+                        raise RuntimeError(f'Cyclic Panic: {panics}')
+                    recoveries += 1
+                    if inactivity_counter >= 5:
+                        self.global_logic.skip_milestone()
+                    inactivity_counter = 0
+                    self._turn_inactivity_panic = False
+                    try:
+                        for _ in range(3):
+                            self.step(A.Command.ESC)
+                            self.step(A.Command.SEARCH)
+                    except BaseException as e:
+                        self.handle_exception(e)
+                    finally:
+                        last_step = self.step_count
 
                 try:
                     try:
