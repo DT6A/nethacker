@@ -196,6 +196,7 @@ ROLE_EARLY_DIG_XL = {}
 # ablation switches for fixes made while diving (see their call sites)
 DIVE_SKIPS_EXPLORATION = True
 LEAVE_GRIND_WHEN_HUNGRY = False
+GRIND_ENDS_WHEN_GOD_ANGRY = True
 # Roles for which leaving the Dlvl 1 grind when out of food pays (73-identity A/B): the others
 # (Healers, Knights, Priests, Rogues, Tourists, Valkyries) do better finishing the grind.
 ROLES_LEAVING_GRIND_WHEN_HUNGRY = {Character.ARCHEOLOGIST, Character.BARBARIAN, Character.CAVEMAN,
@@ -647,7 +648,15 @@ class GlobalLogic:
                 # Dlvl 1 has few monsters and fewer corpses: a grind that runs out of food starves
                 # there, fainting in front of the next pack of jackals. Hungry with nothing left to
                 # eat, move on down where corpses (and experience) come faster.
+                # hypothesis: the grind lives on hunger prayers, and traces of Dlvl 1 deaths show
+                # most of them follow a prayer that angered the god (too soon, or a negative Luck
+                # or alignment): from then on every prayer fails, so the character faints from
+                # hunger over and over on a level with few corpses until a newt, gecko or kitten
+                # bites it to death at Xp 4-6. Such a grind cannot finish; leaving at once for the
+                # usual next phase (the Mines' gnomes and dwarves leave meaty corpses, a pick digs
+                # down, and every new level is fresh food and depth) beats waiting to starve.
                 condition = lambda: self.agent.blstats.experience_level >= self._grind_xl() or \
+                    (GRIND_ENDS_WHEN_GOD_ANGRY and self.agent.prayer_failed) or \
                     (LEAVE_GRIND_WHEN_HUNGRY and
                      self.agent.character.role in ROLES_LEAVING_GRIND_WHEN_HUNGRY and
                      self.agent.blstats.hunger_state >= Hunger.HUNGRY and
