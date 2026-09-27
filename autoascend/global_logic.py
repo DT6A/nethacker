@@ -638,6 +638,57 @@ class GlobalLogic:
 
         self.agent.go_to(y, x, stop_one_before=True)
 
+    @utils.debug_log('hunt_peaceful_dwarf')
+    @Strategy.wrap
+    def hunt_peaceful_dwarf(self):
+        # hypothesis: the Mines' dwarves carry the pick-axes and mattocks (about one in three) that
+        # turn the rest of the game into a dig_down dive, but they are peaceful to gnomes, to dwarves
+        # and -- being lawful themselves -- mostly to lawful characters too, and the bot never
+        # attacks a peaceful monster. So their picks are never taken: gnome and dwarf non-Archeologists
+        # walk the Mines and average 0.05-0.2, and lawful humans' pick hunts come back empty
+        # (Caveman 0.14 vs 0.28 neutral, Monk 0.19 vs 0.30, Priest 0.12 vs 0.18). Attacking a
+        # peaceful dwarf (outside Minetown and its watch) only costs a point of alignment: it turns
+        # hostile before it dies, so there is no peaceful-kill Luck penalty, and it is no murder.
+        # A dropped pick is picked up, the milestone switches to GO_DOWN and dig_down takes over.
+        if self.agent.character.prop.hallu or \
+                self.agent.blstats.experience_level < early_dig_xl(self.agent.character) or \
+                self.agent.pick_for_digging() is not None:
+            yield False
+        # anywhere but Minetown: a dwarf met on the Dlvl 1 grind levels ends the grind with a dive
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.SOKOBAN or level.key() == self.minetown_level:
+            yield False
+        if self.agent.blstats.hitpoints < self.agent.blstats.max_hitpoints * 2 / 3 or \
+                self.agent.blstats.hunger_state >= Hunger.WEAK:
+            yield False
+
+        dis = self.agent.bfs()
+        targets = []
+        for y, x in zip(*self.agent.monster_tracker.peaceful_monster_mask.nonzero()):
+            glyph = self.agent.glyphs[y, x]
+            if not MON.is_monster(glyph):
+                continue
+            name = MON.permonst(glyph).mname
+            if name in ('watchman', 'watch captain'):
+                yield False  # Minetown, before its shopkeeper has been seen
+            if name not in ('dwarf', 'dwarf lord'):
+                continue
+            reach = [dis[ny, nx] for ny, nx in self.agent.neighbors(y, x, shuffle=False) if dis[ny, nx] != -1]
+            if reach:
+                targets.append((min(reach), y, x))
+        if not targets:
+            yield False
+
+        yield True
+        _, y, x = min(targets)
+        if not utils.adjacent((y, x), (self.agent.blstats.y, self.agent.blstats.x)):
+            self.agent.go_to(y, x, stop_one_before=True, max_steps=3)
+            return
+        # the "Really attack?" prompt is answered yes by Agent.step
+        self.agent.melee_attack(y, x)
+        # rescan the map so the now-angry dwarf is seen as hostile and fight2 finishes it off
+        self.agent.monster_tracker._last_glyphs = None
+
     @Strategy.wrap
     def current_strategy(self):
         yield True
@@ -845,6 +896,9 @@ class GlobalLogic:
                 self.agent.eat_corpses_from_ground(only_below_me=True).condition(lambda: self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY),
                 self.agent.eat_corpses_from_ground().every(5).condition(lambda: self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY),
                 self.agent.eat_from_inventory().every(5),
+            ])
+            .preempt(self.agent, [
+                self.hunt_peaceful_dwarf(),
             ])
             .preempt(self.agent, [
                 self.follow_guard(),
