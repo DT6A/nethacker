@@ -300,6 +300,38 @@ def wait_action(agent, monsters):
     return []
 
 
+def camera_actions(agent, monsters):
+    """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
+    it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
+    blows at 3/14 HP, which is how most Dlvl 1-3 Tourist games end (sewer rats, hobbits, ants). Only while
+    diving: in the levelling grind a fleeing monster is lost XP."""
+    if agent.character.prop.blind or agent.character.prop.polymorph or agent.blstats.max_hitpoints <= 0:
+        return []
+    camera = None
+    for item in agent.inventory.items:
+        if item.is_unambiguous() and item.object.name == 'expensive camera' and \
+                not agent.inventory.is_known_empty(item):
+            camera = item
+            break
+    if camera is None:
+        return []
+    ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    if not agent.global_logic.dive.diving or ratio >= 0.5:
+        return []
+    flashed = getattr(agent, '_camera_flashed', {})
+    actions = []
+    for monster in monsters:
+        _, y, x, mon, _ = monster
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
+            continue
+        if agent.blstats.time - flashed.get((y, x), -100) < 8:
+            continue
+        actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+    return actions
+
+
 def get_available_actions(agent, monsters):
     actions = []
 
@@ -342,6 +374,7 @@ def get_available_actions(agent, monsters):
     if to_pickup:
         actions.append((15, ('pickup', to_pickup)))
 
+    actions.extend(camera_actions(agent, monsters))
     actions.extend(elbereth_action(agent, monsters))
     actions.extend(wait_action(agent, monsters))
 

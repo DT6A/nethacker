@@ -2036,6 +2036,27 @@ class Agent:
                 self.zap(wand, dir)
             return wait_counter
 
+        elif best_action[0] == 'camera':
+            _, dy, dx, camera = best_action
+            if not hasattr(self, '_camera_flashed'):
+                self._camera_flashed = {}
+            self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
+            dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
+            pass
+            with self.atom_operation():
+                self.step(A.Command.APPLY)
+                self.type_text(self.inventory.items.get_letter(camera))
+                if 'In what direction' in self.message:
+                    self.direction(dir)
+                    self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                else:
+                    self.log(f'CAMERA no prompt: {self.message!r}')
+                    if 'nothing happens' in self.message.lower():
+                        self.inventory.empty_wands.add(camera.text)
+                    if 'What do you want to use or apply' in self.single_message:
+                        self.step(A.Command.ESC)
+            return wait_counter
+
         elif best_action[0] == 'pickup':
             if len(best_action) == 2:
                 _, items_to_pickup = best_action
