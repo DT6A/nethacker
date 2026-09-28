@@ -1149,8 +1149,38 @@ class DiveLogic:
                 agent.log('DIVE mines branch not found above; giving the Mines route up')
                 self.mines_done = True
 
+        if self._read_magic_mapping():
+            return
+
         self._task('descend')
         return self.descend()
+
+    def _read_magic_mapping(self):
+        """hypothesis: a scroll of magic mapping (Tourists start with several; the bot never read them) shows
+        the '>' of a stairs-dive level at once, so the dive walks straight there instead of exploring the level
+        and meeting its monsters on the way. Only without a digging tool (a digger doesn't need the stairs),
+        on Dungeons of Doom levels from Dlvl 10 (shallower, exploring still pays in XP) whose '>' is still unknown, once per level."""
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        mapped = self.__dict__.setdefault('_mapped_levels', set())
+        if key in mapped or agent.blstats.depth < 10 or level.dungeon_number != Level.DUNGEONS_OF_DOOM or self.digging_tool() is not None:
+            return False
+        if utils.isin(level.objects, G.STAIR_DOWN).any():
+            return False
+        cond = int(agent.last_observation['blstats'][nh.NLE_BL_CONDITION])
+        if agent.character.prop.blind or cond & (nh.BL_MASK_CONF | nh.BL_MASK_STUN | nh.BL_MASK_HALLU | nh.BL_MASK_BLIND):
+            return False
+        scroll = next((i for i in agent.inventory.items if i.category == nh.SCROLL_CLASS and i.is_unambiguous() and
+                       i.object.name == 'magic mapping' and i.status != Item.CURSED), None)
+        if scroll is None:
+            return False
+        mapped.add(key)
+        self._task('read magic mapping')
+        with agent.atom_operation():
+            agent.step(A.Command.READ)
+            agent.type_text(agent.inventory.items.get_letter(scroll))
+        return True
 
     # ------------------------------------------------------------- elbereth
 
