@@ -76,7 +76,8 @@ PICK_TRIP_END_XL = 0
 # a tour headed for a shallower main-dungeon level (the grind, after a trip) explores for up staircases
 # only: after its trip, pt6-public seed 9 fell through a trap door to Dlvl 4, took that level's unexplored
 # '>' to Dlvl 5 and met soldier ants at XL 7 (the old rule takes any unexplored staircase, 50/50)
-UPWARD_RETURN = False
+# hypothesis: a tour heading back up to the grind level takes only up staircases, so it no longer wanders deeper into levels it cannot yet survive
+UPWARD_RETURN = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
