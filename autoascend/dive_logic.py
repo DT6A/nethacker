@@ -98,7 +98,6 @@ BOSS_MONSTERS = ('minotaur', 'ettin', 'titan', 'lich', 'demilich', 'master lich'
                  'energy vortex', 'black dragon', 'red dragon', 'white dragon', 'blue dragon',
                  'green dragon', 'yellow dragon', 'orange dragon', 'silver dragon', 'gray dragon')
 ARRIVAL_RETREAT_REST = 150     # turns to wait upstairs before trying that staircase again
-MAGIC_MAPPING_AFTER = 800     # turns on a level with no reachable '>' before reading magic mapping
 FULL_EXPLORE_TURNS = 2500      # per level, while under-levelled
 PORTAL_SWEEP_TURNS = 3000      # per portal level visit
 STUCK_EXPLORE_TURNS = 4000     # searching for a hidden way down before trying other things
@@ -474,7 +473,6 @@ class DiveLogic:
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
         self.diving = False
-        self._mapped_levels = set()        # level keys a scroll of magic mapping was read on
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
         self.undiggable = set()            # level keys where the floor is too hard to dig
@@ -1051,12 +1049,6 @@ class DiveLogic:
             agent.search(20)
             return
 
-        # hypothesis: Tourists (and anyone who found one) carry identified scrolls of magic mapping but the bot
-        # never read them; half the Tourist games died on Dlvl 1 after 1300-3800 turns of searching for a '>'.
-        # Reading one when no reachable '>' is known after a short look reveals the stairs and starts the dive.
-        if self._read_magic_mapping():
-            return
-
         if dnum == Level.QUEST:
             self._task('leave quest')
             return self.leave_quest()
@@ -1580,28 +1572,6 @@ class DiveLogic:
         return MINES_ROUTE and not self.mines_done and \
             self.agent.character.race in (Character.DWARF, Character.GNOME) and \
             (not self.diving or self.digging_tool() is None)
-
-    def _read_magic_mapping(self):
-        agent = self.agent
-        level = agent.current_level()
-        if level.key() in self._mapped_levels or self.turns_on_level() < MAGIC_MAPPING_AFTER:
-            return False
-        if agent.get_visible_monsters() or agent.blstats.hunger_state >= Hunger.WEAK:
-            return False
-        dis = agent.bfs()
-        if any(dis[p] != -1 for p in self._stairs_down(level)):
-            return False
-        mm = O.from_name('magic mapping', nh.SCROLL_CLASS)
-        for item in agent.inventory.items:
-            if item.category == nh.SCROLL_CLASS and item.is_unambiguous() and item.object == mm:
-                self._mapped_levels.add(level.key())
-                self._task('magic mapping')
-                agent.log('DIVE reading a scroll of magic mapping')
-                with agent.atom_operation():
-                    agent.step(A.Command.READ)
-                    agent.type_text(agent.inventory.items.get_letter(item))
-                return True
-        return False
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
