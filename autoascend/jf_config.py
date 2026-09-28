@@ -16,7 +16,8 @@ LATE_FIXES = True
 # the rarest-hazard subset of LATE_FIXES (gas spore next to the pet, cockatrice-family corpse
 # squares, spotted/ochre jelly and gelatinous cube melee): these first fire close to the deaths
 # they prevent, so they barely perturb the elite's public trajectories
-HAZARD_FIXES = False
+# hypothesis: guarding the rare hazards (gas spore by pet, cockatrice squares, jelly melee) prevents some deaths without perturbing the rest
+HAZARD_FIXES = True
 # master switch kept for older experiment configs: sets both
 TOUR_FIXES = None
 # Excalibur dips only at >= 90% HP with a prayer ready (astra); changes the tour
