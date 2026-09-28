@@ -222,7 +222,9 @@ SESSILE_MEMORY = False
 GOTO_TARGET_FIX = False
 # the panic-loop breaker closes a square for 100 turns, not for the rest of the game (the failing moves are
 # usually ours: a bear trap, a web; a permanent forbid boxed a Mines dive in for 5000+ turns)
-TEMP_FORBID = False
+# hypothesis: a permanent forbid walls the grind/dive into a pocket for thousands of turns (starving, praying
+# on Dlvl 1); expiring it after 100 turns lets the bot leave and reach deeper milestones
+TEMP_FORBID = True
 # boxed in by diagonal squeezes while carrying > 600: drop to 550 for a while (a corridor bend held a grind 8000 turns)
 UNSQUEEZE = False
 # after 3 failed use_container attempts on a floor container, leave that square's containers alone (a take-out
