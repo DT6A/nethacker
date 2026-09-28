@@ -996,10 +996,7 @@ class Agent:
         )
 
     # angrygods() messages -- after one of them the god stays angry, so waiting for a safe prayer is pointless
-    # hypothesis: 'You feel that X is displeased' (pray.c p_type 0: timeout too high, no trouble) costs no Luck
-    # and leaves the god calm; counting it a failure started XL1 'rescue' dives (and ended hunger prayers)
-    # for low-HP characters whose 'HP < 12' prayer came too early. Only real anger counts.
-    PRAYER_FAILURE_MESSAGES = ('Thou hast angered me', 'Thou must relearn thy lessons',
+    PRAYER_FAILURE_MESSAGES = ('is displeased', 'is bummed', 'Thou hast angered me', 'Thou must relearn thy lessons',
                                'Thou art arrogant', 'Thou hast strayed', 'Thou durst')
 
     # prayer timeout is rnz(350) after a successful prayer and hunger is fixed only if it is below 200,
