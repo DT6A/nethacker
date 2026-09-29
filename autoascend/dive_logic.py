@@ -365,6 +365,9 @@ MINES_STUCK_TURNS = 1500
 # XL-8 phase: no deaths in 50k Mines turns, ~7% loss per 1000 turns back in the main dungeon without a tool,
 # 0.3-0.7 tools per 1000 Mines turns; base2 had 15 tool-less dives in 75 games (mean 0.14).
 # ON (train 2): with HUNT_V2 (pick-camp1); the camp ran in 12 dives and ended with a tool in 10
+# a digger inside a shop digs through its floor when it owes nothing (see _trapped_in_shop)
+SHOP_DIG = True
+SHOP_DIG_WAIT = 300
 MINES_CAMP = True
 MINES_CAMP_TURNS = 8000
 # The dive's first job on the level it starts from: a tool-less dive whose grind level held a digging dwarf
@@ -2934,7 +2937,8 @@ class DiveLogic:
         terrain = level.objects[py, px]
         if not (terrain in PLAIN_FLOOR or (terrain == -1 and level.walkable[py, px]) or
                 (DIG_IN_PITS and terrain in PITS)) or \
-                level.shop[py, px] or level.shop_interior[py, px] or (level.key(), (py, px)) in self._bad_dig_spots:
+                (level.shop[py, px] and not self._trapped_in_shop(py, px)) or \
+                (level.key(), (py, px)) in self._bad_dig_spots:
             return False
         # the square we arrived on by stairs was never seen ('@' covers it: terrain -1), but it is a staircase
         # (rescue agent, 78a30e1: 'The beam bounces off the stairs' emptied wands of digging in 6 of 90 games)
@@ -2943,6 +2947,26 @@ class DiveLogic:
         # a hole next to water or lava fills with it (dig.c fillholetyp: n moat squares around fill it
         # with probability n/(n+1)); only islands with no dry square (Medusa variants) accept the risk
         return self._wet_neighbours(py, px) <= max_wet
+
+    def _trapped_in_shop(self, py, px):
+        """A digger trapped in a shop may dig through its floor: the shopkeeper stands in the doorway of a
+        pick-axe carrier, and shk.c shopdig(1) grabs the pack only of a hero who owes (billct or debit)."""
+        # hypothesis: a digger that falls into a shop (the shopkeeper blocks the door, shop floor refused) never digs out -- s11 starved there on Dlvl 17 -- so dig through the shop interior when nothing is unpaid
+        # sources: https://nethackwiki.com/wiki/Shop (the shopkeeper grabs the pack only of a customer with unpaid goods), https://nethackwiki.com/wiki/Tourist, /refs/top/429cf0108271 (exploration_logic: "a digger fell into a closed shop")
+        if not SHOP_DIG:
+            return False
+        agent = self.agent
+        level = agent.current_level()
+        y, x = agent.blstats.y, agent.blstats.x
+        if not (level.shop_interior[y, x] and level.shop_interior[py, px]):
+            return False
+        # only when trapped: no floor outside the shop reachable, for a while (the s4 dive walked out of a Dlvl 2
+        # shop 140 turns after landing) -- at once when Weak or Fainting: each faint is turns lost to hunger
+        hungry = agent.blstats.hunger_state >= Hunger.WEAK
+        if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
+                ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
+            return False
+        return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
 
     def try_dig_down(self):
         """Dig down with a pick-axe (or zap a wand of digging down): one level per hole, and on
