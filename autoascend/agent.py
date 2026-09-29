@@ -945,7 +945,26 @@ class Agent:
                 return True
             return False
 
+    def _disarm_is_safe(self):
+        # trap.c: the disarm succeeds when rnd(75 + level_difficulty() / 2) <= Dex + XL (doubled for Rogues)
+        ch = self.blstats.dexterity + self.blstats.experience_level
+        if self.character.role == Character.ROGUE:
+            ch *= 2
+        return ch >= 75 + self.blstats.depth // 2
+
     def untrap_container_below_me(self):
+        """ Return None if the container is (probably) safe, 'trapped' if a trap was found and left
+        alone, else the fail message """
+        # re-check only while a trap could kill us (explosion 6d6 <= 36): every check costs a turn
+        checks = 5 if self.blstats.hitpoints <= 36 else 1
+        for _ in range(checks - 1):
+            result = self._untrap_container_below_me_once()
+            if result != 'recheck':
+                return result
+        result = self._untrap_container_below_me_once()
+        return None if result == 'recheck' else result
+
+    def _untrap_container_below_me_once(self):
         """ Return None if succesfull else fail message """
         with self.atom_operation():
             self.type_text('#u')
@@ -967,8 +986,18 @@ class Agent:
             assert 'Check it for traps?' in self.single_message, self.single_message
             self.type_text('y')
             if self.message.startswith('You find no traps on the'):
-                return
+                # hypothesis: one check finds a chest trap only 10/(31 - XL) of the time (1/3 at XL 1),
+                # and a found trap's disarm fails unless d(75 + depth/2) <= Dex + XL (~1 in 5 early),
+                # setting it off (4d4 shock, 6d6 explosion, poison: 'killed by an electric shock' at
+                # XL 3, 10-HP Tourists). Re-checking several times and leaving a found trap alone
+                # (nethackwiki's advice) turns those deaths into skipped boxes.
+                # sources: https://nethackwiki.com/wiki/Container_trap, NetHack 3.6.6 src/trap.c untrap(),
+                #   https://nethackwiki.com/wiki/Tourist
+                return 'recheck'
             assert 'Disarm it?' in self.message, self.message
+            if not self._disarm_is_safe():
+                self.type_text('n')
+                return 'trapped'
             self.type_text('y')
             if 'You disarm it!' in self.message:
                 self.stats_logger.log_event('container_untrap_success')

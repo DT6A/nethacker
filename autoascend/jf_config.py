@@ -290,14 +290,6 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# hypothesis: in the dive, monsters that melee through Elbereth (@ humans/elves, minotaurs, lawful minions such as the
-# Aleax) kill the dive while it waits on Elbereth under a -100 attack penalty; fighting them instead (no
-# penalty, focus them first, don't engrave or wait for them) turns elf-lord/Aleax deaths at Dlvl 19-23 into
-# survived levels.
-# sources: /refs/top/47a6c840a4cf (AT_ELBERETH_FIX, AT_FOCUS), https://nethackwiki.com/wiki/Elbereth
-AT_ELBERETH_FIX = True
-AT_FOCUS = 10
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

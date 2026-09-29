@@ -1175,8 +1175,6 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
-        if jf_config.AT_ELBERETH_FIX and cls == MON.S_ANGEL:
-            return True   # lawful minions (Aleax, Angel, ki-rin, Archon, couatl): monmove.c onscary is_lminion
         return cls == MON.S_HUMAN or name == 'minotaur'
 
     def on_medusa_level(self):

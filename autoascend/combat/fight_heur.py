@@ -250,8 +250,8 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         if targeted_monsters:
             # priority = priority * (1 - player_hp_ratio) - 10
             priority = priority - 15
-            priority += min((elbereth_attack_penalty(agent, monsters, m) for _, _, m in targeted_monsters),
-                            default=0)
+            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                priority -= 100
             ret.append((priority, ('zap', dy, dx, item, targeted_monsters)))
     return ret
 
@@ -260,47 +260,6 @@ def in_gehennom(agent):
     """monmove.c onscary(): Elbereth scares nothing in Gehennom (Inhell); engraving it there only hands out a
     free hit, and waiting on it is standing still under attack."""
     return jf_config.GEHENNOM_DIVE and agent.current_level().dungeon_number == 1
-
-
-def at_fix_active(agent):
-    """AT_ELBERETH_FIX applies while diving only (the dig out alternates Elbereth and digging there); the
-    levelling grind keeps its old fighting."""
-    return jf_config.AT_ELBERETH_FIX and agent.global_logic.dive.diving
-
-
-def at_ignorer_adjacent(agent, monsters):
-    """AT_ELBERETH_FIX: a monster that melees through Elbereth (dive._melee_ignores_elbereth) stands next to us;
-    waiting on the engraving then only hands it free hits."""
-    if not at_fix_active(agent):
-        return False
-    dive = agent.global_logic.dive
-    y0, x0 = agent.blstats.y, agent.blstats.x
-    return any(adjacent((m[1], m[2]), (y0, x0)) and dive._melee_ignores_elbereth(m[3]) for m in monsters)
-
-
-def on_scaring_elbereth(agent, monsters):
-    """Standing on an Elbereth that actually protects us (see at_ignorer_adjacent)."""
-    return agent.inventory.engraving_below_me.lower() == 'elbereth' and not at_ignorer_adjacent(agent, monsters)
-
-
-def elbereth_attack_penalty(agent, monsters, target):
-    """The -100 on attacking from an Elbereth square (attacks wipe it: uhitm.c u_wipe_engr). Not applied to a
-    target the engraving doesn't hold off anyway (AT_ELBERETH_FIX)."""
-    if agent.inventory.engraving_below_me.lower() != 'elbereth':
-        return 0
-    if at_fix_active(agent) and target is not None and \
-            agent.global_logic.dive._melee_ignores_elbereth(target[3]):
-        return 0
-    return -100
-
-
-def focus_ignorer(agent, mon):
-    """AT_ELBERETH_FIX + AT_FOCUS: hit the Elbereth-ignorer first while an Elbereth could hold off the rest."""
-    if not at_fix_active(agent) or not jf_config.AT_FOCUS or in_gehennom(agent) or agent.character.prop.blind:
-        return False
-    if not agent.global_logic.dive._melee_ignores_elbereth(mon):
-        return False
-    return agent.inventory.engraving_below_me.lower() == 'elbereth' or agent.can_engrave()
 
 
 def elbereth_action(agent, monsters):
@@ -313,8 +272,6 @@ def elbereth_action(agent, monsters):
     adj_monsters_count = 0
     for monster in monsters:
         _, my, mx, mon, _ = monster
-        if at_fix_active(agent) and agent.global_logic.dive._melee_ignores_elbereth(mon):
-            continue   # the engraving doesn't hold it off: writing it only hands it a free hit
         if mon.mname in ONLY_RANGED_SLOW_MONSTERS:
             continue
         if not adjacent((my, mx), (agent.blstats.y, agent.blstats.x)):
@@ -336,7 +293,7 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
-    if on_scaring_elbereth(agent, monsters) and not in_gehennom(agent):
+    if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         return [(priority, ('wait',))]
@@ -383,9 +340,8 @@ def get_available_actions(agent, monsters):
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            priority += elbereth_attack_penalty(agent, monsters, monster)
-            if focus_ignorer(agent, mon):
-                priority += jf_config.AT_FOCUS
+            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
             # hypothesis: refusing all bare contact with cockatrices prevents
@@ -406,7 +362,8 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                pri += elbereth_attack_penalty(agent, monsters, monster)
+                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                    pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10
                 actions.append((pri, ('ranged', dy, dx)))
