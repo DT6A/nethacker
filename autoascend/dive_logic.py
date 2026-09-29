@@ -203,6 +203,16 @@ EXPLORE_BUDGETS = True
 EXPLORE_REPLAN_TURNS = 500
 # standing on a known trap door that didn't trigger, press '>' (the dive asserted in a loop there before)
 TRAPDOOR_PLUNGE = True
+# hypothesis: a Tourist starts with 4 identified scrolls of magic mapping that the bot never reads; a dive
+# without a digging tool wanders each unexplored level at XL 8 looking for '>' until something kills it
+# (fem s10/s11 died so on Dlvl 3-8). Reading one on arriving at a level whose '>' isn't in view (after
+# MAP_STUCK_TURNS) puts '>' on the map and the descent walks straight to it, cutting the most dangerous
+# exposure of the dive. Not below DIVE_XL: an early rescue dive gains the levels it needs while it searches.
+# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
+#          /refs/top/1c4099e80253 (its stair search: descend() explores until down_targets appears)
+MAP_WHEN_STUCK = True
+MAP_STUCK_TURNS = 0
+MAGIC_MAPPING = O.from_name('magic mapping', nh.SCROLL_CLASS)
 FETCH_TOOL_TURNS = 3000        # budget for walking back to a pick-axe the tour dropped
 # Dwarves carry a pick-axe or a mattock 37.5% of the time (makemon.c) and are peaceful to a dwarf:
 # with no digging tool yet, the dive kills the peaceful dwarves it meets in the Mines (never in
@@ -465,6 +475,7 @@ class DiveLogic:
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level
         self.level_first_turn = {}     # level key -> turn first seen
+        self._mapped = set()           # level keys a scroll of magic mapping was read on (MAP_WHEN_STUCK)
         self.fully_explored = set()    # level keys explored to exhaustion
         self.sweep_started = None      # turn the current portal sweep began
         self.sweep_given_up = set()    # portal level keys whose sweep ran out of budget
@@ -1110,6 +1121,10 @@ class DiveLogic:
         if dnum not in MAIN_LINE:
             self._task('return to main dungeon')
             return self.return_to_main_dungeon()
+
+        if self.should_read_mapping():
+            self._task('read magic mapping')
+            return self.read_mapping()
 
         if self.should_sweep_portal():
             self._task('portal sweep')
@@ -3165,6 +3180,30 @@ class DiveLogic:
             if 'here is too hard to dig' in msg and agent.blstats.depth >= 25 and \
                     agent.current_level().dungeon_number == Level.DUNGEONS_OF_DOOM:
                 self.castle.on_bottom(key)
+
+    def _mapping_scroll(self):
+        return next((i for i in self.agent.inventory.items if i.category == nh.SCROLL_CLASS and
+                     i.is_unambiguous() and i.objs[0] == MAGIC_MAPPING and not i.status == Item.CURSED), None)
+
+    def should_read_mapping(self):
+        agent = self.agent
+        level = agent.current_level()
+        prop = agent.character.prop
+        return MAP_WHEN_STUCK and level.key() not in self._mapped and \
+            level.dungeon_number == Level.DUNGEONS_OF_DOOM and agent.blstats.depth >= 2 and \
+            agent.blstats.experience_level >= DIVE_XL and \
+            self.turns_on_level() > MAP_STUCK_TURNS and not self._stairs_down(level) and \
+            self.digging_tool() is None and not (prop.blind or prop.confusion or prop.stun or prop.hallu) and \
+            self._mapping_scroll() is not None
+
+    def read_mapping(self):
+        agent = self.agent
+        scroll = self._mapping_scroll()
+        self._mapped.add(agent.current_level().key())
+        agent.log(f'DIVE reading {scroll.text!r}: no \'>\' after {self.turns_on_level()} turns')
+        with agent.atom_operation():
+            agent.step(A.Command.READ)
+            agent.type_text(agent.inventory.items.get_letter(scroll))
 
     def descend(self):
         agent = self.agent
