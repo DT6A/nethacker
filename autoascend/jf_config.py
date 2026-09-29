@@ -119,7 +119,8 @@ DIVE_EAT_RADIUS = 8
 LAST_RESORT_DIG = False
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
-DESPERATE_PRAYER_GAP = 0
+# hypothesis: in last resort, a prayer 300+ turns after the last often succeeds and beats certain death
+DESPERATE_PRAYER_GAP = 300
 # LAST_RESORT: zap each unknown wand once (one still unknown after a zap at a monster is no attack wand)
 LR_WAND_ONCE = False
 # --- power: what the character carries to the Castle (power.py) ---
