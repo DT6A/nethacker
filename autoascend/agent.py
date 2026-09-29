@@ -2399,6 +2399,13 @@ class Agent:
 
         # LOWHP_EXACT: only where pray.c sees TROUBLE_HIT -- the DT6A 'HP < 12' rule prayed at 10/49 HP (no HP
         # trouble: base2-jf26 s8 got its lycanthropy cured, stayed at 10 HP with the timeout reset, and died)
+        # hypothesis: in the dive (XL 8, 55-80 max HP) DT6A's 'HP < 12' prays at 10-11 HP, above pray.c's
+        # critically_low_hp (hp*6 <= maxhp): no trouble, no heal, and the timeout reset to rnz(350) -- fem s10
+        # prayed at 11/61 on Dlvl 3 (HP 11 -> 12) and had to gamble a 630-turn prayer at 7/61 later. Once the
+        # dive has begun, DT6A's rule prays only where the god also heals; the tuned grind keeps it untouched.
+        # sources: https://nethackwiki.com/wiki/Prayer (no trouble and a timeout above 0: 'prayer timeout is too
+        # high', Luck -3 and smiting), https://nethackwiki.com/wiki/Tourist, NetHack 3.6 src/pray.c critically_low_hp(),
+        # /refs/top/0716a5964bc4 and /refs/top/47a6c840a4cf (their emergency prayer rules)
         if jf_config.EARLY_FIXES or jf_config.EXACT_PRAYER or jf_config.LOWHP_EXACT:
             low_hp = self._critically_low_hp()
         else:
@@ -2410,6 +2417,8 @@ class Agent:
                                                  self._monk_meat_meals == 0 else 8) and
                        self.blstats.hitpoints < self.blstats.max_hitpoints and
                        not self.character.prop.polymorph))
+            if self.global_logic.dive.diving:
+                low_hp = low_hp and self._critically_low_hp()
         if poly_buffer:
             low_hp = False
         if (
