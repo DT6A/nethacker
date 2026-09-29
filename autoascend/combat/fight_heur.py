@@ -319,10 +319,20 @@ def camera_actions(agent, monsters):
     if not agent.global_logic.dive.diving or ratio >= 0.5:
         return []
     flashed = getattr(agent, '_camera_flashed', {})
+    # hypothesis: the flash undoes the Elbereth the dive stands on: a blinded monster no longer respects it
+    # (monmove.c onscary), and attacking from the square wipes it ('You feel like a hypocrite. The engraving
+    # beneath you fades': fem s5 at Dlvl 12, then a crowd of iguanas, ants and a centaur killed the digger).
+    # Leave Elbereth-respecting neighbours alone while it holds; flash only the ones that fight through it.
+    # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
+    # https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_ELBERETH_FIX)
+    on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
+    dive = agent.global_logic.dive
     actions = []
     for monster in monsters:
         _, y, x, mon, _ = monster
         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
