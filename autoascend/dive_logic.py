@@ -3174,6 +3174,8 @@ class DiveLogic:
         if not targets and utils.isin(agent.current_level().objects, G.STAIR_DOWN).any() and \
                 self._walk_through_traps():
             targets = self.down_targets()
+        if not targets and self._read_magic_mapping():
+            return
         if not targets:
             self.exploration(None).until(agent, self._budgeted(lambda: bool(self.down_targets()))).run()
             return
@@ -3210,6 +3212,29 @@ class DiveLogic:
         if self.rest_if_hurt():
             return
         self.step_onto(y, x, 'trap door')
+
+    # hypothesis: Tourists start with 4 scrolls of magic mapping the bot never read; reading one when a dive level's
+    # '>' isn't found after a short look shows the stairs at once, cutting the long, dangerous exploration of deep
+    # levels (standard strategy: save magic mapping for levels where finding the stairs is slow and risky)
+    def _read_magic_mapping(self):
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        mapped = self.__dict__.setdefault('_mm_read', set())
+        if key in mapped or level.dungeon_number != Level.DUNGEONS_OF_DOOM or agent.blstats.depth < 4 or \
+                self.turns_on_level() < 40 or agent.get_visible_monsters() or \
+                agent.character.prop.confusion or agent.character.prop.blind or agent.character.prop.hallu:
+            return False
+        scroll = next((item for item in flatten_items(agent.inventory.items) if item.is_unambiguous() and
+                       item.category == nh.SCROLL_CLASS and item.object.name == 'magic mapping'), None)
+        if scroll is None:
+            return False
+        mapped.add(key)
+        agent.log(f'DIVE reading magic mapping on {key}')
+        with agent.atom_operation():
+            agent.step(A.Command.READ)
+            agent.type_text(agent.inventory.items.get_letter(scroll))
+        return True
 
     def step_onto(self, y, x, what):
         agent = self.agent
