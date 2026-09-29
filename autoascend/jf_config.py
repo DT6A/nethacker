@@ -116,7 +116,9 @@ ENGULF_WIELD = False
 DIVE_EAT = False
 DIVE_EAT_RADIUS = 8
 # LAST_RESORT: a known wand of digging is zapped down first (an escape that also banks a level)
-LAST_RESORT_DIG = False
+# hypothesis: letting the last-resort escape dig down (when HP is critical, prayer isn't safe and a
+# hostile is adjacent) saves deep Tourists that otherwise die cornered (local fem seed 14 0.353->0.554)
+LAST_RESORT_DIG = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 DESPERATE_PRAYER_GAP = 0
