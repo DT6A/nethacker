@@ -316,8 +316,16 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    if not agent.global_logic.dive.diving or ratio >= 0.5:
+    if not agent.global_logic.dive.diving:
         return []
+    # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
+    # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
+    # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
+    # such a monster at once, at any HP: blinded, it flees 3 times in 4 and the hole gets dug.
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth,
+    #          https://nethackwiki.com/wiki/Aleax, https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/monmove.c
+    #          onscary() (is_lminion), /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_FOCUS)
+    dive = agent.global_logic.dive
     flashed = getattr(agent, '_camera_flashed', {})
     # hypothesis: the flash undoes the Elbereth the dive stands on: a blinded monster no longer respects it
     # (monmove.c onscary), and attacking from the square wipes it ('You feel like a hypocrite. The engraving
@@ -326,13 +334,14 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
     # https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_ELBERETH_FIX)
     on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
-    dive = agent.global_logic.dive
     actions = []
     for monster in monsters:
         _, y, x, mon, _ = monster
         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             continue
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
+            continue
+        if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
