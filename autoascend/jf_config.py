@@ -188,8 +188,7 @@ DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
 DIVE_GAP_MIN_DEPTH = 5
 # without STARVE_CLOCK: a Fainting prayer whatever the gap when the faint-length hunger estimate nears starvation
-# hypothesis: a Fainting prayer near starvation prevents grind starvation deaths
-STARVE_DEADLINE = True
+STARVE_DEADLINE = False
 # log corpse bookkeeping (kills recorded, corpses we stand on and their known age); diagnostics only
 CORPSE_DEBUG = False
 
