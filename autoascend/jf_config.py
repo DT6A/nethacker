@@ -235,10 +235,8 @@ UNSQUEEZE = False
 CONTAINER_LOOP_FIX = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
-# hypothesis: not climbing stairs while it would fall (burdened/levitating quirks) avoids wasted turns and damage
-CLIMB_NO_FALL = True
+CLIMB_NO_FALL = False
 # no fight2 moves while we are still in a pit (each try costs a turn and the attacker hits for free)
-# hypothesis: fighting with awareness of pits (ours and the monster's) stops wasted turns/deaths while trapped
 PIT_AWARE_FIGHT = False
 # Lycanthropy (466 of 3158 dev games were infected; uncured Dlvl-1 lycanthropes died ~21% per 1000
 # turns): detect 'You dream that you feel feverish' and were changes, never eat our were family's corpses
@@ -275,7 +273,8 @@ DEMON_VIGIL_RADIUS = 5
 DEMON_VIGIL_TURNS = 400
 # fight2 never melees a floating eye we can see (the exploration stall breaker's attack-all mode did: 401
 # paralysis events in 223 dev games, 35 games died frozen)
-FEYE_FIX = False
+# hypothesis: never meleeing a visible floating eye avoids paralysis deaths in the grind and dive
+FEYE_FIX = True
 # no Excalibur dips during a water demon's vigil window (the bot went back to the fountain next to the demon)
 DEMON_NO_REDIP = False
 # the last resort (unknown wands/potions/scrolls) yields to the Elbereth rest while everything close respects
