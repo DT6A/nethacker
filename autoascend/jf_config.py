@@ -228,8 +228,7 @@ GOTO_TARGET_FIX = False
 # on Dlvl 1); expiring it after 100 turns lets the bot leave and reach deeper milestones
 TEMP_FORBID = True
 # boxed in by diagonal squeezes while carrying > 600: drop to 550 for a while (a corridor bend held a grind 8000 turns)
-# hypothesis: dropping weight when boxed in by diagonal squeezes frees grinds stuck for thousands of turns
-UNSQUEEZE = True
+UNSQUEEZE = False
 # after 3 failed use_container attempts on a floor container, leave that square's containers alone (a take-out
 # menu that never matched was retried 45,453 times in one game)
 # ON (train 2): the take-out loop (robustness B004) hit jf14 s0 in the train-2 smoke: 11399 panics and 317k steps; with the fix 152 and 36k
