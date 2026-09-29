@@ -1919,9 +1919,8 @@ class Agent:
                 # climbing out of a pit takes several turns ('You are still in a pit'), and every failed move is a
                 # free round for the monsters around, while melee from a pit is unrestricted (uhitm.c has no
                 # TT_PIT check): a digger in its own pit tried to walk out 4 times with a Grey-elf and a
-                # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11). The camera flash works
-                # from a pit too (the Elbereth-ignorer flash in fight_heur.camera_actions)
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera')]
+                # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11)
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
                 if attack_actions:
                     actions = attack_actions
             if allow_attack_all:

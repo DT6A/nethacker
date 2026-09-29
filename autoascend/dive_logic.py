@@ -72,7 +72,6 @@ DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
-LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
     'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound', 'red naga', 'black naga',
     'golden naga', 'guardian naga', 'cobra', 'lich', 'demilich', 'master lich', 'arch-lich',
@@ -1194,8 +1193,7 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
-        # lawful minions (is_lminion: Aleax, couatl, ki-rin, Archon) and Angels ignore it too (monmove.c onscary)
-        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS
+        return cls == MON.S_HUMAN or name == 'minotaur'
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -1211,14 +1209,7 @@ class DiveLogic:
     def _in_own_pit(self):
         """Standing in the pit we dug here: the hole is 4 dig turns away (dig.c: effort 0 -> 250, doubling)."""
         agent = self.agent
-        here = (agent.current_level().key(), (agent.blstats.y, agent.blstats.x))
-        # hypothesis: a boulder dropped into our pit ("You are hit by a boulder! ... The boulder falls into the
-        # pit with you") makes every further dig there fail ("There isn't enough room to dig in here"), yet the
-        # pit alone kept DIG_ESCAPE re-applying the pick there with the spot already in _bad_dig_spots (parent
-        # s13: ~90 turns and 20 applies in that pit on Dlvl24). A pit made useless is no longer our own pit.
-        # sources: NetHack 3.6.6 src/dig.c dig_check() (sobj_at(BOULDER): "There isn't enough room to %s here"),
-        #          https://nethackwiki.com/wiki/Pit , https://nethackwiki.com/wiki/Boulder , https://nethackwiki.com/wiki/Pick-axe
-        return self._pit_at == here and here not in self._bad_dig_spots
+        return self._pit_at == (agent.current_level().key(), (agent.blstats.y, agent.blstats.x))
 
     def _dig_max_wet(self):
         """Wet neighbours accepted for a dig square on this level: 0 if any reachable dry floor exists, else
@@ -2080,8 +2071,7 @@ class DiveLogic:
         on_stairs = (bl.y, bl.x) in level.stair_destination
         if self._in_own_pit() or (not on_stairs and self._diggable_spot(bl.y, bl.x, max_wet)) or \
                 (level.objects[bl.y, bl.x] in (SS.S_pit, SS.S_spiked_pit) and
-                 self._wet_neighbours(bl.y, bl.x) <= max_wet and
-                 (level.key(), (bl.y, bl.x)) not in self._bad_dig_spots):   # (the boulder pit: see _in_own_pit)
+                 self._wet_neighbours(bl.y, bl.x) <= max_wet):
             if max_wet > 0 and wand is not None:
                 return ('zap', wand)
             return ('dig', tool)
@@ -2976,25 +2966,7 @@ class DiveLogic:
         if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
                 ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
             return False
-        if any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items)):
-            return False
-        # hypothesis: the goods lying on the dig square fall through the hole with us (dokick.c impact_drop:
-        # "The adjacent object falls through the hole ... You stole ... The Keystone Kops are after you!"), and
-        # the shopkeeper follows us down: parent s11 dug through a Dlvl18 shop square holding a bronze plate mail
-        # (for sale) and the shopkeeper's wand of striking killed it on arrival. Dig from an empty shop square
-        # whenever one is reachable.
-        # sources: NetHack 3.6.6 src/dokick.c impact_drop(), src/shk.c shopdig(), https://nethackwiki.com/wiki/Shop ,
-        #          https://nethackwiki.com/wiki/Shopkeeper , https://nethackwiki.com/wiki/Hole
-        def goods(yy, xx):
-            return level.item_count[yy, xx] > 0 or ((yy, xx) != (y, x) and agent.glyphs[yy, xx] in G.OBJECTS)
-        if goods(py, px):
-            reach = agent.bfs() >= 0
-            empty = [(yy, xx) for yy, xx in zip(*(reach & level.shop_interior & level.walkable).nonzero())
-                     if not goods(yy, xx) and (level.key(), (yy, xx)) not in self._bad_dig_spots and
-                     level.objects[yy, xx] in PLAIN_FLOOR]
-            if empty:
-                return False
-        return True
+        return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
 
     def try_dig_down(self):
         """Dig down with a pick-axe (or zap a wand of digging down): one level per hole, and on
