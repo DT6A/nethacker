@@ -235,8 +235,10 @@ UNSQUEEZE = False
 CONTAINER_LOOP_FIX = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
-CLIMB_NO_FALL = False
+# hypothesis: not climbing stairs while it would fall (burdened/levitating quirks) avoids wasted turns and damage
+CLIMB_NO_FALL = True
 # no fight2 moves while we are still in a pit (each try costs a turn and the attacker hits for free)
+# hypothesis: fighting with awareness of pits (ours and the monster's) stops wasted turns/deaths while trapped
 PIT_AWARE_FIGHT = False
 # Lycanthropy (466 of 3158 dev games were infected; uncured Dlvl-1 lycanthropes died ~21% per 1000
 # turns): detect 'You dream that you feel feverish' and were changes, never eat our were family's corpses
