@@ -29,9 +29,6 @@ BLStats = namedtuple('BLStats',
                      'x y strength_percentage strength dexterity constitution intelligence wisdom charisma score hitpoints max_hitpoints depth gold energy max_energy armor_class monster_level experience_level experience_points time hunger_state carrying_capacity dungeon_number level_number prop_mask alignment')
 
 
-GRIND_DESPERATE_PRAYER_GAP = 200
-
-
 class Agent:
     def __init__(self, env, seed=0, verbose=False, panic_on_errors=False):
         self.env = env
@@ -2403,16 +2400,6 @@ class Agent:
                 not poly_buffer:
             y, x = self.blstats.y, self.blstats.x
             adjacent = [m for m in self.get_visible_monsters() if utils.adjacent((m[1], m[2]), (y, x))]
-            # hypothesis: most Tourist games end in the levelling grind at XL 1-3, at critical HP beside a rat or
-            # hobbit, on an Elbereth rest that the dust scuffs; the last prayer is 200-500 turns old there and
-            # rnz(350) has run out more often than not -- a failed prayer costs less than the game
-            if adjacent and GRIND_DESPERATE_PRAYER_GAP and not self.global_logic.dive.diving and \
-                    not self.prayer_failed and self.current_level().dungeon_number != 1 and \
-                    self.is_safe_to_pray(GRIND_DESPERATE_PRAYER_GAP):
-                yield True
-                self.log('LAST RESORT: grind desperate prayer')
-                self.pray()
-                return
             # LR_ELBERETH: with every monster close by respecting Elbereth, the Elbereth rest (below us) is the
             # safer answer: a scared monster doesn't melee, while a zap from the square erases it ('You feel
             # like a hypocrite') and an unknown ray can bounce back (base2-jf25 s1: a wand of cold at an adjacent

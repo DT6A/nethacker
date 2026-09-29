@@ -16,7 +16,7 @@ LATE_FIXES = True
 # the rarest-hazard subset of LATE_FIXES (gas spore next to the pet, cockatrice-family corpse
 # squares, spotted/ochre jelly and gelatinous cube melee): these first fire close to the deaths
 # they prevent, so they barely perturb the elite's public trajectories
-# hypothesis: guarding the rare hazards (gas spore by pet, cockatrice squares, jelly melee) prevents some deaths without perturbing the rest
+# hypothesis: guarding rare hazards (gas spore by pet, cockatrice squares, jelly melee) prevents some deaths
 HAZARD_FIXES = True
 # master switch kept for older experiment configs: sets both
 TOUR_FIXES = None
@@ -76,8 +76,7 @@ PICK_TRIP_END_XL = 0
 # a tour headed for a shallower main-dungeon level (the grind, after a trip) explores for up staircases
 # only: after its trip, pt6-public seed 9 fell through a trap door to Dlvl 4, took that level's unexplored
 # '>' to Dlvl 5 and met soldier ants at XL 7 (the old rule takes any unexplored staircase, 50/50)
-# hypothesis: a tour heading back up to the grind level takes only up staircases, so it no longer wanders deeper into levels it cannot yet survive
-UPWARD_RETURN = True
+UPWARD_RETURN = False
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -224,9 +223,7 @@ SESSILE_MEMORY = False
 GOTO_TARGET_FIX = False
 # the panic-loop breaker closes a square for 100 turns, not for the rest of the game (the failing moves are
 # usually ours: a bear trap, a web; a permanent forbid boxed a Mines dive in for 5000+ turns)
-# hypothesis: a permanent forbid walls the grind/dive into a pocket for thousands of turns (starving, praying
-# on Dlvl 1); expiring it after 100 turns lets the bot leave and reach deeper milestones
-TEMP_FORBID = True
+TEMP_FORBID = False
 # boxed in by diagonal squeezes while carrying > 600: drop to 550 for a while (a corridor bend held a grind 8000 turns)
 UNSQUEEZE = False
 # after 3 failed use_container attempts on a floor container, leave that square's containers alone (a take-out
