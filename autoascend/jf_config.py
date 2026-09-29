@@ -78,6 +78,16 @@ PICK_TRIP_END_XL = 0
 # only: after its trip, pt6-public seed 9 fell through a trap door to Dlvl 4, took that level's unexplored
 # '>' to Dlvl 5 and met soldier ants at XL 7 (the old rule takes any unexplored staircase, 50/50)
 UPWARD_RETURN = False
+# hypothesis: a trap door on Dlvl 1 drops the XL 1-3 grind a few levels (fem s1 fell to Dlvl 3 at T7), and the
+# tour then explores each of those levels to exhaustion on its way back -- items, every unexplored staircase --
+# at 10-20 HP among monsters generated for their depth (s1: killed by a hobbit at T395, 0.018). Fallen below
+# the grind level in the main dungeon, head straight home: explore for '<' only (as UPWARD_RETURN does) and
+# read one of the Tourist's 4 identified scrolls of magic mapping on a level whose '<' isn't known, so the
+# walk to it replaces the search (measured: s5 0.021 -> 0.206, s9 0.554 -> 0.507; s1 gets home by T252 but
+# still dies on Dlvl 1)
+# sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
+#          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
+FALL_HOME = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
