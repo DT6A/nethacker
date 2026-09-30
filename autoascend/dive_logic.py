@@ -2052,6 +2052,10 @@ class DiveLogic:
             # occupation only after the monsters' move), so a monster attacking every turn blocks all progress.
             # (dsafe-A jf16 s11 dug on in its pit beside a Grey-elf and a werewolf: 90 -> 12 HP, no hole.)
             return self._wand_escape(wand)
+        from .combat.fight_heur import distant_flash_directions
+        if distant_flash_directions(agent, monsters):
+            # a minotaur two squares off in line: flash it before it closes (fight_heur.distant_flash_directions)
+            return self._wand_escape(wand)
         if adjacent and agent._hurt_recently(2) and not self._elbereth_possible():
             # bitten while digging with no Elbereth under us and none to be had here (engrave cap, forbidden
             # square): every attack stops the dig, so a hole takes ~12 turns of free hits -- fight instead

@@ -300,6 +300,41 @@ def wait_action(agent, monsters):
     return []
 
 
+def distant_flash_directions(agent, monsters):
+    """Unit directions of minotaurs two squares off in a straight line with an open square between, while diving
+    with a charged camera (none flashed in the last 3 turns)."""
+    # hypothesis: a maze-filler minotaur (speed 15, 3d10/3d10/2d8, ignores Elbereth) killed 5 of 30 dives at
+    # Dlvl 25-28, and the camera only fired once it was adjacent -- after its first round (s2: 70 -> 29 HP, dead
+    # the next turn). The flash reaches along a line and scares what it blinds within distance^2 < 9 (apply.c
+    # use_camera -> flash_hits_mon: monflee 3 in 4), so flash it one square before it closes, and let the dig
+    # stop for that turn instead of taking its full round first.
+    # sources: https://nethackwiki.com/wiki/Minotaur, https://nethackwiki.com/wiki/Expensive_camera,
+    #          https://nethackwiki.com/wiki/Mazes_of_Menace, NetHack 3.6.6 src/apply.c use_camera + src/uhitm.c
+    #          flash_hits_mon, /refs/top/1c4099e80253 (_melee_ignores_elbereth)
+    if agent.character.prop.blind or agent.character.prop.polymorph or \
+            not agent.global_logic.dive.diving or in_gehennom(agent):
+        return []
+    if not any(item.is_unambiguous() and item.object.name == 'expensive camera' and
+               not agent.inventory.is_known_empty(item) for item in agent.inventory.items):
+        return []
+    if agent.blstats.time - getattr(agent, '_distant_flash_turn', -100) < 3:
+        return []
+    level = agent.current_level()
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    dirs = []
+    for monster in monsters:
+        y, x, mon = monster[1], monster[2], monster[3]
+        if getattr(mon, 'mname', '') != 'minotaur':
+            continue
+        dy, dx = y - y0, x - x0
+        if max(abs(dy), abs(dx)) != 2 or dy not in (-2, 0, 2) or dx not in (-2, 0, 2):
+            continue
+        if not level.walkable[y0 + dy // 2, x0 + dx // 2]:
+            continue
+        dirs.append((dy // 2, dx // 2))
+    return dirs
+
+
 def camera_actions(agent, monsters):
     """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
     it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
@@ -351,6 +386,9 @@ def camera_actions(agent, monsters):
             dive._elbereth_possible():
         on_elbereth = True
     actions = []
+    for dy, dx in distant_flash_directions(agent, monsters):
+        actions.append((60, ('camera', dy, dx, camera)))
+        agent._distant_flash_turn = agent.blstats.time
     for monster in monsters:
         _, y, x, mon, _ = monster
         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
