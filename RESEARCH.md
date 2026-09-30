@@ -1,127 +1,126 @@
-# Research for proactive minotaur defence
+NetHack research: Castle arrival and crossing
 
-Read `/refs/CONTEXT.md`, `/refs/history.md` (no earlier iterations), `/refs/top/README.md`, all 26 other-character program diffs, relevant implementation excerpts, and `/refs/past_runs.md`. Several reference diffs are truncated and/or mostly contain renamed portfolio packages; inspected their underlying strategy files as well. The two Tourist leaders are identical to the parent.
+History: /refs/history.md records one previous iteration, premature minotaur
+wand use, 0.3722 versus 0.4023. It changed fights before the Castle and lost
+large amounts of progression on seeds 8 and 11. The final Castle policy does not repeat it; it is gated by observed Castle terrain.
+/refs/past_runs.md also records unsuccessful Castle passage enablement,
+Elbereth-combat overrides, and several camera policies; none is adopted here.
 
-## Peer mechanisms absent or disabled in the parent
+Parent outcomes: the supplied JSON has 15 male rows, not the advertised 30.
+Minotaur is the leading cause (four games). The deepest milestone is Dlvl:29.
+Four runs end early (bat, jackal, distorted jackal, hill orc); rescuing an early
+run is potentially much more valuable than prolonging a Castle fight.
 
-| Program | Concrete mechanism |
-| --- | --- |
-| `0716a5964bc4` | Mines squeeze detection caps inventory at 580 so a found pick can leave the branch. |
-| `1c17ee5b7216` | Portfolio includes a moving grind: XL5–6 on Dlvl3, XL7 on Dlvl2. |
-| `1c4099e80253` | BREACH_MINO selects sleep/death/teleport/polymorph against minotaurs before critical HP. |
-| `41c961256c41` | Bounded quiet recovery tracks actual healing and backs off when resting makes no progress. |
-| `429cf0108271` | Deep defensive polymorph supplies a fresh HP pool and sometimes a moat-crossing form. |
-| `47a6c840a4cf` | Scare-scroll hold loops prevent a lower-priority action from stepping off protection. |
-| `5088ac9a49a3` | Landing guard treats big melee threats separately from ranged lich threats. |
-| `51a41284fa08` | Dropped scare-scroll protection supports resting and digging without engraving erosion. |
-| `6ecc35e91af2` | Digging-tool carriers begin descent at XL7 rather than extending the grind. |
-| `725cafa6a87d` | Portfolio includes XL-dependent grind depth to reduce the number of hunger prayers. |
-| `7c1ec61015bf` | Astra quiet recovery and pit/boulder escape handle hazards outside ordinary combat. |
-| `81ea959c3b98` | Deep defensive polymorph is available before an otherwise fatal melee exchange. |
-| `985b175cae53` | Landing guard selects known healing potions and decisive wands on dangerous arrivals. |
-| `ae053ca704ff` | Portfolio contains the multi-depth grind policy, absent from the parent configuration. |
-| `ae17b4a50322` | Portfolio contains the XL5/Dlvl3, XL7/Dlvl2 grind policy. |
-| `b4c2edc23ce3` | Scare-scroll holding remains active through repeated strategy-preemption cycles. |
-| `bded98c686e3` | Portfolio has the multi-depth grind policy and specialised priest routes. |
-| `c49b46fdffa0` | Astra proactive sleep and quiet recovery support frail Healers. |
-| `c526d8d41f20` | Mines squeeze handling frees paths blocked by the inventory weight limit. |
-| `c718d0f2c2fd` | Portfolio adjusts grind depth by XL instead of farming Dlvl1 throughout. |
-| `d44c89c2ffd8` | Portfolio includes grind-depth scheduling rather than the parent’s empty GRIND_LEVELS. |
-| `d4eab8c5a4f0` | Healer portfolio includes proactive sleep/quiet recovery and multi-depth grinding. |
-| `d4f9cab6e621` | Proactive sleep disables approaching threats before healing becomes urgent. |
-| `e9c44042710b` | Mines tool retrieval uses a squeeze-aware inventory cap and direct return routing. |
-| `f362a746154d` | Scare-scroll shelter works in Gehennom, where Elbereth does not. |
-| `f5d169eb6076` | Healer portfolio adds proactive disabling of mobile threats. |
+All other-character leaders: inspected all 15 .diff files. Several are
+portfolio wrappers whose diffs omit the nested packages; inspected their
+selected packages too. Concrete mechanisms absent from the parent:
 
-## Losses and online sources
+- 0875c3519bed, elf Ranger leader (0.461): pf_s25p8/dive_logic.py retains
+  control through consecutive escape actions and immediately breaks eel wraps.
+- 1c17ee5b7216, Samurai/Ranger leader: pf_v37/dive_logic.py engraves before
+  walking to a safe digging square and handles eel wraps before other escapes.
+- 1c4099e80253, dwarf Valkyrie leader (0.526): castle_power.py identifies
+  unknown wands on arrival and uses polymorph forms to cross the moat;
+  castle_logic.py can retreat from a monster-blocked moat channel.
+- 429cf0108271, chaotic Wizard leader: castle_logic.py backs out of a blocked
+  moat channel and tries the opposite side, up to four attempts.
+- 44f826234d72, neutral Wizard leader: fight_heur.py's ranger_point_blank
+  lets an already-wielded bow beat a melee weapon swap when an enemy is adjacent.
+  This suggested the dart-priority draft, which was tested and removed.
+- 47a6c840a4cf, gnome Ranger/human Rogue leader: castle_logic.py records which
+  moat channel has sea monsters and changes sides when its route is blocked.
+- 5088ac9a49a3, orc Rogue leader: castle_logic.py probes a moat corner from
+  dry ground and switches channels when sea monsters block progress.
+- 51a41284fa08, human Ranger leader: castle_logic.py retries the opposite
+  moat channel instead of remaining against a sea monster.
+- 725cafa6a87d, human Valkyrie leader (0.465): pf_v38/dive_logic.py prioritizes
+  escaping an eel's wrap before ordinary digging or combat.
+- 81ea959c3b98, lawful Priest leader: castle_logic.py probes the relevant
+  north/south corner and backs out of a blocked moat channel.
+- 985b175cae53, elf Wizard leader: castle_logic.py uses the same dry-corner
+  probing and bounded moat-channel retreat.
+- ae053ca704ff, neutral Priest leader: pf_kef_d42161f/dive_logic.py has the
+  uninterrupted digging-escape/eel-release sequence absent from the parent.
+- d44c89c2ffd8, Ranger/Wizard leader: pf_base/dive_logic.py rechecks the
+  engraving after sight returns before spending a turn engraving again.
+- f362a746154d, Priest/Ranger/Valkyrie leader: castle_logic.py records recent
+  sea-monster sightings to choose the other moat channel.
+- 41c961256c41, chaotic male Wizard leader: its active autoascend strategy is
+  identical to the parent (agent.py comparison confirms this); the only new
+  hypothesis is the wholesale adoption of this parent's Tourist strategy.
+  There is no absent active mechanism to claim for this exception.
 
-The supplied parent-eval.json contains 15 male Tourist games, not the advertised 30. Mean 0.4022995. Minotaurs are the most common exact cause (4/15, at depths 25, 26, 28, 28); deepest milestone is Dlvl29. Four low-progress games end at XL2, Dlvl3, XL6 and XL7. Both genders must be tested explicitly.
+Online reading (successful HTTP fetches):
+https://nethackwiki.com/wiki/Tourist
+https://nethackwiki.com/wiki/Minotaur
+https://nethackwiki.com/wiki/Castle
+https://nethackwiki.com/wiki/Standard_strategy
+https://nethackwiki.com/wiki/Scroll_of_scare_monster
+https://nethackwiki.com/wiki/Wand_of_teleportation
+https://nethackwiki.com/wiki/Expensive_camera
+https://nethackwiki.com/wiki/Dart
+https://nethackwiki.com/wiki/Multishot
+https://nethackwiki.com/wiki/Ranged_combat
+https://nethackwiki.com/wiki/Skill
+https://nethackwiki.com/wiki/Scroll_of_magic_mapping
 
-Successfully fetched and read:
+Reddit search for minotaur/Castle returned HTTP 403; not counted as a read.
+The wiki contains 3.7/5.0 material, so checked 3.6.6 source directly:
+https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/dothrow.c
+https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/apply.c
+https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/monmove.c
 
-- https://nethackwiki.com/wiki/Tourist
-- https://nethackwiki.com/wiki/Minotaur
-- https://nethackwiki.com/wiki/Scroll_of_scare_monster
-- https://nethackwiki.com/wiki/Castle
-- https://nethackwiki.com/wiki/Expensive_camera
-- https://nethackwiki.com/wiki/Standard_strategy
-- https://nethackwiki.com/wiki/Wand_of_teleportation
-- https://nethackwiki.com/wiki/Wand_of_sleep
-- https://nethackwiki.com/wiki/Wand_of_slow_monster
-- https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/zap.c
-- https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/uhitm.c
+dothrow.c confirms the adjacent-distance hit bonus and the Tourist's Skilled
+multishot exception for darts. Tourist advice recommends the starting +2 darts
+as the bridge to a viable melee weapon and reserves melee training for weak
+monsters. This informed a discarded draft, not the final Castle policy.
 
-Reddit search was attempted but returned HTTP 403. No claim relies on it. Wiki sections marked upcoming 3.7 were excluded. Checked the relevant wand and camera effects against the 3.6.6 source.
+Final hypothesis: port the leading dwarf Valkyrie's integrated Castle arrival
+and crossing policy, with terrain recognition by magic mapping before minotaurs
+can prevent a diagnostic dig. Try the carried crossing kit on arrival, give
+its escape precedence over ordinary combat, and use the direct moat launch or
+a wall-walking polymorph form to reach a trap door.
 
-Chosen hypothesis: use carried disabling magic against approaching minotaurs, from the Minotaur wiki strategy and the Valkyrie leader’s BREACH_MINO. Parent combat explicitly excludes sleep and non-ray wands; minotaurs also receive only ordinary target priority.
+Why this differs from earlier discarded CASTLE_PASSAGE toggles: those waited
+for an unsuccessful floor dig and ran item preparation below combat, after
+walking through the western maze. The reference castle_cross.py documents
+47/61 arrivals dying before using an item; the new entry points act at arrival.
+The first port sample also showed no Castle activation before death, motivating
+the mapping survey rather than assuming every deep maze is the Castle.
 
-Prior Tourist experiments already tried prayer changes, broad corpse collection, Castle enablement, digging changes and adjacent camera heuristics. This iteration does not repeat those changes.
+Discarded drafts (fully removed from submitted strategy):
+- Close-range dart priority: 30 games, mean 0.2272013261.
+- Correcting the unskilled damage sign: 30 games, mean 0.1310890944.
+  The mechanics are confirmed by the Skill wiki and NetHack 3.6.6 weapon.c,
+  but the change regressed this bot's early-game weapon training and survival.
+No deterministic seed-program result was rerun for confirmation.
 
+Discarded integration refinement for the same Castle crossing policy:
+- Accept equipped ring descriptions for polymorph anatomy, including foreclaws
+  and scale gaps, as in the reference item manager.
+- Prepare the dry path to the moat before an uncontrolled polymorph can drop
+  the pick. Skip this preparation with identified polymorph control (xorn can
+  pass through walls); bound attempts and fall back when the path is blocked.
+  Real Castle logs showed a brown pudding stranded behind an undug rock, then
+  the equipment parser asserting on a black naga hatchling's ring.
+  The refinement reached the moat launch in both seed-7 games, but a shark
+  killed both characters; their progression scores were unchanged. Its full
+  30-game mean was 0.3705310699, with female seed 8 falling from 0.6015648510
+  to 0.3654881095. Both refinement edits were reverted; their individual
+  effects were not isolated. The submitted policy is the earlier fully
+  evaluated version, with its known polymorph crossing limitations.
 
-## Implementation screening
-
-All candidates below were separate programs; no identical seed/program pair
-was evaluated twice. Rejected candidates were fully reverted.
-
-- A known-disabling-wand policy never activated on either gender's seeds
-  2, 10, 11, 14. These runs did not establish a benefit.
-- Proactive ranged camera use was tested and refined to avoid repeatedly
-  flashing already-blind monsters. Its final 15-male mean was 0.3705051,
-  below the keep threshold. Seven female games matched their male counterparts.
-- Blinding floating eyes before melee regressed a six-game sample.
-  Additional source: https://nethackwiki.com/wiki/Floating_eye.
-- Bounded quiet recovery from the Healer references regressed the sample.
-- Enabling the existing HOLD_LOOP scheduler continuation also regressed the
-  sample. Additional source: https://nethackwiki.com/wiki/Elbereth.
-
-## Current candidate
-
-The remaining strategy change returns to the recorded main killer: minotaurs.
-It adapts the Valkyrie leader's BREACH_MINO selection to use promising ambiguous
-wands as well as known ones, before critical HP. The initial known-wand version
-failed to activate because the carried wands were unidentified. This version
-can use those resources, using their possible identities to reject harmful
-choices and preferring potentially decisive effects.
-
-The hook runs before digging when a visible minotaur is within eight squares
-on a clear horizontal, vertical or diagonal line. Existing
-emergency and retreat layers retain higher priority. It avoids impaired aiming,
-known-empty wands, already-tried unidentified wands, paths hitting pets or
-peaceful creatures, and
-known ray rebounds into the hero. A cooldown prevents spending successive
-turns testing wands. The action uses only observable game state.
-
-The adjacent-only version scored 0.3736782 on all 15 male seeds; five female
-games matched their male counterparts. It produced two actual uses (seeds 2
-and 10), without a score increase in those games. The final version adds the
-reference’s ranged targeting and permits reuse of known useful wands. Eleven
-focused checks cover eligibility, impaired aiming, blocked and misaligned
-paths, friendly fire, ray rebounds, and known versus unidentified wand reuse.
-The final four-game targeted sample matched the adjacent-only version.
-The supplied parent has no female results, so a paired 30-game comparison is
-not available.
-
-## Final measurement
-
-All 30 final-program games (seeds 0–14 for both identities, evaluation ID
-`local`) completed successfully. Every seed/program pair was evaluated once.
-Results are in `minotaur-eval.json`; the means and strategy-file hashes are in
-`minotaur-eval-summary.json`.
-
-| Identity | Games | Mean |
-| --- | ---: | ---: |
-| tou-hum-neu-fem | 15 | 0.3736782463 |
-| tou-hum-neu-mal | 15 | 0.3736782463 |
-| Overall | 30 | 0.3736782463 |
-
-This exceeds the stated 0.3706 keep threshold by 0.0030782463, but misses the
-0.3806 target. It is not evidence of a 0.01 improvement. The male mean is
-0.0286212691 below the supplied male parent mean (0.4022995155); no female
-parent rows were supplied, so a full paired parent comparison is unavailable.
-The observed wand uses did not increase the reached milestone on those seeds.
-The ranged extension did not improve the targeted four-game sample.
-
-Validation: Python compilation, entry-point import, eleven focused wand-policy
-checks, clean diff formatting, and 30 completed arena games. The adapter and
-entry-point contract are unchanged. Only the minotaur strategy and its
-preemption hook remain as code changes.
+Selected policy validation (30 distinct games, local namespace, seeds 0–14):
+- Overall: 0.3784002946, +0.0061002946 over the stated 0.3723 keep threshold.
+- tou-hum-neu-fem: 0.3862695193.
+- tou-hum-neu-mal: 0.3705310699.
+- Misses the 0.3823 target by 0.0038997054. The male mean is lower than the
+  supplied male-only parent reference; no per-identity improvement is claimed.
+- Raw results: castle-eval.json; summary and submitted strategy hashes:
+  castle-eval-summary.json. These combine castle-survey-eval.json (seeds
+  7, 9, 11, 14) and castle-final-rest.json (all remaining seeds).
+- Imports, initial inactive Castle state, configuration attribute references,
+  wall-walking route adjacency/bounds, and git diff --check passed. The bot
+  factory retains its reset/act contract. arena_adapter.py is unchanged.
+- No identical seed/program pair was evaluated twice. Reverting the rejected
+  refinement restores the selected evaluated program; it was not reevaluated.

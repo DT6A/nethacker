@@ -430,6 +430,10 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        # Track the crossing form even when invisibility hides our own glyph.
+        if self.global_logic.dive.castle.castle_key is not None:
+            from . import castle_cross
+            castle_cross.note_message(self)
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -469,6 +473,13 @@ class Agent:
                     (power.wish_text(self, purpose) if (jf_config.SPARE_WISHES or purpose) else power.WISH_GDSM)
                 self.log(f'POWER wishing for {text!r}')
                 self.step(text[0], iter(text[1:] + '\r'))
+                return
+            elif 'Become what kind of monster?' in self.single_message and \
+                    self._text_prompt_escapes == 0 and self.global_logic.dive.castle.active():
+                # A controlled xorn form crosses Castle walls and falls through
+                # its trap doors without needing a levitation item.
+                self._text_prompt_escapes += 1
+                self.step('x', iter('orn\r'))
                 return
             else:
                 # a text-entry flag that survives ESC after ESC recursed update->step->update until
@@ -2103,64 +2114,6 @@ class Agent:
                        debug_tiles_args=dict(color=(255, 0, 0), is_path=True))
             return wait_counter
         raise NotImplementedError(best_action)
-
-    # hypothesis: disabling approaching minotaurs with promising wands before melee buys time to descend without taking their lethal multiattack.
-    # sources: /refs/top/1c4099e80253/autoascend/castle_power.py (BREACH_MINO), https://nethackwiki.com/wiki/Minotaur, https://nethackwiki.com/wiki/Wand_of_sleep, https://nethackwiki.com/wiki/Tourist
-    @Strategy.wrap
-    def disable_minotaur(self):
-        prop = self.character.prop
-        if not self.global_logic.dive.diving or prop.blind or prop.hallu or prop.confusion or prop.stun or \
-                self.blstats.time < getattr(self, '_minotaur_zap_after', -1):
-            yield False
-        monsters = self.get_visible_monsters()
-        targets = []
-        for monster in monsters:
-            if monster[3].mname != 'minotaur':
-                continue
-            dy, dx = int(monster[1] - self.blstats.y), int(monster[2] - self.blstats.x)
-            distance = max(abs(dy), abs(dx))
-            if not 1 <= distance <= 8 or not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
-                continue
-            sy, sx = int(np.sign(dy)), int(np.sign(dx))
-            if any(not self.current_level().walkable[self.blstats.y + sy * step,
-                                                     self.blstats.x + sx * step]
-                   for step in range(1, distance)):
-                continue
-            targets.append((monster, sy, sx))
-        if not targets:
-            yield False
-        good = {'sleep', 'death', 'teleportation', 'polymorph', 'slow monster',
-                'striking', 'fire', 'cold', 'lightning', 'magic missile'}
-        harmful = {'speed monster', 'make invisible', 'create monster'}
-        choices = []
-        for wand in self.inventory.items:
-            if not wand.is_wand() or self.inventory.is_known_empty(wand):
-                continue
-            names = {o.name for o in wand.objs}
-            if not (names & good) or len(names & good) < len(names & harmful):
-                continue
-            if not wand.is_unambiguous() and wand.glyphs[0] in self._last_resort_zapped:
-                continue
-            # Known rays must not bounce back into the hero or hit bystanders.
-            for target, dy, dx in targets:
-                path = list(combat.fight_heur.simulate_wand_path(self, wand, monsters, dy, dx))
-                if not any(hit == target and count > 0 for _, _, hit, count in path):
-                    continue
-                if any(hit in ('self', 'pet', 'peaceful') and count > 0 for _, _, hit, count in path):
-                    continue
-                decisive = len(names & {'sleep', 'death', 'teleportation', 'polymorph'}) / len(names)
-                choices.append((decisive, len(names & good) / len(names), wand, dy, dx))
-        if not choices:
-            yield False
-        _, _, wand, dy, dx = max(choices, key=lambda c: c[:2])
-        yield True
-        if not wand.is_unambiguous():
-            self._last_resort_zapped.add(wand.glyphs[0])
-        self._minotaur_zap_after = self.blstats.time + 6
-        self.log(f'MINOTAUR disabling with {wand.text!r} before melee at {self.blstats.hitpoints} HP')
-        self.zap(wand, self.calc_direction(self.blstats.y, self.blstats.x,
-                                          self.blstats.y + dy, self.blstats.x + dx))
-        self.log(f'MINOTAUR wand result: {self.message!r}')
 
     @utils.debug_log('engulfed_fight')
     @Strategy.wrap

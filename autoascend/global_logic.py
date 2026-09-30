@@ -955,7 +955,6 @@ class GlobalLogic:
             ])
             # a digger with room to dig finishes the hole instead of walking to a fight
             .preempt(self.agent, [
-                self.agent.disable_minotaur(),
                 self.dive.dig_first(),
             ])
             # astra's survival layer, only once diving (the tour keeps the elite's proven behaviour)
@@ -971,10 +970,18 @@ class GlobalLogic:
             .preempt(self.agent, [
                 self.dive.gehennom_escape(),
             ])
+            # Prepare a crossing immediately on the confirmed Castle landing.
+            .preempt(self.agent, [
+                self.dive.castle.survey_strategy(),
+                self.dive.castle.launch_strategy(),
+            ])
             # crossing the castle moat (castle_logic.py): above the survival layer and the fight, which
             # would drag a levitating hero back to land or up the stairs
             .preempt(self.agent, [
                 self.dive.castle.crossing_strategy(),
+            ])
+            .preempt(self.agent, [
+                self.dive.castle.wallwalk_strategy(),
             ])
             .preempt(self.agent, [
                 self.agent.engulfed_fight(),
