@@ -531,6 +531,17 @@ class Inventory:
         assert not items
 
     def get_items_below_me(self, assume_appropriate_message=False):
+        # hypothesis: blind, ':' is a real move (invent.c look_here returns !!Blind: "You try to feel what is
+        # lying here"), and it ran after every step and every Elbereth -- blinded by ravens, the digger gave the
+        # swarm a free turn per action; a blind look can't read a dust engraving anyway, so skip it in the dive
+        # (the dig-dive doesn't loot; the tour's container/pickup bookkeeping needs the real floor contents)
+        # sources: https://nethackwiki.com/wiki/Raven , https://nethackwiki.com/wiki/Blindness ,
+        #          NetHack 3.6.6 src/invent.c look_here()
+        if self.agent.character.prop.blind and self.agent.global_logic.dive.diving:
+            self.engraving_below_me = ''
+            self.items_below_me = []
+            self.letters_below_me = []
+            return []
         with self.agent.panic_if_position_changes():
             with self.agent.atom_operation():
                 if not assume_appropriate_message:
@@ -1450,6 +1461,10 @@ class Inventory:
                     yield True
                 if item.is_chest() and not (item.is_unambiguous() and item.object.name == 'ice box'):
                     fail_msg = self.agent.untrap_container_below_me()
+                    if fail_msg == 'trapped':
+                        # a found trap is left alone: so are this square's containers from now on
+                        self.multi_container_squares.add(self._here())
+                        continue
                     if fail_msg is not None and check_if_triggered_container_trap(fail_msg):
                         raise AgentPanic('triggered trap while looting')
                 self.check_container_content(item)

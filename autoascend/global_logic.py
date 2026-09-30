@@ -88,6 +88,20 @@ class ItemPriority(ItemPriorityBase):
             if tool is not None:
                 add_item(tool)
 
+        # hypothesis: the dive's camera flash (fight_heur.camera_actions, the answer to the Elbereth-ignorers that
+        # stop every dig step) never fires when the camera was dropped: it came last among the tools, after the
+        # daggers, darts and food, so the pick-axe (100 wt) pushed it out at the fetch -- fem s7 dropped
+        # 'an expensive camera (0:38)' at T25148 while picking up the pick-axe, then an Aleax killed the digger
+        # on Dlvl 23 with no flash; s4, s8 and s14 dived without one too. Keep a charged camera (12 wt) while diving.
+        # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+        #          https://nethackwiki.com/wiki/Aleax, /refs/top/1c4099e80253 (_melee_ignores_elbereth)
+        if dive is not None and dive.diving:
+            for item in items:
+                if item.is_unambiguous() and item.object.name == 'expensive camera' and \
+                        not self.agent.inventory.is_known_empty(item):
+                    add_item(item)
+                    break
+
         # power: boots that may be levitation or water walking boots, for the Castle's moat (never worn before)
         if jf_config.KEEP_MAGIC_BOOTS:
             for item in sorted(items, key=lambda i: i.unit_weight(with_content=False)):
@@ -828,12 +842,16 @@ class GlobalLogic:
                 if jf_config.UPWARD_RETURN and self._pick_trip_done:
                     return True
                 cur = self.agent.current_level()
+                if jf_config.FALL_HOME and lv[0] == Level.DUNGEONS_OF_DOOM and \
+                        cur.dungeon_number == Level.DUNGEONS_OF_DOOM and self.agent.blstats.depth > lv[1]:
+                    return True
                 return bool(jf_config.GRIND_LEVELS) and lv[0] == Level.DUNGEONS_OF_DOOM and \
                     (cur.dungeon_number == Level.GNOMISH_MINES or self.agent.blstats.depth > lv[1])
             (
                 self.agent.exploration.go_to_level_strategy(*level, go_to_strategy, exploration_strategy(None))
                 .before(exploration_strategy(None))#.before(self.agent.exploration.patrol())
                 .preempt(self.agent, [
+                    self.read_mapping_home().condition(lambda: jf_config.FALL_HOME and homebound()),
                     exploration_strategy(0).condition(lambda: not homebound()),
                     exploration_strategy(None).until(
                         self.agent, lambda: self.agent.blstats.hitpoints >= 0.8 * self.agent.blstats.max_hitpoints)
@@ -843,6 +861,18 @@ class GlobalLogic:
                 ])
                 .until(self.agent, lambda: condition() or restart())
             ).run()
+
+    @Strategy.wrap
+    def read_mapping_home(self):
+        """FALL_HOME: on the way back up to the grind level, magic-map a level whose '<' isn't known yet."""
+        dive = self.dive
+        level = self.agent.current_level()
+        prop = self.agent.character.prop
+        if level.key() in dive._mapped or utils.isin(level.objects, G.STAIR_UP).any() or \
+                prop.blind or prop.confusion or prop.stun or prop.hallu or dive._mapping_scroll() is None:
+            yield False
+        yield True
+        dive.read_mapping()
 
     def global_strategy(self):
         return (

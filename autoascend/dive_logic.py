@@ -72,6 +72,7 @@ DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
+LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
     'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound', 'red naga', 'black naga',
     'golden naga', 'guardian naga', 'cobra', 'lich', 'demilich', 'master lich', 'arch-lich',
@@ -147,7 +148,6 @@ ELBERETH_DIG_RADIUS = 6
 # ON (train 2): dive-safety A2, 45 games divergence +0.65; Medusa-4 3-4/7 vs 1/7, Medusa-3 2/7 vs 0/7
 DIG_ESCAPE = True
 ELBERETH_TRIES_ESCAPE = 4      # engravings per square and dig phase (before / after the pit)
-ELBERETH_TRIES_BLIND = 6       # the same while blind, each after being hurt since the last one
 # DIVE_REST: a digger rests only below DIG_REST_BELOW, never to 95% before stairs, never while its pit is
 # half dug, and on Elbereth. At XL 8 HP comes back at 1 per 5 turns (allmain.c), and the deep rests were
 # fatal:
@@ -204,6 +204,16 @@ EXPLORE_BUDGETS = True
 EXPLORE_REPLAN_TURNS = 500
 # standing on a known trap door that didn't trigger, press '>' (the dive asserted in a loop there before)
 TRAPDOOR_PLUNGE = True
+# hypothesis: a Tourist starts with 4 identified scrolls of magic mapping that the bot never reads; a dive
+# without a digging tool wanders each unexplored level at XL 8 looking for '>' until something kills it
+# (fem s10/s11 died so on Dlvl 3-8). Reading one on arriving at a level whose '>' isn't in view (after
+# MAP_STUCK_TURNS) puts '>' on the map and the descent walks straight to it, cutting the most dangerous
+# exposure of the dive. Not below DIVE_XL: an early rescue dive gains the levels it needs while it searches.
+# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
+#          /refs/top/1c4099e80253 (its stair search: descend() explores until down_targets appears)
+MAP_WHEN_STUCK = True
+MAP_STUCK_TURNS = 0
+MAGIC_MAPPING = O.from_name('magic mapping', nh.SCROLL_CLASS)
 FETCH_TOOL_TURNS = 3000        # budget for walking back to a pick-axe the tour dropped
 # Dwarves carry a pick-axe or a mattock 37.5% of the time (makemon.c) and are peaceful to a dwarf:
 # with no digging tool yet, the dive kills the peaceful dwarves it meets in the Mines (never in
@@ -217,11 +227,6 @@ HUNT_MIN_XL = 8
 # and keep one during the tour (it drops them for lighter loot).
 DIG_DIVE_XL = 8
 KEEP_TOOL_IN_TOUR = False
-# arc-early-dig (daglar c131c7c EARLY_DIG_XL 3; Komershan/DT6A 5): an Archeologist starts with a pick-axe
-# and leaves the Dlvl-1 grind for the dig-dive at this XL, keeping the pick through the tour. Random
-# monsters are capped at difficulty (level_difficulty() + u.ulevel) / 2 (makemon.c mkclass/rndmonst), so a
-# low-XL digger meets weaker ones; a sheltered hole costs a few turns per level. None: DIG_DIVE_XL.
-ARC_DIG_DIVE_XL = 3
 # The portal sweep (Home 1 = 0.366) costs ~1500 turns of exploring the level; digging reaches
 # Dlvl 20+ (0.38+) within a few hundred turns, so no sweep while holding a digging tool.
 SWEEP_WITH_TOOL = False
@@ -361,6 +366,9 @@ MINES_STUCK_TURNS = 1500
 # XL-8 phase: no deaths in 50k Mines turns, ~7% loss per 1000 turns back in the main dungeon without a tool,
 # 0.3-0.7 tools per 1000 Mines turns; base2 had 15 tool-less dives in 75 games (mean 0.14).
 # ON (train 2): with HUNT_V2 (pick-camp1); the camp ran in 12 dives and ended with a tool in 10
+# a digger inside a shop digs through its floor when it owes nothing (see _trapped_in_shop)
+SHOP_DIG = True
+SHOP_DIG_WAIT = 300
 MINES_CAMP = True
 MINES_CAMP_TURNS = 8000
 # The dive's first job on the level it starts from: a tool-less dive whose grind level held a digging dwarf
@@ -471,6 +479,7 @@ class DiveLogic:
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level
         self.level_first_turn = {}     # level key -> turn first seen
+        self._mapped = set()           # level keys a scroll of magic mapping was read on (MAP_WHEN_STUCK)
         self.fully_explored = set()    # level keys explored to exhaustion
         self.sweep_started = None      # turn the current portal sweep began
         self.sweep_given_up = set()    # portal level keys whose sweep ran out of budget
@@ -882,7 +891,7 @@ class DiveLogic:
         # and flesh golems -- difficulty 10-11, impossible below XL ~8 there)
         planned = bool(EARLY_DIVE_XL) and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and xl >= EARLY_DIVE_XL \
             and not agent.prayer_failed
-        xl_trigger = xl >= DIVE_XL or (xl >= self._dig_dive_xl() and self.digging_tool() is not None)
+        xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
@@ -1117,6 +1126,10 @@ class DiveLogic:
             self._task('return to main dungeon')
             return self.return_to_main_dungeon()
 
+        if self.should_read_mapping():
+            self._task('read magic mapping')
+            return self.read_mapping()
+
         if self.should_sweep_portal():
             self._task('portal sweep')
             return self.portal_sweep()
@@ -1181,7 +1194,8 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
-        return cls == MON.S_HUMAN or name == 'minotaur'
+        # lawful minions (is_lminion: Aleax, couatl, ki-rin, Archon) and Angels ignore it too (monmove.c onscary)
+        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -2086,7 +2100,7 @@ class DiveLogic:
         return ('zap', wand)
 
     def _elbereth_possible(self):
-        """An intact Elbereth under us, or one we may still engrave on this square in this dig phase."""
+        """An intact Elbereth, or a square where a protective engraving may still be attempted."""
         agent = self.agent
         blind = agent.character.prop.blind
         if not blind and (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
@@ -2095,7 +2109,9 @@ class DiveLogic:
             return False
         spot = (agent.current_level().key(), agent.blstats.y, agent.blstats.x, self._in_own_pit())
         # blind: fighting blind is no better than engraving again (ravens)
-        cap = ELBERETH_TRIES_BLIND if blind else ELBERETH_TRIES_ESCAPE
+        if blind:
+            return True
+        cap = ELBERETH_TRIES_ESCAPE
         return self.__dict__.get('_elbereth_tries', {}).get(spot, 0) < cap
 
     def _hurt_since(self, turn):
@@ -2324,21 +2340,7 @@ class DiveLogic:
         return sorted(found)
 
     def keep_digging_tool(self):
-        return self.diving or KEEP_TOOL_IN_TOUR or bool(jf_config.PICK_TRIP_XL) or bool(GRIND_HUNT_XL) or \
-            self._arc_early_dig()
-
-    def _arc_early_dig(self):
-        """ARC_DIG_DIVE_XL applies: the character is an Archeologist."""
-        try:
-            return ARC_DIG_DIVE_XL is not None and self.agent.character.role == Character.ARCHEOLOGIST
-        except Exception:
-            return False
-
-    def _dig_dive_xl(self):
-        """The XL from which a digging-tool holder leaves the tour for the dig-dive."""
-        if self._arc_early_dig():
-            return min(ARC_DIG_DIVE_XL, self._min_xl(DIG_DIVE_XL))
-        return self._min_xl(DIG_DIVE_XL)
+        return self.diving or KEEP_TOOL_IN_TOUR or bool(jf_config.PICK_TRIP_XL) or bool(GRIND_HUNT_XL)
 
     def _grind_hunting(self):
         """GRIND_HUNT_XL: the tour hunts dwarves too (the Dlvl-1 grind meets them from XL 7)."""
@@ -2937,7 +2939,8 @@ class DiveLogic:
         terrain = level.objects[py, px]
         if not (terrain in PLAIN_FLOOR or (terrain == -1 and level.walkable[py, px]) or
                 (DIG_IN_PITS and terrain in PITS)) or \
-                level.shop[py, px] or level.shop_interior[py, px] or (level.key(), (py, px)) in self._bad_dig_spots:
+                (level.shop[py, px] and not self._trapped_in_shop(py, px)) or \
+                (level.key(), (py, px)) in self._bad_dig_spots:
             return False
         # the square we arrived on by stairs was never seen ('@' covers it: terrain -1), but it is a staircase
         # (rescue agent, 78a30e1: 'The beam bounces off the stairs' emptied wands of digging in 6 of 90 games)
@@ -2946,6 +2949,26 @@ class DiveLogic:
         # a hole next to water or lava fills with it (dig.c fillholetyp: n moat squares around fill it
         # with probability n/(n+1)); only islands with no dry square (Medusa variants) accept the risk
         return self._wet_neighbours(py, px) <= max_wet
+
+    def _trapped_in_shop(self, py, px):
+        """A digger trapped in a shop may dig through its floor: the shopkeeper stands in the doorway of a
+        pick-axe carrier, and shk.c shopdig(1) grabs the pack only of a hero who owes (billct or debit)."""
+        # hypothesis: a digger that falls into a shop (the shopkeeper blocks the door, shop floor refused) never digs out -- s11 starved there on Dlvl 17 -- so dig through the shop interior when nothing is unpaid
+        # sources: https://nethackwiki.com/wiki/Shop (the shopkeeper grabs the pack only of a customer with unpaid goods), https://nethackwiki.com/wiki/Tourist, /refs/top/429cf0108271 (exploration_logic: "a digger fell into a closed shop")
+        if not SHOP_DIG:
+            return False
+        agent = self.agent
+        level = agent.current_level()
+        y, x = agent.blstats.y, agent.blstats.x
+        if not (level.shop_interior[y, x] and level.shop_interior[py, px]):
+            return False
+        # only when trapped: no floor outside the shop reachable, for a while (the s4 dive walked out of a Dlvl 2
+        # shop 140 turns after landing) -- at once when Weak or Fainting: each faint is turns lost to hunger
+        hungry = agent.blstats.hunger_state >= Hunger.WEAK
+        if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
+                ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
+            return False
+        return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
 
     def try_dig_down(self):
         """Dig down with a pick-axe (or zap a wand of digging down): one level per hole, and on
@@ -3057,9 +3080,9 @@ class DiveLogic:
 
     def _elbereth_before_digging_escape(self):
         """DIG_ESCAPE's engraving before a dig step: against every monster whose melee Elbereth stops (breathers
-        and casters included), always on Medusa's level, capped per square and dig phase (the pit erases it).
-        Blind (a raven's claw), the engraving can't be read back: engrave once per phase (a blind dust
-        Elbereth survives its letters only ~1 time in 3, engrave.c) and dig on."""
+        and casters included), always on Medusa's level. Sighted retries are capped per square and dig
+        phase (the pit erases it). Blind engravings cannot be read back, so renew them after damage
+        indicates that protection may have failed; otherwise keep digging."""
         agent = self.agent
         if agent.character.prop.polymorph or not agent.can_engrave() or utils.any_in(agent.glyphs, G.SWALLOW):
             return False
@@ -3089,7 +3112,9 @@ class DiveLogic:
             # which is how Medusa-3's ravens killed every harness digger (ds-med3-A: blinded in the pit,
             # 'It bites!', 7 applies without a single dig turn)
             last = self.__dict__.setdefault('_engrave_turn', {}).get(spot)
-            if tries.get(spot, 0) >= ELBERETH_TRIES_BLIND or (last is not None and not self._hurt_since(last)):
+            # hypothesis: fresh damage while blind warrants renewing Elbereth even after
+            # earlier attempts; a lifetime cap leaves raven-blinded diggers defenseless.
+            if last is not None and not self._hurt_since(last):
                 return False
         elif tries.get(spot, 0) >= ELBERETH_TRIES_ESCAPE:
             return False
@@ -3181,6 +3206,30 @@ class DiveLogic:
             if 'here is too hard to dig' in msg and agent.blstats.depth >= 25 and \
                     agent.current_level().dungeon_number == Level.DUNGEONS_OF_DOOM:
                 self.castle.on_bottom(key)
+
+    def _mapping_scroll(self):
+        return next((i for i in self.agent.inventory.items if i.category == nh.SCROLL_CLASS and
+                     i.is_unambiguous() and i.objs[0] == MAGIC_MAPPING and not i.status == Item.CURSED), None)
+
+    def should_read_mapping(self):
+        agent = self.agent
+        level = agent.current_level()
+        prop = agent.character.prop
+        return MAP_WHEN_STUCK and level.key() not in self._mapped and \
+            level.dungeon_number == Level.DUNGEONS_OF_DOOM and agent.blstats.depth >= 2 and \
+            agent.blstats.experience_level >= DIVE_XL and \
+            self.turns_on_level() > MAP_STUCK_TURNS and not self._stairs_down(level) and \
+            self.digging_tool() is None and not (prop.blind or prop.confusion or prop.stun or prop.hallu) and \
+            self._mapping_scroll() is not None
+
+    def read_mapping(self):
+        agent = self.agent
+        scroll = self._mapping_scroll()
+        self._mapped.add(agent.current_level().key())
+        agent.log(f'DIVE reading {scroll.text!r}: no \'>\' after {self.turns_on_level()} turns')
+        with agent.atom_operation():
+            agent.step(A.Command.READ)
+            agent.type_text(agent.inventory.items.get_letter(scroll))
 
     def descend(self):
         agent = self.agent

@@ -300,6 +300,70 @@ def wait_action(agent, monsters):
     return []
 
 
+def camera_actions(agent, monsters):
+    """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
+    it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
+    blows at 3/14 HP, which is how most Dlvl 1-3 Tourist games end (sewer rats, hobbits, ants). Only while
+    diving: in the levelling grind a fleeing monster is lost XP."""
+    if agent.character.prop.blind or agent.character.prop.polymorph or agent.blstats.max_hitpoints <= 0:
+        return []
+    camera = None
+    for item in agent.inventory.items:
+        if item.is_unambiguous() and item.object.name == 'expensive camera' and \
+                not agent.inventory.is_known_empty(item):
+            camera = item
+            break
+    if camera is None:
+        return []
+    ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    if not agent.global_logic.dive.diving:
+        return []
+    # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
+    # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
+    # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
+    # such a monster at once, at any HP: blinded, it flees 3 times in 4 and the hole gets dug.
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth,
+    #          https://nethackwiki.com/wiki/Aleax, https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/monmove.c
+    #          onscary() (is_lminion), /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_FOCUS)
+    dive = agent.global_logic.dive
+    flashed = getattr(agent, '_camera_flashed', {})
+    # hypothesis: the flash undoes the Elbereth the dive stands on: a blinded monster no longer respects it
+    # (monmove.c onscary), and attacking from the square wipes it ('You feel like a hypocrite. The engraving
+    # beneath you fades': fem s5 at Dlvl 12, then a crowd of iguanas, ants and a centaur killed the digger).
+    # Leave Elbereth-respecting neighbours alone while it holds; flash only the ones that fight through it.
+    # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
+    # https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_ELBERETH_FIX)
+    on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
+    # hypothesis: the guard above only looked at an Elbereth already under us, but the dive flashes at low HP
+    # and *then* engraves and rests on Elbereth -- and the adjacent flash has blinded the monster for good,
+    # so it no longer respects the engraving (a blinded monster that can ordinarily see ignores Elbereth):
+    # a plains centaur flashed then rested against killed a Mines camp, s9's scorpion ('turns to flee. The
+    # scorpion hits! ... stings!') and s11's coyote / giant ant were flashed right before an Elbereth rest,
+    # s7's cobra bit on through its. Where an Elbereth can still be had, leave Elbereth-respecting
+    # neighbours unflashed and let the engraving hold them off; flash only the ones that fight through it.
+    # sources: https://nethackwiki.com/wiki/Elbereth ('A blinded monster that can ordinarily see will not
+    #          respect Elbereth while it is blind'), https://nethackwiki.com/wiki/Expensive_camera,
+    #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth),
+    #          /refs/top/47a6c840a4cf (Elbereth-first faint guard)
+    if not on_elbereth and not in_gehennom(agent) and dive._elbereth_possible():
+        on_elbereth = True
+    actions = []
+    for monster in monsters:
+        _, y, x, mon, _ = monster
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if on_elbereth and not dive._melee_ignores_elbereth(mon):
+            continue
+        if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
+            continue
+        if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
+            continue
+        if agent.blstats.time - flashed.get((y, x), -100) < 8:
+            continue
+        actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+    return actions
+
+
 def get_available_actions(agent, monsters):
     actions = []
 
@@ -342,6 +406,7 @@ def get_available_actions(agent, monsters):
     if to_pickup:
         actions.append((15, ('pickup', to_pickup)))
 
+    actions.extend(camera_actions(agent, monsters))
     actions.extend(elbereth_action(agent, monsters))
     actions.extend(wait_action(agent, monsters))
 
