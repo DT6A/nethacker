@@ -2582,35 +2582,6 @@ class Agent:
             return
         yield False
 
-    @Strategy.wrap
-    def summon_were_allies(self):
-        # hypothesis: summoning allies when a were form no longer buffers healthy human HP prevents early pack deaths.
-        # sources: https://nethackwiki.com/wiki/Lycanthropy,
-        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/polyself.c,
-        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/were.c
-        bl = self.blstats
-        if bl.energy < 10 or self.character.prop.hallu or not self.character.prop.polymorph or \
-                self.character.poly_hp_is_buffer() or \
-                getattr(self, '_were_summon_disabled', False):
-            yield False
-        form = MON.permonst(self.glyphs[bl.y, bl.x])
-        if form.mname not in ('wererat', 'werejackal', 'werewolf') or \
-                ord(form.mlet) not in (MON.S_RODENT, MON.S_DOG):
-            yield False
-        nearby = [m for m in self.get_visible_monsters()
-                  if utils.adjacent((m[1], m[2]), (bl.y, bl.x))]
-        # Use the helpers in actual melee contact, including a lone enemy
-        # werecreature that can summon its own pack.
-        if not nearby:
-            yield False
-        yield True
-        energy = self.blstats.energy
-        self.log(f'LYCAN summoning allies against pack: {[m[3].mname for m in nearby]}')
-        self.step(A.Command.MONSTER)
-        if self.blstats.energy >= energy:
-            # A rejected command must not trap the strategy in a zero-turn loop.
-            self._were_summon_disabled = True
-
     @utils.debug_log('were_unload')
     @Strategy.wrap
     def were_unload(self):
