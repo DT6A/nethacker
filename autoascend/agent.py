@@ -1919,8 +1919,9 @@ class Agent:
                 # climbing out of a pit takes several turns ('You are still in a pit'), and every failed move is a
                 # free round for the monsters around, while melee from a pit is unrestricted (uhitm.c has no
                 # TT_PIT check): a digger in its own pit tried to walk out 4 times with a Grey-elf and a
-                # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11)
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
+                # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11). The camera flash works
+                # from a pit too (the Elbereth-ignorer flash in fight_heur.camera_actions)
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera')]
                 if attack_actions:
                     actions = attack_actions
             if allow_attack_all:
@@ -2075,12 +2076,21 @@ class Agent:
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
+            target = next((m[3] for m in self.get_visible_monsters()
+                           if (m[1], m[2]) == (self.blstats.y + dy, self.blstats.x + dx)), None)
             with self.atom_operation():
                 self.step(A.Command.APPLY)
                 self.type_text(self.inventory.items.get_letter(camera))
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # CAMERA_BLINDED: see fight_heur.camera_actions
+                    name = getattr(target, 'mname', 'unknown')
+                    if name != 'unknown' and f'{name} is blinded' not in self.message and \
+                            f'{name} turns to flee' not in self.message:
+                        if not hasattr(self, '_camera_blinded'):
+                            self._camera_blinded = {}
+                        self._camera_blinded[(self.current_level().key(), name)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
