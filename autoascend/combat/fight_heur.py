@@ -334,6 +334,19 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
     # https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_ELBERETH_FIX)
     on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
+    # hypothesis: the guard above only looked at an Elbereth already under us, but the dive flashes at low HP
+    # and *then* engraves and rests on Elbereth -- and the adjacent flash has blinded the monster for good,
+    # so it no longer respects the engraving (a blinded monster that can ordinarily see ignores Elbereth):
+    # a plains centaur flashed then rested against killed a Mines camp, s9's scorpion ('turns to flee. The
+    # scorpion hits! ... stings!') and s11's coyote / giant ant were flashed right before an Elbereth rest,
+    # s7's cobra bit on through its. Where an Elbereth can still be had, leave Elbereth-respecting
+    # neighbours unflashed and let the engraving hold them off; flash only the ones that fight through it.
+    # sources: https://nethackwiki.com/wiki/Elbereth ('A blinded monster that can ordinarily see will not
+    #          respect Elbereth while it is blind'), https://nethackwiki.com/wiki/Expensive_camera,
+    #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth),
+    #          /refs/top/47a6c840a4cf (Elbereth-first faint guard)
+    if not on_elbereth and not in_gehennom(agent) and dive._elbereth_possible():
+        on_elbereth = True
     actions = []
     for monster in monsters:
         _, y, x, mon, _ = monster

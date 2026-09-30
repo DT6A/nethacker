@@ -530,15 +530,6 @@ class ExplorationLogic:
             # not enough HP to risk untrapping at all
             yield False
             return
-        # hypothesis: a disarm fails 2 times in 3 (trap.c untrap_prob: difficulty 3 for a non-Ranger), and 4 failures
-        # in 5 step us onto the trap and set it off -- fem s1's XL1 grind tried an arrow trap with jackals in view at
-        # T786, went 12 -> 3/14 HP between the arrow and the pack, and died a turn later. Untrap only with no
-        # hostile in view: the trap waits, the monsters don't.
-        # sources: https://nethackwiki.com/wiki/Untrap, https://nethackwiki.com/wiki/Arrow_trap,
-        #          https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/trap.c untrap_prob() / try_disarm()
-        if self.agent.get_visible_monsters():
-            yield False
-            return
         # a welded cursed two-hander leaves no hand free: '#untrap' says 'Your hands seem to be too busy
         # for that.' without using a turn (159 such asserts in one jf23 game)
         main = self.agent.inventory.items.main_hand
