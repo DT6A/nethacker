@@ -119,7 +119,7 @@ GEHENNOM_DIVE = True
 # try every ring/potion that may be levitation (or freeze the moat with a cold ray), float round the moat
 # to the back door (56,08) and drop through the trap door behind it into the Valley (castle depth + 1).
 # Dying on the castle level costs nothing: the castle is as deep as a dig can go.
-CASTLE_PASSAGE = True
+CASTLE_PASSAGE = False
 # engulfed: wield the best melee weapon before fighting out (a dig-diver is swallowed with its pick-axe)
 ENGULF_WIELD = False
 # a Hungry (or worse) dive walks to fresh edible corpses within DIVE_EAT_RADIUS (BFS steps) and eats them
@@ -299,38 +299,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# Castle arrival and crossing policy, ported from /refs/top/1c4099e80253.
-BREACH_BYPASS = False
-BREACH_COLD_FIRST = False
-BREACH_DOOR = False
-BREACH_LEVWARN = False
-BREACH_MINO = False
-BREACH_PLUNGE = False
-BREACH_PROBE = False
-BREACH_PROBE_BUDGET = 300
-BREACH_PROBE_HP = 0.6
-BREACH_PROBE_QUIET = 8
-BREACH_PROBE_STALE = 25
-BREACH_RESUME = False
-BREACH_RUSH = False
-BREACH_RUSH_HP = 0.35
-BREACH_SIDESTEP = False
-BREACH_SPOT = False
-BREACH_WANDS = False
-CASTLE_ARRIVAL_DRILL = True
-CASTLE_EDGE_REST = True
-CASTLE_POLY = True
-CASTLE_SCARE_DEPTH = 25
-CASTLE_SEA_SWITCH = False
-CASTLE_WEST_DIG = True
-CFP_INVIS = False
-CFP_MB = True
-CFP_PRUSH = False
-CFP_RUSH = True
-CFP_XORN = True
-CFP_ZAP = True
-WISH_LEARN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

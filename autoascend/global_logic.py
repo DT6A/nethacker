@@ -941,6 +941,7 @@ class GlobalLogic:
             ])
             # an Overloaded were form can neither fight nor eat: drop its load first (LYCAN_FIXES)
             .preempt(self.agent, [
+                self.agent.summon_were_allies(),
                 self.agent.were_unload().condition(lambda: jf_config.LYCAN_FIXES),
             ])
             .preempt(self.agent, [
@@ -970,18 +971,10 @@ class GlobalLogic:
             .preempt(self.agent, [
                 self.dive.gehennom_escape(),
             ])
-            # Prepare a crossing immediately on the confirmed Castle landing.
-            .preempt(self.agent, [
-                self.dive.castle.survey_strategy(),
-                self.dive.castle.launch_strategy(),
-            ])
             # crossing the castle moat (castle_logic.py): above the survival layer and the fight, which
             # would drag a levitating hero back to land or up the stairs
             .preempt(self.agent, [
                 self.dive.castle.crossing_strategy(),
-            ])
-            .preempt(self.agent, [
-                self.dive.castle.wallwalk_strategy(),
             ])
             .preempt(self.agent, [
                 self.agent.engulfed_fight(),

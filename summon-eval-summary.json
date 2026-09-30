@@ -1,0 +1,178 @@
+{
+  "evaluation_id": "local",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "before_provenance": "Female rows supplied in /refs/parent-eval.json; missing male rows evaluated once with /refs/parent.",
+  "early_rule": "max_depth <= 4 OR Xp milestone <= 5 OR turns <= 3000",
+  "before": {
+    "games": 30,
+    "mean": 0.38640232619809745,
+    "early_losses": 8,
+    "early_mean": 0.03091597556089664,
+    "survivor_mean": 0.5156700900661705,
+    "early_causes": {
+      "killed by a bat": 2,
+      "killed by a jackal": 2,
+      "killed by a hallucinogen-distorted jackal": 2,
+      "killed by a hill orc": 2
+    }
+  },
+  "after": {
+    "games": 30,
+    "mean": 0.41259661150173144,
+    "early_losses": 6,
+    "early_mean": 0.021708975459277257,
+    "survivor_mean": 0.510318520512345,
+    "early_causes": {
+      "killed by a bat": 2,
+      "killed by a jackal": 2,
+      "killed by a wererat": 2
+    }
+  },
+  "per_identity": {
+    "tou-hum-neu-fem": {
+      "before": {
+        "games": 15,
+        "mean": 0.4022995154621233,
+        "early_losses": 4,
+        "early_mean": 0.03091597556089664,
+        "survivor_mean": 0.5373480754262057,
+        "early_causes": {
+          "killed by a bat": 1,
+          "killed by a jackal": 1,
+          "killed by a hallucinogen-distorted jackal": 1,
+          "killed by a hill orc": 1
+        }
+      },
+      "after": {
+        "games": 15,
+        "mean": 0.40472738678386566,
+        "early_losses": 3,
+        "early_mean": 0.021708975459277257,
+        "survivor_mean": 0.5004819896150128,
+        "early_causes": {
+          "killed by a bat": 1,
+          "killed by a jackal": 1,
+          "killed by a wererat": 1
+        }
+      }
+    },
+    "tou-hum-neu-mal": {
+      "before": {
+        "games": 15,
+        "mean": 0.3705051369340716,
+        "early_losses": 4,
+        "early_mean": 0.03091597556089664,
+        "survivor_mean": 0.4939921047061352,
+        "early_causes": {
+          "killed by a bat": 1,
+          "killed by a jackal": 1,
+          "killed by a hallucinogen-distorted jackal": 1,
+          "killed by a hill orc": 1
+        }
+      },
+      "after": {
+        "games": 15,
+        "mean": 0.42046583621959727,
+        "early_losses": 3,
+        "early_mean": 0.021708975459277257,
+        "survivor_mean": 0.5201550514096773,
+        "early_causes": {
+          "killed by a bat": 1,
+          "killed by a jackal": 1,
+          "killed by a wererat": 1
+        }
+      }
+    }
+  },
+  "best_so_far": 0.3896,
+  "target": 0.3996,
+  "gain_over_best": 0.022996611501731434,
+  "checks": [
+    "All 30 candidate games completed",
+    "Emergency eligibility and rejected-command fallback checked",
+    "Imports and make_agent construction/close passed",
+    "git diff --check passed"
+  ],
+  "source_sha256": {
+    "autoascend/agent.py": "051abb88f195473a1f693052e88fef6f31cdb4809b7c166c7152e98fcf697999",
+    "autoascend/global_logic.py": "25178b89a0e1d8d5271e541b32942730949407b142a2b150785d1c4900f104b3"
+  },
+  "changed_scores": [
+    {
+      "character": "tou-hum-neu-fem",
+      "seed": 6,
+      "before": 0.036887590648350246,
+      "after": 0.029108986017138745
+    },
+    {
+      "character": "tou-hum-neu-fem",
+      "seed": 8,
+      "before": 0.6015648510382184,
+      "after": 0.3654881095022441
+    },
+    {
+      "character": "tou-hum-neu-fem",
+      "seed": 10,
+      "before": 0.6015648510382184,
+      "after": 0.5067605633802816
+    },
+    {
+      "character": "tou-hum-neu-fem",
+      "seed": 12,
+      "before": 0.0507583712345433,
+      "after": 0.4258360748858015
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 6,
+      "before": 0.036887590648350246,
+      "after": 0.029108986017138745
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 8,
+      "before": 0.3654881095022441,
+      "after": 0.6015648510382184
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 9,
+      "before": 0.5067605633802816,
+      "after": 0.5543572044866264
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 10,
+      "before": 0.6015648510382184,
+      "after": 0.5067605633802816
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 11,
+      "before": 0.40832255575976223,
+      "after": 0.6015648510382184
+    },
+    {
+      "character": "tou-hum-neu-mal",
+      "seed": 12,
+      "before": 0.0507583712345433,
+      "after": 0.4258360748858015
+    }
+  ]
+}
