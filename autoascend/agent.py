@@ -2515,6 +2515,48 @@ class Agent:
                 # top-level items only: a wand inside a bag has no inventory letter, and zapping one left the
                 # 'What do you want to zap?' prompt looping at 9 HP until a goblin finished the XL6
                 items = list(self.inventory.items)
+                # hypothesis: the Tourist's expensive camera is its one reliable escape, yet outside the dive
+                # (fight_heur.camera_actions: 'a fleeing monster is lost XP') it was never used even here, at
+                # critically low HP with no prayer left: fem s6's XL6 grind stood at 4/58 HP beside a werejackal
+                # in @ form (it ignores Elbereth) and gambled an unknown wand and potion instead, then died.
+                # A flash blinds an adjacent monster that has eyes and makes it flee 3 times in 4 (apply.c
+                # use_camera -> flash_hits_mon: monflee), a blinded monster has to guess our square, and the
+                # engraving/rest that follows gets its turns -- a better gamble than the unknown items, tried first.
+                # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+                #          https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Prayer,
+                #          NetHack 3.6.6 src/apply.c use_camera()/flash_hits_mon(),
+                #          /refs/top/47a6c840a4cf (last-resort exits ranked before long-shot gambles)
+                camera = None if self.character.prop.blind or self.character.prop.polymorph else next(
+                    (i for i in items if i.is_unambiguous() and i.object.name == 'expensive camera' and
+                     not self.inventory.is_known_empty(i) and i.text not in self.inventory.empty_wands), None)
+                if camera is not None:
+                    flashed = getattr(self, '_camera_flashed', {})
+                    # not from an intact Elbereth at a monster it holds off (the flash wipes it: 'You feel like a
+                    # hypocrite'), nor at an unseen attacker
+                    on_elbereth = (self.inventory.engraving_below_me or '').lower() == 'elbereth'
+                    targets = [m for m in adjacent if not (getattr(m[3], 'mflags1', 0) & 0x00001000) and  # M1_NOEYES
+                               getattr(m[3], 'mname', 'unknown') != 'unknown' and
+                               not (on_elbereth and not dive._melee_ignores_elbereth(m[3])) and
+                               self.blstats.time - flashed.get((m[1], m[2]), -100) >= 3]
+                    targets.sort(key=lambda m: not dive._melee_ignores_elbereth(m[3]))
+                    if targets:
+                        _, ty, tx, _, _ = targets[0]
+                        yield True
+                        self._camera_flashed = flashed
+                        flashed[(ty, tx)] = self.blstats.time
+                        with self.atom_operation():
+                            self.step(A.Command.APPLY)
+                            self.type_text(self.inventory.items.get_letter(camera))
+                            if 'In what direction' in self.message:
+                                self.direction(self.calc_direction(y, x, ty, tx))
+                                self.log(f'LAST RESORT: camera flash at {targets[0][3].mname}: {self.message!r}')
+                            else:
+                                self.log(f'LAST RESORT: camera no prompt: {self.message!r}')
+                                if 'nothing happens' in self.message.lower():
+                                    self.inventory.empty_wands.add(camera.text)
+                                if 'What do you want to use or apply' in self.single_message:
+                                    self.step(A.Command.ESC)
+                        return
                 _, my, mx, _, _ = adjacent[0]
                 # in Minetown (or with the Watch in view) a ray or an area scroll can hit the Watch (a
                 # scroll of earth dropped a boulder on a watch captain): only the potions, which touch us
