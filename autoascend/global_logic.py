@@ -88,6 +88,20 @@ class ItemPriority(ItemPriorityBase):
             if tool is not None:
                 add_item(tool)
 
+        # hypothesis: the dive's camera flash (fight_heur.camera_actions, the answer to the Elbereth-ignorers that
+        # stop every dig step) never fires when the camera was dropped: it came last among the tools, after the
+        # daggers, darts and food, so the pick-axe (100 wt) pushed it out at the fetch -- fem s7 dropped
+        # 'an expensive camera (0:38)' at T25148 while picking up the pick-axe, then an Aleax killed the digger
+        # on Dlvl 23 with no flash; s4, s8 and s14 dived without one too. Keep a charged camera (12 wt) while diving.
+        # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+        #          https://nethackwiki.com/wiki/Aleax, /refs/top/1c4099e80253 (_melee_ignores_elbereth)
+        if dive is not None and dive.diving:
+            for item in items:
+                if item.is_unambiguous() and item.object.name == 'expensive camera' and \
+                        not self.agent.inventory.is_known_empty(item):
+                    add_item(item)
+                    break
+
         # power: boots that may be levitation or water walking boots, for the Castle's moat (never worn before)
         if jf_config.KEEP_MAGIC_BOOTS:
             for item in sorted(items, key=lambda i: i.unit_weight(with_content=False)):

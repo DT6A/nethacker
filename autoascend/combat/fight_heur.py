@@ -300,10 +300,6 @@ def wait_action(agent, monsters):
     return []
 
 
-# a kind of monster flashed to no effect (already blind) on a level isn't flashed again there for this long
-CAMERA_BLIND_TURNS = 20
-
-
 def camera_actions(agent, monsters):
     """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
     it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
@@ -331,8 +327,6 @@ def camera_actions(agent, monsters):
     #          onscary() (is_lminion), /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_FOCUS)
     dive = agent.global_logic.dive
     flashed = getattr(agent, '_camera_flashed', {})
-    blinded = getattr(agent, '_camera_blinded', {})
-    level_key = agent.current_level().key()
     # hypothesis: the flash undoes the Elbereth the dive stands on: a blinded monster no longer respects it
     # (monmove.c onscary), and attacking from the square wipes it ('You feel like a hypocrite. The engraving
     # beneath you fades': fem s5 at Dlvl 12, then a crowd of iguanas, ants and a centaur killed the digger).
@@ -352,21 +346,6 @@ def camera_actions(agent, monsters):
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
         if agent.blstats.time - flashed.get((y, x), -100) < 8:
-            continue
-        # hypothesis: an adjacent flash blinds a monster for good (apply.c flash_hits_mon: mblinded 0 with
-        # mcansee 0 when it is next to us), and a blind monster can't be scared by the flash again -- yet the
-        # 8-turn cooldown above flashed the same one over and over: 34 of 79 flashes in the base games said
-        # nothing ('': a blind soldier 13 times on Dlvl 9 of s2 while it and a giant beetle kept hitting, a
-        # blind Woodland-elf 7 times on the XL3 digger of s0 before it killed it), each a turn given away.
-        # After a flash that did nothing to its target, don't flash that kind again for a while: dig, fight
-        # or rest instead (not after one that blinded it: its sighted groupmates still need the flash).
-        # measured locally (seeds 0-14, both Tourists): 0.299 vs 0.3535 -- s2/s5 died once the idle re-flashes
-        # stopped: beside a blind Elbereth-ignorer the fallback (melee, a dig the hits interrupt) did worse than
-        # a turn spent flashing, which the blind monster (guessing our square) often wastes too.
-        # sources: https://nethackwiki.com/wiki/Expensive_camera ('An adjacent monster is blinded
-        #          permanently'), https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/apply.c
-        #          flash_hits_mon(), /refs/top/1c4099e80253 (_melee_ignores_elbereth: who gets flashed)
-        if agent.blstats.time - blinded.get((level_key, mon.mname), -10 ** 9) < CAMERA_BLIND_TURNS:
             continue
         actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
     return actions
