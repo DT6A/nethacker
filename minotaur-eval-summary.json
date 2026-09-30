@@ -1,0 +1,21 @@
+{
+  "evaluation_id": "local",
+  "games": 30,
+  "overall": 0.37367824634116126,
+  "by_character": {
+    "tou-hum-neu-fem": 0.37367824634116126,
+    "tou-hum-neu-mal": 0.37367824634116126
+  },
+  "keep_threshold": 0.3706,
+  "target": 0.3806,
+  "source_sha256": {
+    "autoascend/agent.py": "8833cef6e28ee5b5583b63ffdf5f74e0af3db14fd219ef2a78f0db83b8011f27",
+    "autoascend/global_logic.py": "56f2d368720a3432a9f2e4b0d8ed0f9cb88ddf07f8d2f8391e68cda8236b9d7c"
+  },
+  "supplied_parent": {
+    "tou-hum-neu-mal": {
+      "games": 15,
+      "mean": 0.4022995154621233
+    }
+  }
+}
