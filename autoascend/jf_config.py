@@ -198,18 +198,7 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-# hypothesis: the 'HP < 12 and below max' rule makes an XL1-2 Tourist (10-14 max HP) pray at 8/10, 10/12,
-# 11/12 -- no trouble per pray.c, so with u.ublesscnt > 0 it is p_type 0 ("You feel that The Lady is
-# displeased": ublesscnt += rnz(250), Luck -3, gods_upset -> ugangr++, every later prayer fails and the
-# RESCUE dive sends the XL1 game down to die), and with ublesscnt == 0 it only resets the timeout to
-# rnz(350) so the real emergency a few hundred turns later finds no prayer (unseen games die to foxes,
-# jackals, sewer rats at XL1-3). Praying only at critically_low_hp keeps the prayer for the fight that
-# needs it. Measured on unseen seeds 67471-67490 (fem): 0.100 -> 0.191 (5 games reached Dlvl 12-29).
-# sources: NetHack 3.6.6 src/pray.c dopray() (p_type 0 branch: rnz(250), change_luck(-3), gods_upset),
-#          critically_low_hp(), in_trouble(); https://nethackwiki.com/wiki/Prayer,
-#          https://nethackwiki.com/wiki/Tourist; /refs/top/4be8b6d28b2f (PRAYER_MODEL: HP prayer only in
-#          the critically-low window, used by 25 of the 39 top programs)
-LOWHP_EXACT = True
+LOWHP_EXACT = False
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
