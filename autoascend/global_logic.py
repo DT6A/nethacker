@@ -19,6 +19,9 @@ from .level import Level
 from .strategy import Strategy
 
 
+KEEP_WANDS_FIRST = True
+
+
 class ItemPriority(ItemPriorityBase):
     MAX_NUMBER_OF_ITEMS = 26 * 2 - 1  # + coin slot, one slot should be left for item arranging
     def __init__(self, agent):
@@ -106,6 +109,18 @@ class ItemPriority(ItemPriorityBase):
                                                  Character.SAMURAI, Character.TOURIST] and \
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
+
+        # hypothesis: the pack fills with weapons/armor/darts/food before the wands' turn in this split, so
+        # arrange_items drops them on Dlvl 1 ('You drop a wand of fire.'); monsters pick wands up and zap them
+        # at us (held-out parent early deaths: bolt of fire x5, cold, lightning, magic missile, 'The wand hits
+        # you!' at XL3-7). A wand weighs 7: keep every wand before the bulk, so none is left lying around.
+        # Only in the tour: the dive keeps its own food/passage priorities (try3 lost public s6/s11 in the dive).
+        # sources: nethackwiki.com/wiki/Monster_item_use (muse.c find_offensive: monsters zap picked-up attack
+        # wands), nethackwiki.com/wiki/Wand (weight 7), nethackwiki.com/wiki/Tourist (weak early game), bot log s18337
+        if KEEP_WANDS_FIRST and not (dive is not None and dive.diving):
+            for item in sorted(filter(lambda i: i.category == nh.WAND_CLASS, items),
+                               key=lambda i: i.unit_weight(with_content=False)):
+                add_item(item)
 
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
