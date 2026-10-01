@@ -211,8 +211,13 @@ DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
-TOUR_WEAK_PRAYER_GAP = 0
-TOUR_FAINT_PRAYER_GAP = 0
+# hypothesis: many Dlvl 1 grind deaths come 100-300 turns after a full-HP Weak hunger prayer, when an HP
+# emergency then finds no safe prayer; waiting longer between hunger prayers in the tour (FAINT_GUARD holds
+# Elbereth through the faints) leaves the prayer timeout free for HP trouble more often
+# sources: /refs/top/b517c4ce0c87 pf_base/jf_config.py (1700/1600), https://nethackwiki.com/wiki/Prayer_timeout,
+# https://nethackwiki.com/wiki/Prayer
+TOUR_WEAK_PRAYER_GAP = 1700
+TOUR_FAINT_PRAYER_GAP = 1600
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
