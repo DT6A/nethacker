@@ -1,0 +1,134 @@
+{
+  "parent_training": {
+    "games": 30,
+    "overall": 0.40286096825327383,
+    "early_losses": 6,
+    "by_character": {
+      "tou-hum-neu-fem": 0.39499174353540806,
+      "tou-hum-neu-mal": 0.41073019297113966
+    },
+    "statuses": [
+      "completed"
+    ]
+  },
+  "training": {
+    "games": 30,
+    "overall": 0.4092071870674531,
+    "early_losses": 6,
+    "by_character": {
+      "tou-hum-neu-fem": 0.41707641178531896,
+      "tou-hum-neu-mal": 0.40133796234958735
+    },
+    "statuses": [
+      "completed"
+    ]
+  },
+  "parent_heldout": {
+    "games": 30,
+    "overall": 0.11477326846269505,
+    "early_losses": 18,
+    "by_character": {
+      "tou-hum-neu-fem": 0.1329857428665369,
+      "tou-hum-neu-mal": 0.09656079405885322
+    },
+    "statuses": [
+      "completed"
+    ]
+  },
+  "heldout": {
+    "games": 30,
+    "overall": 0.11730495722288223,
+    "early_losses": 18,
+    "by_character": {
+      "tou-hum-neu-fem": 0.13394384340833765,
+      "tou-hum-neu-mal": 0.1006660710374268
+    },
+    "statuses": [
+      "completed"
+    ]
+  },
+  "selected": "dig-sequence",
+  "training_seeds": [
+    0,
+    14
+  ],
+  "heldout_seeds": [
+    86547,
+    86561
+  ],
+  "heldout_seeds_per_character": 15,
+  "evaluation_id": "local",
+  "changed_strategy_files": [
+    "autoascend/dive_logic.py"
+  ],
+  "source_sha256": "0e2769cb41488fbafc15000a9bbd1f796376b8365fe8db9f289839300eb4a555",
+  "target": 0.4129,
+  "target_met": false,
+  "completed_experiments": {
+    "hp-training": {
+      "games": 30,
+      "overall": 0.1355507905343349,
+      "by_character": {
+        "tou-hum-neu-fem": 0.1355507905343349,
+        "tou-hum-neu-mal": 0.1355507905343349
+      }
+    },
+    "hp-heldout": {
+      "games": 30,
+      "overall": 0.12687182606588757,
+      "by_character": {
+        "tou-hum-neu-fem": 0.12687182606588757,
+        "tou-hum-neu-mal": 0.12687182606588757
+      }
+    },
+    "traps-training": {
+      "games": 30,
+      "overall": 0.40286096825327383,
+      "by_character": {
+        "tou-hum-neu-fem": 0.39499174353540806,
+        "tou-hum-neu-mal": 0.41073019297113966
+      }
+    },
+    "petshield-training": {
+      "games": 30,
+      "overall": 0.2608789028560965,
+      "by_character": {
+        "tou-hum-neu-fem": 0.2592923481525517,
+        "tou-hum-neu-mal": 0.26246545755964135
+      }
+    },
+    "blind-combat-training": {
+      "games": 30,
+      "overall": 0.4058901668639585,
+      "by_character": {
+        "tou-hum-neu-fem": 0.39689704741466314,
+        "tou-hum-neu-mal": 0.41488328631325394
+      }
+    },
+    "blind-all-training": {
+      "games": 30,
+      "overall": 0.34752321700348515,
+      "by_character": {
+        "tou-hum-neu-fem": 0.3553924417213509,
+        "tou-hum-neu-mal": 0.3396539922856193
+      }
+    },
+    "dig-sequence-training": {
+      "games": 30,
+      "overall": 0.4092071870674531,
+      "by_character": {
+        "tou-hum-neu-fem": 0.41707641178531896,
+        "tou-hum-neu-mal": 0.40133796234958735
+      }
+    },
+    "blind-combat-heldout": {
+      "games": 30,
+      "overall": 0.11477326846269505,
+      "by_character": {
+        "tou-hum-neu-fem": 0.1329857428665369,
+        "tou-hum-neu-mal": 0.09656079405885322
+      }
+    }
+  },
+  "heldout_coverage_note": "Training-rejected trap, pet-shield and broader blind-floor variants were not evaluated on held-out seeds; both training-positive contenders and the HP-buffer variant were. Retreat and hold-loop screens were not completed full evaluations."
+}

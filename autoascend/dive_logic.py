@@ -1955,8 +1955,29 @@ class DiveLogic:
         tools.sort(key=lambda i: i.object != O.from_name('pick-axe'))
         return tools[0] if tools else None
 
+    # hypothesis: keep control through a digging escape so intervening combat actions cannot erase its protection or delay descent under attack.
+    # sources: /refs/top/0875c3519bed/pf_s25p8/dive_logic.py (dig_first), https://nethackwiki.com/wiki/Elbereth, https://gaming.stackexchange.com/questions/297198/how-do-i-deal-with-medusa, https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/uhitm.c
     @Strategy.wrap
     def dig_first(self):
+        action = self._dig_first_step()
+        if not next(action):
+            yield False
+            return
+        yield True
+        agent = self.agent
+        key = agent.current_level().key()
+        # Match the peer's bounded escape loop; higher-priority emergencies
+        # still preempt every action through the existing update hooks.
+        for _ in range(40):
+            before = agent.step_count
+            next(action, None)
+            if agent.step_count == before or agent.current_level().key() != key:
+                return
+            action = self._dig_first_step()
+            if not next(action):
+                return
+
+    def _dig_first_step(self):
         """Preempts fight2 while diving with a digging tool: finish the hole rather than walk to a fight."""
         agent = self.agent
         if not DIG_FIRST or not self.diving:
