@@ -144,12 +144,7 @@ DIVE_EAT_RADIUS = 8
 LAST_RESORT_DIG = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
-# hypothesis: after three failed early-game attempts, a mid-game fix: most non-early losses die at XL 8 on
-# Dlvl 3-8 in the dive, at critical HP beside a hostile that ignores Elbereth; pray.c fixes TROUBLE_HIT while
-# the timeout is <= 200 and it is rnz(350) after a success, so ~62% of prayers 250 turns later still work
-# sources: nethackwiki Prayer + pray.c (can_pray, p_trouble > 0 -> ublesscnt > 200), nethackwiki Rnz,
-# gaming.stackexchange 'how often can I pray' discussion, /refs/top programs using DESPERATE_PRAYER_GAP=250
-DESPERATE_PRAYER_GAP = 250
+DESPERATE_PRAYER_GAP = 0
 # LAST_RESORT: zap each unknown wand once (one still unknown after a zap at a monster is no attack wand)
 LR_WAND_ONCE = False
 # --- power: what the character carries to the Castle (power.py) ---
@@ -277,6 +272,8 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
+# the lycanthropy cure prayer's gap (0: WEAK_PRAYER_GAP); see agent.cure_disease
+LYCAN_CURE_GAP = 1000
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
