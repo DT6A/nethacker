@@ -127,6 +127,7 @@ SHELTERED_DIG_STUCK = 200
 # whatever arrives during the ~4 dig turns then can't melee us
 ELBERETH_ALWAYS = False
 ELBERETH_DIG_RADIUS = 6
+DEEP_DIG_ELBERETH = True       # engrave before every dig phase from depth 20 (see _elbereth_before_digging_escape)
 # DIG_ESCAPE: with a digging tool, the hole is the way out of nearly every fight above the castle. In the 90
 # HEAD baseline games (base-*), 20 of the 34 tool dives whose castle depth is known died above it. Most of
 # them fought instead of digging:
@@ -3106,8 +3107,17 @@ class DiveLogic:
         # even if out of sight now (base-public s14: an invisible ogre king hit us in the fresh pit; s1: a
         # chameleon)
         rewrite = spot[3] and tries.get(spot[:3] + (False,), 0) > 0
-        if not near and not (ELBERETH_ALWAYS or self.on_medusa_level() or bl.hunger_state >= Hunger.WEAK or
-                             rewrite):
+        # hypothesis: every training dive ends on Dlvl 20-29 (Medusa's level, the mazes, the Castle) where the dig
+        # starts on bare floor and whatever arrives in its ~20 turns (s2: a quantum mechanic then a minotaur; s14:
+        # an ogre king beside a minotaur; s4/s13: gremlins) gets free hits until the bot notices and stops to
+        # engrave. From depth 20 engrave before every dig phase, as on Medusa's level, so arrivals that respect
+        # Elbereth don't interrupt the hole and the pit rewrite (`rewrite`) keeps it up after the pit.
+        # sources: /refs/top/5f4a36b6d7e9 and /refs/top/4211fd64f1cb (dive_logic deep_dig: "depth >= 20 pre-dig
+        #          protection covers unseen arrivals"), https://nethackwiki.com/wiki/Digging_for_victory,
+        #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Mazes_of_Menace
+        deep_dig = DEEP_DIG_ELBERETH and bl.depth >= 20
+        if not near and not (ELBERETH_ALWAYS or deep_dig or self.on_medusa_level() or
+                             bl.hunger_state >= Hunger.WEAK or rewrite):
             return False
         if blind:
             # can't read it back: the only sign it didn't take (a blind dust Elbereth keeps all 8 letters ~1 time
