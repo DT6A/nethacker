@@ -1,0 +1,51 @@
+{
+  "recover-training": {
+    "n": 30,
+    "overall": 0.12068363094507152,
+    "characters": {
+      "tou-hum-neu-fem": 0.10939494490559698,
+      "tou-hum-neu-mal": 0.13197231698454606
+    }
+  },
+  "regen-training": {
+    "n": 30,
+    "overall": 0.18993294260626892,
+    "characters": {
+      "tou-hum-neu-fem": 0.18515568226604007,
+      "tou-hum-neu-mal": 0.1947102029464978
+    }
+  },
+  "last-darts-training": {
+    "n": 30,
+    "overall": 0.3662137107957306,
+    "characters": {
+      "tou-hum-neu-fem": 0.3630535678737994,
+      "tou-hum-neu-mal": 0.36937385371766185
+    }
+  },
+  "range-training": {
+    "n": 30,
+    "overall": 0.11018802958521047,
+    "characters": {
+      "tou-hum-neu-fem": 0.11457444943935202,
+      "tou-hum-neu-mal": 0.10580160973106892
+    }
+  },
+  "scare-training": {
+    "n": 30,
+    "overall": 0.35909079648531994,
+    "characters": {
+      "tou-hum-neu-fem": 0.363837494110796,
+      "tou-hum-neu-mal": 0.3543440988598439
+    },
+    "limitation": "Integration error: force keyword unsupported in parent; not clean efficacy evidence."
+  },
+  "scare-castle-fixed-training": {
+    "n": 30,
+    "overall": 0.426664998064707,
+    "characters": {
+      "tou-hum-neu-fem": 0.42022358822209177,
+      "tou-hum-neu-mal": 0.4331064079073222
+    }
+  }
+}

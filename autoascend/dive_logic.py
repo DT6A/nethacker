@@ -33,6 +33,7 @@ from .glyph import G, MON, SS, Hunger
 from .level import Level
 from .item import Item, flatten_items
 from .strategy import Strategy
+from .scare_ward import ScareWard
 
 ROOM_FLOOR = frozenset({SS.S_room, SS.S_darkroom})
 PLAIN_FLOOR = frozenset({SS.S_room, SS.S_darkroom, SS.S_corr, SS.S_litcorr})
@@ -475,6 +476,7 @@ def _hold_loop(func):
 class DiveLogic:
     def __init__(self, agent):
         self.agent = agent
+        self.scare_ward = ScareWard(self)
         self.portal_level = None       # (dnum, lnum) of the Quest portal level
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level

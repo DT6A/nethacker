@@ -922,7 +922,6 @@ class GlobalLogic:
                            self.dive.edible_corpse_within(jf_config.DIVE_EAT_RADIUS)),
                 self.agent.eat_from_inventory().every(5),
                 self.agent.inventory.buy_food().every(3),
-                self.agent.inventory.buy_armor().every(3),
                 # power (SELL_PRICE_ID): offer unknown potions/rings/boots to a shopkeeper for their price group
                 self.agent.inventory.sell_price_identify().every(3),
             ])
@@ -971,6 +970,9 @@ class GlobalLogic:
             # Gehennom only (GEHENNOM_DIVE): a wand of digging down away from a monster we can't outfight
             .preempt(self.agent, [
                 self.dive.gehennom_escape(),
+            ])
+            .preempt(self.agent, [
+                self.dive.scare_ward.strategy(),
             ])
             # crossing the castle moat (castle_logic.py): above the survival layer and the fight, which
             # would drag a levitating hero back to land or up the stairs

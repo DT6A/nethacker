@@ -1,0 +1,44 @@
+{
+  "heldout_seeds": [
+    9947,
+    9976
+  ],
+  "heldout_seeds_per_character": 30,
+  "early_losses_before": 6,
+  "early_losses_after": 6,
+  "proven_neutral_fixes": [],
+  "candidate_hashes": {
+    "autoascend/scare_ward.py": "175e9e1786954e326f62a3a8b7ca450b6cf456bea1fa4b505d17888c538a1387",
+    "autoascend/dive_logic.py": "b8db9149b35ea7323c57f188f4820aae79578ab0d9ec26f083579dabd9c4f1fc",
+    "autoascend/global_logic.py": "329f5acfa32ce2ad7e23d693068990ddcf2f29921b59d68cd7e1413fe25ed065",
+    "autoascend/item/inventory.py": "a16dbca6cdebcb3d189cce42f694a18a5d9d5b632bf241fa8d751c9593c8bd27"
+  },
+  "training_parent": {
+    "overall": 0.4044604894419771,
+    "per_character": {
+      "tou-hum-neu-fem": 0.3950176765057249,
+      "tou-hum-neu-mal": 0.4139033023782293
+    }
+  },
+  "training_candidate": {
+    "overall": 0.426664998064707,
+    "per_character": {
+      "tou-hum-neu-fem": 0.42022358822209177,
+      "tou-hum-neu-mal": 0.4331064079073222
+    }
+  },
+  "heldout_parent": {
+    "overall": 0.08444252351938462,
+    "per_character": {
+      "tou-hum-neu-fem": 0.08483950784608542,
+      "tou-hum-neu-mal": 0.08404553919268383
+    }
+  },
+  "heldout_candidate": {
+    "overall": 0.08519152502873567,
+    "per_character": {
+      "tou-hum-neu-fem": 0.08483950784608542,
+      "tou-hum-neu-mal": 0.08554354221138592
+    }
+  }
+}
