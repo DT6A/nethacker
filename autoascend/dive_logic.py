@@ -2083,17 +2083,6 @@ class DiveLogic:
             return ('dig', tool)
         # standing on stairs, in a doorway, on a wetter square (Medusa-3's island): walk to the nearest
         # square we can dig, a few steps at most
-        # hypothesis: on Medusa's level a raven swarm (speed 20, two attacks each, blinding claws) takes ~10 HP a
-        # turn, so walking up to DIG_WALK_RADIUS steps to a dry square under it costs more than the flood risk of
-        # digging here beside one moat square (fillholetyp: 1/2 per phase); s3 lost 79 -> 12 HP walking 4 steps
-        # sources: RGRN "Medusa's Island" thread (groups.google.com/d/topic/rec.games.roguelike.nethack/LxGKYmnWdZo),
-        #          nethackwiki.com/wiki/Digging_for_victory
-        if adjacent and agent._hurt_recently(2) and self.on_medusa_level() and not on_stairs and \
-                self._diggable_spot(bl.y, bl.x, max_wet + 1):
-            target = self._dig_walk_target(max_wet)
-            if target is None or abs(target[0] - bl.y) + abs(target[1] - bl.x) > 2:
-                agent.log(f'DIVE digging in place under attack (wet {self._wet_neighbours(bl.y, bl.x)})')
-                return ('dig', tool)
         if agent.blstats.time < self._dig_walk_blocked_until:
             return None
         target = self._dig_walk_target(max_wet)

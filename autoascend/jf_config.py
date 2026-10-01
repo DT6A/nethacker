@@ -138,6 +138,8 @@ DESPERATE_PRAYER_GAP = 0
 # names itself when its ray/beam hits (zap.c learn_it), so move on to the unknown potions/scrolls instead
 # sources: https://nethackwiki.com/wiki/Wand, https://nethackwiki.com/wiki/Engrave-identification, NetHack 3.6.6 zap.c
 LR_WAND_ONCE = True
+# LAST_RESORT also when diving at half HP or less and the worst per-turn loss of the last 3 turns >= HP left
+LETHAL_PACE = True
 # --- power: what the character carries to the Castle (power.py) ---
 # Unidentified boots of the magic appearances (combat/jungle/hiking/mud/buckled/riding/snow) are 2/7 levitation
 # or water walking, the Castle's moat crossing. The bot never picked them up (get_best_armorset skips ambiguous

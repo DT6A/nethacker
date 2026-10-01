@@ -1217,6 +1217,34 @@ class Agent:
         divisor = 5 if xl <= 5 else 6 if xl <= 13 else 7 if xl <= 21 else 8 if xl <= 29 else 9
         return bl.hitpoints <= 5 or bl.hitpoints * divisor <= maxhp
 
+    def _lethal_pace(self):
+        """LETHAL_PACE: diving, and one more turn like the worst of the last few kills us -- the last resort's
+        gambles (a known digging wand down, unknown wands at the attacker, potions, scrolls) come while there is
+        still a turn to use them."""
+        # hypothesis: a minotaur (3d10/3d10/2d8, speed 15, no MR, ignores Elbereth) takes an XL8 Tourist 70 -> 29
+        # in one turn on Dlvl 25-28 and kills it the next (s2, s10, s12, s14), so the critical-HP last resort
+        # (HP <= 1/6 max: 11 of 70) never gets its turn. When the worst per-turn HP loss of the last 3 turns is at
+        # least the HP left, take the gamble now: an unknown wand at it is sleep/striking/teleport/slow/digging/
+        # cold/fire/death often enough, and an unknown scroll can be teleportation, scare monster or taming,
+        # all of which work on a minotaur (MR 0).
+        # sources: https://nethackwiki.com/wiki/Minotaur ("no MR ... sleep, slow monster, teleportation, taming
+        # ... scare monster"), https://nethackwiki.com/wiki/Digging_for_victory (zap a wand of digging down when
+        # a minotaur interrupts), lparchive.org Nethack (by Lobster Maneuver) Update 12 (minotaur in the mazes),
+        # https://aaronrotenberg.com/blog/2018/11/nethack-more-lessons-learned-the-hard-way/ (a minotaur below
+        # Medusa took the player to 9 HP; a scroll of taming read in time saved the game)
+        if not jf_config.LETHAL_PACE or not self.global_logic.dive.diving:
+            return False
+        bl = self.blstats
+        if bl.hitpoints * 2 > bl.max_hitpoints:
+            return False
+        hist = [(t, hp) for t, hp in self.global_logic.dive._hp_history if t >= bl.time - 3 and t < bl.time]
+        hist.append((bl.time, bl.hitpoints))
+        worst = 0
+        for (t0, hp0), (t1, hp1) in zip(hist, hist[1:]):
+            if t1 > t0 and hp1 < hp0:
+                worst = max(worst, (hp0 - hp1) / (t1 - t0))
+        return worst >= bl.hitpoints
+
     def _hunger_prayer_gap(self):
         # A prayer resets nutrition to 900 and Weak comes ~850 turns later, so DT6A's 1200-turn gap
         # left every Dlvl-1 grind Fainting for hundreds of turns and praying at Fainting on a 400-turn
@@ -2429,8 +2457,8 @@ class Agent:
         # also banks depth), unknown wands at the attacker, unknown potions, unknown scrolls.
         # Overtaxed or worse: NetHack refuses zapping, reading and quaffing without using a turn, and the last
         # resort looped on it (330 turn-inactivity asserts in one jf24 game)
-        if jf_config.LAST_RESORT and self._critically_low_hp() and self.blstats.carrying_capacity < 4 and \
-                not poly_buffer:
+        if jf_config.LAST_RESORT and (self._critically_low_hp() or self._lethal_pace()) and \
+                self.blstats.carrying_capacity < 4 and not poly_buffer:
             y, x = self.blstats.y, self.blstats.x
             adjacent = [m for m in self.get_visible_monsters() if utils.adjacent((m[1], m[2]), (y, x))]
             # hypothesis: most Tourist games end in the levelling grind at XL 1-3, at critical HP beside a rat or
