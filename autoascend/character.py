@@ -481,8 +481,15 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                assert letter not in self.upgradable_skills.values()
-                self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
+                # hypothesis: tty menus restart their item letters at 'a' on every page, so a two-page
+                # #enhance list (dagger on page 1, dart on page 2) shows 'a -' twice; the old assert then
+                # panicked fight2 on every call (3,200 panics, no fighting: an XL-6 Tourist killed by a gecko
+                # on held-out seed 66335). Keep the first page's skill; once it is advanced the list is
+                # re-read and the other one gets its own letter (type_letter pages to it).
+                # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() ('if ((n % lmax) == 0) menu_ch = 'a''),
+                #          bot log of held-out seed 66335 (popup: 'a -   dagger [Basic]' ... 'a -   dart [Basic]')
+                if letter not in self.upgradable_skills.values():
+                    self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):

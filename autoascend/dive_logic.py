@@ -71,6 +71,8 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+TOUR_IDLE_REST = True
+TOUR_IDLE_REST_BELOW = 0.5
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 RANGED_MONSTERS = frozenset((
     'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound', 'red naga', 'black naga',
@@ -1244,6 +1246,32 @@ class DiveLogic:
         bl = agent.blstats
         resting = self._elbereth_resting
         threshold = ELBERETH_REST_UNTIL if resting else ELBERETH_REST_BELOW
+        # hypothesis: the levelling tour used to heal by exploring on until 80% HP (global_logic tour preempt),
+        # walking a half-dead XL 1-7 Tourist into the next jackal pack, wererat or rothe; strong players rest
+        # when low and alone. Below half HP with no hostile in view and not hungry, engrave Elbereth and
+        # search in place until ELBERETH_REST_UNTIL: what spawns meanwhile finds us on the square, healthier.
+        # sources: https://nethackwiki.com/wiki/Why_do_I_keep_dying ('rest when low with nothing around'),
+        #          https://nethackwiki.com/wiki/Standard_strategy, https://nethackwiki.com/wiki/Elbereth,
+        #          https://nethackwiki.com/wiki/Tourist, NetHack Wiki forum 'General gameplay tips for a newbie'
+        #          ('heal before entering unmapped areas'), /refs/top/5883dfc4d2df (cinemere elbereth_rest:
+        #          below 50% HP, no hostile needed, search until 90%)
+        idle = TOUR_IDLE_REST and not self.diving and not agent.get_visible_monsters() and \
+            bl.hunger_state < Hunger.HUNGRY and \
+            bl.hitpoints < (ELBERETH_REST_UNTIL if resting else TOUR_IDLE_REST_BELOW) * bl.max_hitpoints and \
+            agent.current_level().dungeon_number != GEHENNOM and \
+            not agent.character.prop.blind and not agent.character.prop.polymorph
+        if idle:
+            engraving = (agent.inventory.engraving_below_me or '').lower()
+            if engraving == 'elbereth' or agent.can_engrave():
+                yield True
+                if not self._elbereth_resting:
+                    agent.log(f'ELBERETH idle rest start: hp={bl.hitpoints}/{bl.max_hitpoints}')
+                self._elbereth_resting = True
+                if engraving != 'elbereth':
+                    agent.engrave('Elbereth')
+                    return
+                agent.search(5)
+                return
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()

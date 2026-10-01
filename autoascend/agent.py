@@ -2682,12 +2682,7 @@ class Agent:
             if jf_config.LYCAN_CURE_WAIT and self.blstats.hunger_state == Hunger.HUNGRY and \
                     not self.edible_carried_food():
                 yield False
-            # hypothesis: praying for the lycanthropy cure at a 1000-turn gap (not 1200) saves more Dlvl-1 grind games than the extra failed prayers cost
-            # sources: pray.c 3.6.6 (in_trouble TROUBLE_LYCANTHROPE, can_pray: major trouble works while ublesscnt <= 200); nethackwiki.com/wiki/Lycanthropy, /wiki/Prayer; bot logs
-            # (30 fem dev games: 28 infections, 12.6k infected turns, 6 deaths still infected, ~7x the grind's usual death
-            # rate -- forms of 3-15 HP that can't eat, engrave or wear armor, summoned packs; rnz(350) fails a major-trouble
-            # prayer ~5.4% of the time at a 1000-turn gap vs ~2.4% at 1200)
-            if self.is_safe_to_pray(jf_config.LYCAN_CURE_GAP or jf_config.WEAK_PRAYER_GAP):
+            if self.is_safe_to_pray(jf_config.WEAK_PRAYER_GAP):
                 yield True
                 self.pray()
                 return
