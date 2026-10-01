@@ -1640,6 +1640,69 @@ class Inventory:
             self.pickup(mine)
         self.items.update(force=True)
 
+    @Strategy.wrap
+    def buy_armor(self):
+        # hypothesis: spending available gold on affordable armor closes the Tourist's early AC deficit before ordinary melee becomes fatal.
+        # sources: https://nethackwiki.com/wiki/Tourist#Early_game,
+        # https://nethackwiki.com/wiki/Armor_class, https://nethackwiki.com/wiki/Shop.
+        agent = self.agent
+        bl = agent.blstats
+        prop = agent.character.prop
+        level = agent.current_level()
+        if (agent.global_logic.dive.diving or prop.polymorph or prop.blind or prop.hallu
+                or agent.hands_welded() or agent._carries_digging_tool()
+                or bl.hunger_state >= Hunger.WEAK or agent.get_visible_monsters()
+                or not level.shop_interior.any()):
+            yield False
+        if any(i.shop_status == Item.UNPAID for i in self.items):
+            yield True
+            self.pay_or_drop_unpaid()
+            return
+        # Food must remain affordable if we have less than a ration in reserve.
+        budget = bl.gold - (100 if self.carried_nutrition() < 800 else 0)
+        if budget <= 0:
+            yield False
+        owned, ac = self.get_best_armorset(return_ac=True)
+        dis = agent.bfs()
+        candidates = []
+        for y, x in zip(*(level.shop_interior & (level.item_count > 0) & (dis >= 0)).nonzero()):
+            for item in level.items[y, x]:
+                if (item.shop_status != Item.FOR_SALE or not item.is_armor()
+                        or not item.is_unambiguous() or item.status == Item.CURSED
+                        or not item.price or item.price > budget or power.never_wear(item)):
+                    continue
+                slot = item.object.sub
+                if agent.character.role == Character.MONK and slot == O.ARM_SUIT:
+                    continue
+                if slot == O.ARM_SHIELD and self.items.main_hand is not None and self.items.main_hand.objs[0].bi:
+                    continue
+                previous = owned[slot]
+                if previous is not None and previous.equipped and previous.status == Item.CURSED:
+                    continue
+                gain = (10 if ac[slot] is None else ac[slot]) - item.get_ac()
+                if gain <= 0:
+                    continue
+                old_weight = 0 if previous is None else previous.weight()
+                if self.items.total_weight - old_weight + item.unit_weight() > agent.character.carrying_capacity:
+                    continue
+                candidates.append((gain, -item.price, -dis[y, x], int(y), int(x), item.object.name))
+        if not candidates:
+            yield False
+        _, _, _, y, x, name = max(candidates)
+        yield True
+        agent.go_to(y, x)
+        # Recheck the actual offer after walking and any combat preemption.
+        if (agent.blstats.y, agent.blstats.x) != (y, x) or agent.get_visible_monsters():
+            return
+        target = next((i for i in self.items_below_me
+                       if i.shop_status == Item.FOR_SALE and i.is_unambiguous()
+                       and i.object.name == name and i.price and i.price <= agent.blstats.gold), None)
+        if target is None:
+            return
+        agent.log(f'SHOP armor: buying {target.text!r}')
+        self.pickup(target, 1)
+        self.pay_or_drop_unpaid()
+
     @utils.debug_log('inventory.buy_food')
     @Strategy.wrap
     def buy_food(self):
