@@ -941,6 +941,7 @@ class GlobalLogic:
             ])
             # an Overloaded were form can neither fight nor eat: drop its load first (LYCAN_FIXES)
             .preempt(self.agent, [
+                self.agent.summon_were_allies(),
                 self.agent.were_unload().condition(lambda: jf_config.LYCAN_FIXES),
             ])
             .preempt(self.agent, [

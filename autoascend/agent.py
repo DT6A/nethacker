@@ -2582,6 +2582,35 @@ class Agent:
             return
         yield False
 
+    @Strategy.wrap
+    def summon_were_allies(self):
+        # hypothesis: a lycanthrope in were form fights its packs alone at XL 5-7 on Dlvl 1 (s12: a wererat's
+        # bite, then a hill orc; s6: a werejackal's pack) -- #monster (polyself.c dosummon -> were.c were_summon,
+        # 10 Pw) calls tame rats/jackals of our own kind into the melee, so once the form's HP is no longer a
+        # buffer over healthy human HP, summon them instead of trading blows alone
+        # sources: https://nethackwiki.com/wiki/Lycanthropy, NetHack 3.6.6 src/polyself.c dosummon(),
+        #          src/were.c were_summon(), /refs/past_runs/20260930-154052/4.diff (summon_were_allies)
+        bl = self.blstats
+        if bl.energy < 10 or self.character.prop.hallu or not self.character.prop.polymorph or \
+                self.character.poly_hp_is_buffer() or \
+                getattr(self, '_were_summon_disabled', False):
+            yield False
+        form = MON.permonst(self.glyphs[bl.y, bl.x])
+        if form.mname not in ('wererat', 'werejackal', 'werewolf') or \
+                ord(form.mlet) not in (MON.S_RODENT, MON.S_DOG):
+            yield False
+        nearby = [m for m in self.get_visible_monsters()
+                  if utils.adjacent((m[1], m[2]), (bl.y, bl.x))]
+        if not nearby:
+            yield False
+        yield True
+        energy = self.blstats.energy
+        self.log(f'LYCAN summoning allies against: {[m[3].mname for m in nearby]}')
+        self.step(A.Command.MONSTER)
+        if self.blstats.energy >= energy:
+            # a rejected command must not loop at zero turns
+            self._were_summon_disabled = True
+
     @utils.debug_log('were_unload')
     @Strategy.wrap
     def were_unload(self):
