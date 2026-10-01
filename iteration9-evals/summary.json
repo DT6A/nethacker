@@ -1,0 +1,97 @@
+{
+  "heldout_seeds": [
+    6390,
+    6419
+  ],
+  "seeds_per_character": 30,
+  "evaluation_id": "local",
+  "parent": {
+    "training": {
+      "games": 30,
+      "overall": 0.41235436350422594,
+      "characters": {
+        "tou-hum-neu-fem": 0.40448513878636017,
+        "tou-hum-neu-mal": 0.42022358822209177
+      },
+      "errors": [],
+      "early_losses": 6
+    },
+    "heldout": {
+      "games": 60,
+      "overall": 0.1383662338848698,
+      "characters": {
+        "tou-hum-neu-fem": 0.1488645057494834,
+        "tou-hum-neu-mal": 0.12786796202025616
+      },
+      "errors": []
+    }
+  },
+  "candidates": {
+    "reserve": {
+      "training": {
+        "games": 30,
+        "overall": 0.41535191252981574,
+        "characters": {
+          "tou-hum-neu-fem": 0.4151931727015215,
+          "tou-hum-neu-mal": 0.41551065235810997
+        },
+        "errors": [],
+        "early_losses": 6
+      },
+      "heldout": {
+        "games": 60,
+        "overall": 0.14036212186125613,
+        "characters": {
+          "tou-hum-neu-fem": 0.14875543574879085,
+          "tou-hum-neu-mal": 0.13196880797372143
+        },
+        "errors": []
+      },
+      "eligible": true
+    },
+    "readiness": {
+      "training": {
+        "games": 30,
+        "overall": 0.20440041452888436,
+        "characters": {
+          "tou-hum-neu-fem": 0.20438744804372594,
+          "tou-hum-neu-mal": 0.20441338101404277
+        },
+        "errors": [],
+        "early_losses": 16
+      },
+      "heldout": {
+        "games": 60,
+        "overall": 0.1509406114512648,
+        "characters": {
+          "tou-hum-neu-fem": 0.15304556942834371,
+          "tou-hum-neu-mal": 0.1488356534741859
+        },
+        "errors": []
+      },
+      "eligible": false
+    },
+    "burst-camera": {
+      "training": {
+        "games": 30,
+        "overall": 0.4067458947343778,
+        "characters": {
+          "tou-hum-neu-fem": 0.40358575181244655,
+          "tou-hum-neu-mal": 0.409906037656309
+        },
+        "errors": [],
+        "early_losses": 6
+      },
+      "heldout": {
+        "games": 60,
+        "overall": 0.13769056320541598,
+        "characters": {
+          "tou-hum-neu-fem": 0.14751316439057577,
+          "tou-hum-neu-mal": 0.12786796202025616
+        },
+        "errors": []
+      },
+      "eligible": false
+    }
+  }
+}

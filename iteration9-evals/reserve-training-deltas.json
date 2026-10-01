@@ -1,0 +1,90 @@
+[
+  {
+    "trajectory_id": 1,
+    "character": "tou-hum-neu-fem",
+    "parent": 0.017539535798967013,
+    "candidate": 0.036887590648350246,
+    "delta": 0.019348054849383234,
+    "parent_cause": "killed by a jackal",
+    "candidate_cause": "killed by a fox",
+    "parent_depth": 3,
+    "candidate_depth": 3
+  },
+  {
+    "trajectory_id": 1,
+    "character": "tou-hum-neu-mal",
+    "parent": 0.017539535798967013,
+    "candidate": 0.036887590648350246,
+    "delta": 0.019348054849383234,
+    "parent_cause": "killed by a jackal",
+    "candidate_cause": "killed by a fox",
+    "parent_depth": 3,
+    "candidate_depth": 3
+  },
+  {
+    "trajectory_id": 5,
+    "character": "tou-hum-neu-fem",
+    "parent": 0.6015648510382184,
+    "candidate": 0.5543572044866264,
+    "delta": -0.04720764655159204,
+    "parent_cause": "killed by a tengu",
+    "candidate_cause": "drowned in deep water",
+    "parent_depth": 28,
+    "candidate_depth": 27
+  },
+  {
+    "trajectory_id": 8,
+    "character": "tou-hum-neu-fem",
+    "parent": 0.3654881095022441,
+    "candidate": 0.6015648510382184,
+    "delta": 0.23607674153597435,
+    "parent_cause": "killed by an Elvenking",
+    "candidate_cause": "killed by a carnivorous ape",
+    "parent_depth": 19,
+    "candidate_depth": 28
+  },
+  {
+    "trajectory_id": 9,
+    "character": "tou-hum-neu-fem",
+    "parent": 0.5543572044866264,
+    "candidate": 0.5067605633802816,
+    "delta": -0.04759664110634476,
+    "parent_cause": "killed by a gargoyle",
+    "candidate_cause": "killed by a winged gargoyle",
+    "parent_depth": 27,
+    "candidate_depth": 26
+  },
+  {
+    "trajectory_id": 5,
+    "character": "tou-hum-neu-mal",
+    "parent": 0.6015648510382184,
+    "candidate": 0.5543572044866264,
+    "delta": -0.04720764655159204,
+    "parent_cause": "killed by a tengu",
+    "candidate_cause": "drowned in deep water",
+    "parent_depth": 28,
+    "candidate_depth": 27
+  },
+  {
+    "trajectory_id": 8,
+    "character": "tou-hum-neu-mal",
+    "parent": 0.6015648510382184,
+    "candidate": 0.3654881095022441,
+    "delta": -0.23607674153597435,
+    "parent_cause": "killed by a winged gargoyle",
+    "candidate_cause": "killed by an Elvenking",
+    "parent_depth": 28,
+    "candidate_depth": 19
+  },
+  {
+    "trajectory_id": 11,
+    "character": "tou-hum-neu-mal",
+    "parent": 0.40832255575976223,
+    "candidate": 0.6015648510382184,
+    "delta": 0.1932422952784562,
+    "parent_cause": "killed by a soldier",
+    "candidate_cause": "killed by a minotaur",
+    "parent_depth": 22,
+    "candidate_depth": 28
+  }
+]

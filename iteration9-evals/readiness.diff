@@ -1,0 +1,21 @@
+--- parent/autoascend/agent.py
++++ readiness/autoascend/agent.py
+@@ -1892,6 +1892,18 @@
+                 yield True
+                 self.character.parse_enhance_view()
+                 # self.character.parse_spellcast_view()
++
++            # hypothesis: ready a melee weapon before enemies close, avoiding a free attack while wielding at contact.
++            # sources: https://nethackwiki.com/wiki/Wield, https://nethackwiki.com/wiki/Tourist, /refs/top/5088ac9a49a3 (avoid combat weapon swaps)
++            if self.blstats.experience_level <= 5 and not self.character.prop.polymorph and \
++                    not self.character.prop.blind and not self.character.prop.hallu and \
++                    not self.hands_welded() and all(
++                        max(abs(m[1] - self.blstats.y), abs(m[2] - self.blstats.x)) >
++                        1 + (max(12, m[3].mmove) + 11) // 12 for m in monsters):
++                best = self.inventory.get_best_melee_weapon()
++                if best is not None and best != self.inventory.items.main_hand and \
++                        self.inventory.wield(best):
++                    continue
+ 
+             move_priority_heatmap, actions = combat.fight_heur.get_priorities(self)
+             actions.extend(combat.fight_heur.get_move_actions(self, dis, move_priority_heatmap))

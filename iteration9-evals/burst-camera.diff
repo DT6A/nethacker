@@ -1,0 +1,55 @@
+--- parent/autoascend/agent.py
++++ burst-camera/autoascend/agent.py
+@@ -2074,6 +2074,9 @@
+             if not hasattr(self, '_camera_flashed'):
+                 self._camera_flashed = {}
+             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
++            early_flash_key = (self.current_level().key(),
++                               int(self.glyphs[self.blstats.y + dy, self.blstats.x + dx])) \
++                if not self.global_logic.dive.diving else None
+             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
+             pass
+             with self.atom_operation():
+@@ -2081,6 +2084,8 @@
+                 self.type_text(self.inventory.items.get_letter(camera))
+                 if 'In what direction' in self.message:
+                     self.direction(dir)
++                    if early_flash_key is not None:
++                        self.__dict__.setdefault('_early_camera_used', set()).add(early_flash_key)
+                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                 else:
+                     self.log(f'CAMERA no prompt: {self.message!r}')
+--- parent/autoascend/combat/fight_heur.py
++++ burst-camera/autoascend/combat/fight_heur.py
+@@ -316,7 +316,11 @@
+     if camera is None:
+         return []
+     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+-    if not agent.global_logic.dive.diving:
++    # hypothesis: interrupt a rapidly losing early fight against human lycanthropes before their damage exhausts HP.
++    # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Lycanthrope, https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/uhitm.c (flash_hits_mon)
++    early_rescue = (not agent.global_logic.dive.diving and agent.blstats.experience_level <= 5 and
++                    ratio < 0.5 and agent.global_logic.dive._fast_hp_loss())
++    if not agent.global_logic.dive.diving and not early_rescue:
+         return []
+     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
+     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
+@@ -349,9 +353,17 @@
+         on_elbereth = True
+     actions = []
+     for monster in monsters:
+-        _, y, x, mon, _ = monster
++        _, y, x, mon, glyph = monster
+         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+             continue
++        if early_rescue:
++            # Human were forms already ignore Elbereth. Leave animal forms
++            # sighted so engraving remains an escape; never reflash a species
++            # on this level after an adjacent flash has blinded it indefinitely.
++            if not (getattr(mon, 'mflags2', 0) & MON.M2_WERE) or \
++                    not dive._melee_ignores_elbereth(mon) or \
++                    (agent.current_level().key(), int(glyph)) in getattr(agent, '_early_camera_used', set()):
++                continue
+         if on_elbereth and not dive._melee_ignores_elbereth(mon):
+             continue
+         if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):

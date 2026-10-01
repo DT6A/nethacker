@@ -1,0 +1,19 @@
+--- parent/autoascend/item/inventory.py
++++ inactive-armor/autoascend/item/inventory.py
+@@ -926,7 +926,15 @@
+             is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
+ 
+             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
+-            if item.status not in allowed_statuses and not is_dragonscale_armor:
++            # hypothesis: fill empty armor slots early instead of fighting at AC9 while useful mundane armor awaits curse-testing.
++            # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Armor, https://nethackwiki.com/wiki/Beatitude
++            slot_names = {O.ARM_SUIT: 'suit', O.ARM_SHIELD: 'off_hand', O.ARM_HELM: 'helm',
++                          O.ARM_GLOVES: 'gloves', O.ARM_BOOTS: 'boots', O.ARM_CLOAK: 'cloak'}
++            unchecked_upgrade = (item.status == Item.UNKNOWN and not item.object.mgc and
++                                 item.get_ac() < 0 and item.object.sub in slot_names and
++                                 (item.equipped or (self.agent.blstats.experience_level <= 5 and
++                                  getattr(self.items, slot_names[item.object.sub]) is None)))
++            if item.status not in allowed_statuses and not is_dragonscale_armor and not unchecked_upgrade:
+                 continue
+ 
+             slot = item.object.sub
