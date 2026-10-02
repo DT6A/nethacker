@@ -134,12 +134,7 @@ GEHENNOM_DIVE = True
 # Dying on the castle level costs nothing: the castle is as deep as a dig can go.
 CASTLE_PASSAGE = False
 # engulfed: wield the best melee weapon before fighting out (a dig-diver is swallowed with its pick-axe)
-# hypothesis: the dig-dive (the only stage scoring > 0.1) is swallowed holding the pick-axe; every blow
-# from inside an engulfer hits, so one turn to take up the real weapon shortens the engulf (dev death:
-# energy vortex on Dlvl 25 twice).
-# sources: base-jf25 s13 log quoted in agent.py engulf code (pick-axe bashing in a fire vortex, dead
-# 2 turns later); nethackwiki Tourist (weapon skills); dev results (energy vortex deaths, Dlvl 25)
-ENGULF_WIELD = True
+ENGULF_WIELD = False
 # a Hungry (or worse) dive walks to fresh edible corpses within DIVE_EAT_RADIUS (BFS steps) and eats them
 DIVE_EAT = False
 DIVE_EAT_RADIUS = 8

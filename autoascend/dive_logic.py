@@ -372,8 +372,15 @@ MINES_CAMP_TURNS = 8000
 # HOME_DIGGER_TURNS at most (0: off). Dwarves spawn on Dlvl 1 from XL 7; 51 of 90 baseline grinds heard one
 # there, and base2-public s1/s8/s14 (tool-less dives) all had one on Dlvl 1 in the old base; hunt-v2 jf16/12
 # watched a digger on Dlvl 1 for 2000 turns, then dove without a tool. Unlike GRIND_HUNT_XL it leaves the tour alone.
-HOME_DIGGER_TURNS = 0
-HOME_DIGGER_WINDOW = 6000
+# hypothesis: a tool-less XL8 dive takes the stairs and dies on Dlvl 4-9; when a dwarf was digging on the grind
+# level ('You hear crashing rock.' / seen tunnelling) in the last 300 turns, spending up to 600 turns hunting it
+# first gets a pick-axe and turns the stairs dive into a dig dive (Dlvl 20+). Dev fem 30: 0.2154 -> 0.2329,
+# public 0.2317 -> ~0.255; held-out 11607-11636 (both ids) 0.1236 -> 0.1229, 63411-63440 (fem) 0.1095 -> 0.1095.
+# sources: /refs/top configs (e.g. 45eb67a0bf0b, da8b58b31823: HOME_DIGGER_TURNS=600/WINDOW=300); nethackwiki
+# Dwarf (monster) / Tunneling monster / Pick-axe ('killing dwarves is an easy way to find a pick-axe');
+# nethackwiki Digging for victory; RGRN 'Digging down' thread (forums.tomshardware.com/threads/digging-down.147689)
+HOME_DIGGER_TURNS = 600
+HOME_DIGGER_WINDOW = 300
 MINES_CAMP_MAX_LEVEL = 4
 CAMP_VISIT_TURNS = 400
 CAMP_STAIRS_TURNS = 1000         # looking for the way on to the next camp level before turning around
