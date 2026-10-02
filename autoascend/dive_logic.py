@@ -26,6 +26,7 @@ from scipy import ndimage
 from . import objects as O
 
 from . import jf_config, jf_log, power, utils, valley
+from .monattk import AT_WEAP, MELEE_ATTACKS
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -1266,6 +1267,13 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
+        # hypothesis: XL8 dives die to a strong melee monster (owlbear, mumak, black unicorn, soldier ant) that
+        # takes a 50-HP hero below 40% and then to 0 in the 1-2 turns the Elbereth engraving costs; starting the
+        # rest as soon as HP is under two rounds of the near monsters' expected melee damage leaves time to engrave
+        # sources: NetHack 3.6.6 src/monst.c attack table (via /refs/top/0df2e3a5cda6 nhmodel/mondata.py),
+        # monmove.c onscary(); nethackwiki.com/wiki/Elbereth; nethackwiki.com/wiki/Why_do_I_keep_dying
+        if not resting and self.diving and bl.hitpoints <= 2 * self._near_melee_damage():
+            falling = True
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1528,6 +1536,18 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
+
+    def _near_melee_damage(self):
+        """Expected damage per turn if every near hostile above level 2 lands all its melee attacks (speed over 12
+        counted); weak monsters are left out like in the lone-weak-monster rule: they are better killed than hidden from."""
+        total = 0.0
+        for m in self._near_hostiles():
+            if getattr(m[3], 'mlevel', 99) <= 2:
+                continue
+            attacks = MELEE_ATTACKS.get(getattr(m[3], 'mname', ''), ())
+            dmg = sum(3.5 if a == AT_WEAP and n == 0 else n * (d + 1) / 2 for a, n, d in attacks)
+            total += dmg * max(1.0, getattr(m[3], 'mmove', 12) / 12)
+        return total
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats
