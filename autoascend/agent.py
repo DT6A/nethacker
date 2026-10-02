@@ -30,7 +30,6 @@ BLStats = namedtuple('BLStats',
 
 
 GRIND_DESPERATE_PRAYER_GAP = 200
-TOUR_EAT_FIRST = True
 
 
 class Agent:
@@ -1238,15 +1237,6 @@ class Agent:
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
-        # hypothesis: the Dlvl-1 grind spends its prayer on hunger (Weak, 1700-2300 turns since the last one) while
-        # carrying food, and the HP emergency that follows 200-700 turns later finds no safe prayer: the logged
-        # early losses (giant bat, gnome zombie, sewer rat, gecko on Dlvl 1) all die that way. A Tourist starts
-        # with lots of food -- eat it when Weak in the tour and keep the prayer for low HP.
-        # sources: https://nethackwiki.com/wiki/Tourist (10-20 starting comestibles),
-        #          https://nethack.fandom.com/wiki/Protection_racket ("you usually don't need to pray for food
-        #          early, so you can keep prayer for low-HP emergencies"), https://nethackwiki.com/wiki/Prayer
-        if TOUR_EAT_FIRST and not self.global_logic.dive.diving:
-            return bool(self.edible_carried_food())
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
             return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and

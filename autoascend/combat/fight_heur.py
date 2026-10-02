@@ -77,6 +77,18 @@ def missiles_risk_the_watch(agent):
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
 
+def _bashes_in_melee(agent):
+    """The main hand only bashes for 1d2 (nothing, a launcher, ammo or a dart/shuriken stack)."""
+    if agent.character.role == agent.character.MONK:
+        return False
+    w = agent.inventory.items.main_hand
+    if w is None:
+        return True
+    if not w.is_unambiguous():
+        return False
+    return w.is_launcher() or w.is_fired_projectile() or w.object.name in ('dart', 'shuriken')
+
+
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -119,6 +131,20 @@ def ranged_priority(agent, dy, dx, monsters):
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
                 return None
+            if dis == 1 and launcher is None and _bashes_in_melee(agent):
+                # hypothesis: a Tourist's melee is a 1d2 bash with its wielded +2 darts (uhitm.c hmon_hitmon:
+                # missiles and ammo used in hand-to-hand do rnd(2), no enchantment), while a thrown +2 dart
+                # does d3+2 with multishot from Basic skill. The early losses (giant bats, jackals, rats,
+                # geckos, gnomes on Dlvl 1 at XL 1-7) are melee fights lost at 1d2 per hit; throwing the
+                # darts point-blank instead (they land under/behind the target and are picked up again)
+                # roughly triples the damage per turn until a real melee weapon is wielded.
+                # sources: https://nethackwiki.com/wiki/Tourist ("it is usually better to kill things by
+                #          throwing your darts in the early stages"), https://nethackwiki.com/wiki/Dart,
+                #          https://nethack.fandom.com/wiki/Giant_bat ("USE YOUR DARTS"), NetHack 3.6.6
+                #          src/uhitm.c hmon_hitmon() (bashing with a missile: tmp = rnd(2))
+                if mon.mname == 'gas spore':
+                    return None
+                return 20, y, x, monster[0]
             if dis in (1, 2):
                 ret -= 5
             if dis == 1:
