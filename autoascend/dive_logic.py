@@ -493,6 +493,7 @@ class DiveLogic:
         self._demon_vigil_until = -1       # turn until which a released water demon is kept off with Elbereth
         self._faint_start = None           # turn the current faint began (last awake observation)
         self._guard_weak_since = None      # turn the current Weak spell began (FAINT_GUARD_IDLE)
+        self._ranged_hit_turn = -10 ** 9   # last turn a missile, wand or ray hit us (RANGED_ON_ELB)
         self._guard_hold_until = -1        # keep holding the faint guard's Elbereth until this turn (IDLE)
         self._last_update_turn = 0
         self.pet_seen = {}                 # level key -> last turn a pet glyph was in view
@@ -591,6 +592,17 @@ class DiveLogic:
                 agent._fainting_since = turn
         else:
             agent._fainting_since = None
+        if jf_config.RANGED_ON_ELB:
+            # every message since the last update: volleys and zaps arrive inside other atomic operations
+            hist = agent._message_history
+            start = getattr(self, '_ranged_seen', 0)
+            if start > len(hist):
+                start = 0
+            self._ranged_seen = len(hist)
+            if self._RANGED_HIT.search(' '.join(hist[start:] + [agent.message])):
+                if turn - self._ranged_hit_turn > jf_config.RANGED_BREAK_TURNS:
+                    agent.log(f'RANGED hit: holds and Elbereth waits off for {jf_config.RANGED_BREAK_TURNS} turns')
+                self._ranged_hit_turn = turn
         if agent.blstats.hunger_state == Hunger.WEAK:
             if agent._weak_since is None:
                 agent._weak_since = turn
@@ -1249,11 +1261,28 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
+    # hypothesis: Elbereth only stops melee (monmove.c: a scared monster still throws, fires and zaps), so the
+    # Elbereth holds (rest, faint guard/shelter, demon vigil) and fight2's wait-on-Elbereth just stand in the
+    # line of fire of a dagger-throwing hill orc / arrow-firing elf / wand user until HP runs out; a missile,
+    # wand or ray hit switches them off for RANGED_BREAK_TURNS so fight2 closes in or leaves the line
+    # sources: /refs/top/712a14ce2673 nhbot/dive_logic.py shot_recently (RANGED_ON_ELB, RANGED_BREAK_TURNS),
+    #          https://nethackwiki.com/wiki/Elbereth (does not stop ranged attacks),
+    #          https://nethackwiki.com/wiki/Monster_item_use
+    # 'You are hit by an arrow', 'The bolt of fire hits you!', 'The wand hits you!'; melee reads 'The <m> hits!'
+    _RANGED_HIT = re.compile(r"You are hit by |\bhits you[!.]")
+
+    def shot_recently(self):
+        return jf_config.RANGED_ON_ELB and \
+            self.agent.blstats.time - self._ranged_hit_turn <= jf_config.RANGED_BREAK_TURNS
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
         agent = self.agent
         bl = agent.blstats
+        if self.shot_recently():
+            self._elbereth_resting = False
+            yield False
         resting = self._elbereth_resting
         threshold = ELBERETH_REST_UNTIL if resting else ELBERETH_REST_BELOW
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
@@ -1303,6 +1332,8 @@ class DiveLogic:
         turn = agent.blstats.time
         if 'You unleash a water demon' in agent.message:
             self._demon_vigil_until = turn + (jf_config.DEMON_VIGIL_TURNS if jf_config.DEMON_FIX else 150)
+        if self.shot_recently():
+            yield False
         if turn > self._demon_vigil_until or agent.current_level().dungeon_number == GEHENNOM:
             yield False
         if DiveLogic.WATER_DEMON is None:
@@ -1386,6 +1417,8 @@ class DiveLogic:
         """Starving (Weak or worse), no food carried, prayer not yet safe: wait on Elbereth."""
         agent = self.agent
         bl = agent.blstats
+        if self.shot_recently():
+            yield False
         # after a failed prayer no prayer is coming (the god stays angry): waiting only starves, and it
         # blocked the rescue dive (two replays sat on Elbereth until 'died of starvation')
         # a vault guard (we were teleported into a vault) must be answered and followed out, and guards
@@ -1443,6 +1476,8 @@ class DiveLogic:
                 (agent.prayer_failed and not rescue_guard) or \
                 agent.current_level().dungeon_number == GEHENNOM or agent.character.prop.blind or \
                 agent.edible_carried_food():
+            yield False
+        if self.shot_recently():
             yield False
         # a vault guard must be answered and followed (see faint_shelter)
         if utils.isin(agent.glyphs, G.GUARD).any():

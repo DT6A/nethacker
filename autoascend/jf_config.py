@@ -342,3 +342,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# a missile/wand/ray hit breaks the Elbereth holds (rest, faint guard/shelter, demon vigil) and fight2's
+# wait-on-Elbereth for RANGED_BREAK_TURNS turns (see dive_logic.shot_recently; sources: /refs/top/712a14ce2673)
+RANGED_ON_ELB = True
+RANGED_BREAK_TURNS = 8

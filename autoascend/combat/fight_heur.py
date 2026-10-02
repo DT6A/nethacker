@@ -293,6 +293,9 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
+    # RANGED_ON_ELB: no waiting on Elbereth while something shoots at us (it only stops melee)
+    if agent.global_logic.dive.shot_recently():
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
