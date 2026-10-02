@@ -329,6 +329,11 @@ WAND_STAIRS_FIX = True
 # don't blind Elbereth-respecting monsters with the camera while Elbereth can be written (fight_heur.camera_actions)
 CAMERA_ELBERETH_FIX = True
 
+# AT_ELBERETH_FIX (combat/fight_heur.py at_fix_active): while diving, fight monsters that melee through Elbereth
+# (no -100 attack penalty, AT_FOCUS bonus, no waiting on / engraving Elbereth for them)
+AT_ELBERETH_FIX = True
+AT_FOCUS = 10
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
