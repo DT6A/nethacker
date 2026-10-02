@@ -65,6 +65,9 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
+# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
+PICK_DETOUR = True
+PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
@@ -98,17 +101,6 @@ BOSS_MONSTERS = ('minotaur', 'ettin', 'titan', 'lich', 'demilich', 'master lich'
                  'energy vortex', 'black dragon', 'red dragon', 'white dragon', 'blue dragon',
                  'green dragon', 'yellow dragon', 'orange dragon', 'silver dragon', 'gray dragon')
 ARRIVAL_RETREAT_REST = 150     # turns to wait upstairs before trying that staircase again
-# hypothesis: the XL 8 stairs dive (no digging tool) dies on Dlvl 2-9 within a few turns of walking down into
-# soldier/fire ants, elves, a gnome lord gang: the crowded-arrival retreat back up the '<' is the readiness check
-# for the new level, but it almost never fired. descend() recorded the arrival AFTER agent.move('>'), and move()
-# ends an atomic operation whose update_state() runs the preempt checks, so fight2 (monsters in view: exactly a
-# crowd) raised out of move() and the arrival was never recorded; and the '<' we stand on shows '@', not the
-# stairs, so the retreat found no up staircase. Record the arrival in update() from a note taken before the move,
-# count the arrival square as an up staircase, retreat once per staircase, and only for monsters of level >= 2.
-# sources: /refs/top/b517c4ce0c87 pf_base/dive_logic.py ARRIVAL_FIX (bug B005: 31 crowd retreats in 2678
-#          descents), https://nethackwiki.com/wiki/Standard_strategy (retreat upstairs from a bad arrival),
-#          https://nethackwiki.com/wiki/Stairs (monsters adjacent follow you; others stay behind)
-ARRIVAL_FIX = True
 FULL_EXPLORE_TURNS = 2500      # per level, while under-levelled
 PORTAL_SWEEP_TURNS = 3000      # per portal level visit
 STUCK_EXPLORE_TURNS = 4000     # searching for a hidden way down before trying other things
@@ -509,9 +501,6 @@ class DiveLogic:
         self.pet_seen = {}                 # level key -> last turn a pet glyph was in view
         self._last_pos = None              # (level key, (y, x)) at the previous update
         self._arrived = None               # (level key, turn) of the last stairs arrival
-        self._arrival_pending = None       # ARRIVAL_FIX: (level key, '>' position, turn) of a stairs descent
-        self._arrival_square = None        # ARRIVAL_FIX: (level key, position) of the '<' we arrived on
-        self._crowd_retreats = {}          # ARRIVAL_FIX: (level key, '>' position) above -> crowd retreats taken
         self._avoid_stairs_until = {}      # (level key, (y, x)) -> turn: don't take this '>' before
         self._retreat_blocked_until = -1   # turn until which a failed retreat isn't retried
         self._dig_tries = {}               # level key -> pick-axe applies without falling through
@@ -694,15 +683,6 @@ class DiveLogic:
             agent.log(f'MINETOWN people in view on {key}: no dwarf hunting here')
         if key not in self.level_first_turn:
             self.level_first_turn[key] = turn
-        if ARRIVAL_FIX and self._arrival_pending is not None:
-            pkey, ppos, pturn = self._arrival_pending
-            if key != pkey:
-                # recorded here, before the preempt checks of this update run (see ARRIVAL_FIX)
-                self._arrived = (key, turn, (pkey, ppos))
-                self._arrival_square = (key, (agent.blstats.y, agent.blstats.x))
-                self._arrival_pending = None
-            elif turn - pturn > 3:
-                self._arrival_pending = None
         if key != self._last_key:
             agent.log(f'DIVE level {key} depth {agent.blstats.depth}')
             self._last_key = key
@@ -1547,13 +1527,6 @@ class DiveLogic:
         if agent.current_level().key() != key or agent.blstats.time - turn > ARRIVAL_WATCH_TURNS:
             return None
         near = self._near_hostiles(radius=CROWD_RADIUS)
-        if ARRIVAL_FIX:
-            # once the retreat works it must not loop (b517: back down onto the same giant ants 14 times), and
-            # trivial monsters (newts) don't make a crowd: one retreat per staircase, monsters of level >= 2
-            if self._crowd_retreats.get(above, 0) >= 1:
-                return None
-            near = [m for m in near if getattr(m[3], 'mlevel', 99) >= 2 or
-                    getattr(m[3], 'mname', '') in BOSS_MONSTERS]
         if len(near) >= CROWD_SIZE or any(getattr(m[3], 'mname', '') in BOSS_MONSTERS for m in near):
             return above
         return None
@@ -1581,7 +1554,6 @@ class DiveLogic:
             yield False
         if crowd is not None:
             self._avoid_stairs_until[crowd] = bl.time + ARRIVAL_RETREAT_REST
-            self._crowd_retreats[crowd] = self._crowd_retreats.get(crowd, 0) + 1
             self._arrived = None
             agent.log(f'RETREAT crowded arrival: {[m[3].mname for m in self._near_hostiles(CROWD_RADIUS)]}')
         level = agent.current_level()
@@ -1591,16 +1563,8 @@ class DiveLogic:
         # fleeing across the level from a faster monster only hands it free hits: on fast HP loss
         # (without low HP) take the stairs only if they are a step or two away
         reach = RETREAT_MAX_DISTANCE if (crowd is not None or bl.hitpoints < RETREAT_BELOW * bl.max_hitpoints) else 2
-        if ARRIVAL_FIX and crowd is not None and bl.hitpoints >= RETREAT_BELOW * bl.max_hitpoints:
-            # a crowd retreat only from (or next to) the '<' we came down: walking back through the crowd kills
-            reach = 1
         ups = [p for p in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero())
                if 0 <= dis[p] <= reach]
-        if ARRIVAL_FIX and self._arrival_square is not None and self._arrival_square[0] == level.key():
-            # the '<' we came down onto: the map shows us there, not the stairs (see ARRIVAL_FIX)
-            p = self._arrival_square[1]
-            if 0 <= dis[p] <= reach and p not in ups:
-                ups.append(p)
         if not ups:
             yield False
         yield True
@@ -1623,9 +1587,35 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        return MINES_ROUTE and not self.mines_done and \
-            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-            (not self.diving or self.digging_tool() is None)
+        if MINES_ROUTE and not self.mines_done and \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+                (not self.diving or self.digging_tool() is None):
+            return True
+        return self._pick_detour()
+
+    def _pick_detour(self):
+        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
+        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
+        # hypothesis: the XL 8 stairs dive without a digging tool dies on Dlvl 2-9 (0.075-0.098: soldier/fire
+        # ants, elves, owlbears, snakes) while a dig-dive banks Dlvl 20-29 (0.45-0.65), and the bot only ever
+        # visited the Mines as a dwarf or gnome. To a human the Mines' dwarves are hostile and each filler level
+        # holds ~2 of them, 3/8 carrying a pick-axe or mattock (makemon.c m_initweap): the dev dives that took
+        # the Mines '>' by chance picked a pick-axe up within ~150 turns. Fetch one there before the main dive.
+        # sources: https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Pick-axe,
+        #          https://nethackwiki.com/wiki/Dwarf_(monster), https://nethack.fandom.com/wiki/Digging_for_victory,
+        #          https://nethackwiki.com/wiki/Standard_strategy, /refs/top/5f4a36b6d7e9 (TOOL_RUN: Mines pick run),
+        #          http://crpgaddict.blogspot.com/2024/02/nethack-31-rust-and-ruin.html (comments: a dwarf's pick, dig down)
+        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
+                self.digging_tool() is not None or self.digging_wand() is not None:
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
+            # the last detour level: its dwarf search (should_search_dwarves) runs first, then back up
+            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
+            self.mines_done = True
+            return False
+        return True
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
@@ -3265,8 +3255,6 @@ class DiveLogic:
                 return
             agent.log(f'DIVE going down stairs at {(y, x)}')
             above = (agent.current_level().key(), (y, x))
-            if ARRIVAL_FIX:
-                self._arrival_pending = (above[0], above[1], agent.blstats.time)
             agent.move('>')
             self._arrived = (agent.current_level().key(), agent.blstats.time, above)
             return
