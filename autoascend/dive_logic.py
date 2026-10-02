@@ -372,8 +372,14 @@ MINES_CAMP_TURNS = 8000
 # HOME_DIGGER_TURNS at most (0: off). Dwarves spawn on Dlvl 1 from XL 7; 51 of 90 baseline grinds heard one
 # there, and base2-public s1/s8/s14 (tool-less dives) all had one on Dlvl 1 in the old base; hunt-v2 jf16/12
 # watched a digger on Dlvl 1 for 2000 turns, then dove without a tool. Unlike GRIND_HUNT_XL it leaves the tour alone.
-HOME_DIGGER_TURNS = 0
-HOME_DIGGER_WINDOW = 6000
+# hypothesis: XL-8 dives without a digging tool walk the Mines route and die on Dlvl 2-7 (rock mole, killer bee,
+# mumak: early losses); a dwarf heard digging on the grind level is a pick-axe within reach, so hunting it first
+# (600 turns at most, only if it was heard in the last 300 turns) turns more of those walks into dig dives.
+# sources: /refs/top/eef901e7c683 (HOME_DIGGER_TURNS=600, HOME_DIGGER_WINDOW=300),
+#          https://nethackwiki.com/wiki/Tourist ("heading directly to Minetown or Sokoban is dangerous"),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/_TB5cPDjiX8 (Mines as an early deathtrap)
+HOME_DIGGER_TURNS = 600
+HOME_DIGGER_WINDOW = 300
 MINES_CAMP_MAX_LEVEL = 4
 CAMP_VISIT_TURNS = 400
 CAMP_STAIRS_TURNS = 1000         # looking for the way on to the next camp level before turning around
