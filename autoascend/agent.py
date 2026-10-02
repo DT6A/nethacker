@@ -2337,6 +2337,66 @@ class Agent:
         low_hp = hp_ratio < 0.5 and (self.blstats.max_hitpoints - self.blstats.hitpoints > 25)
         return self.blstats.energy >= 15 and low_hp
 
+    def _sleep_wand_guard_zap(self):
+        """ (wand, dy, dx, targets) for a sleep ray at a hostile closing in while helplessness looms """
+        bl = self.blstats
+        weak = bl.hunger_state >= Hunger.WEAK
+        # only the helplessness the hypothesis is about: at low HP the fight code's prayer / heal / Elbereth
+        # already act, and spending charges there (and the turn) lost dev and held-out Healer games
+        if not weak:
+            return None
+        wands = [item for item in self.inventory.items if item.is_wand() and item.is_unambiguous() and
+                 item.object.name == 'sleep' and not self.inventory.is_known_empty(item)]
+        if not wands or combat.fight_heur.missiles_risk_the_watch(self):
+            return None
+        wand = wands[0]
+        if not hasattr(self, '_sleep_zapped'):
+            self._sleep_zapped = {}
+        key = (bl.dungeon_number, bl.level_number)
+        weak_ok = bl.hitpoints * 2 < bl.max_hitpoints
+
+        def worth(monster):
+            dist, y, x, mon, _ = monster
+            if max(abs(y - bl.y), abs(x - bl.x)) > 5 or dist == -1 and not utils.adjacent((bl.y, bl.x), (y, x)):
+                return False
+            if mon.mname in ('lichen', 'shrieker', 'unknown') or getattr(mon, 'mmove', 1) == 0:
+                return False
+            if mon.mname in combat.monster_utils.WEAK_MONSTERS and not weak_ok:
+                return False
+            # a monster we put to sleep stays where it was: don't spend charges on it again
+            return bl.time - self._sleep_zapped.get(key + (y, x), -10 ** 6) > 20
+
+        monsters = self.get_visible_monsters()
+        if not any(worth(m) for m in monsters):
+            return None
+        best = None
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy == 0 and dx == 0:
+                    continue
+                # a ray runs at most 13 squares (rn1(7,7)), so with the first 6 squares open and known it
+                # can't bounce back onto us; the fight model's bounce estimate alone let 26 of 366 zaps
+                # put the zapper to sleep on held-out games
+                walkable = self.current_level().walkable
+                if not all(0 <= bl.y + k * dy < C.SIZE_Y and 0 <= bl.x + k * dx < C.SIZE_X and
+                           walkable[bl.y + k * dy, bl.x + k * dx] for k in range(1, 7)):
+                    continue
+                bad = 0.0
+                targets = set()
+                for y, x, hit, p in combat.fight_heur.simulate_wand_path(self, wand, monsters, dy, dx):
+                    if hit in ('self', 'peaceful', 'pet'):
+                        bad += p
+                    elif hit is not None and worth(hit):
+                        targets.add((hit[1], hit[2]))
+                if bad > 0 or not targets:
+                    continue
+                score = (len(targets), -min(max(abs(y - bl.y), abs(x - bl.x)) for y, x in targets))
+                if best is None or score > best[0]:
+                    best = (score, dy, dx, targets)
+        if best is None:
+            return None
+        return wand, best[1], best[2], sorted(best[3])
+
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
@@ -2379,6 +2439,30 @@ class Agent:
         # fixing hunger, and both starved before the next safe prayer; jf25 s10 zapped its wands and drank
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
+
+        # hypothesis: the Healer's starting wand of sleep (4-8 charges) is never zapped -- item.py's
+        # is_offensive_usable_wand excludes it -- yet 33 of 39 Healer-fem Dlvl-1 grind deaths came while
+        # Weak/Fainting, guarded only by a dust Elbereth that 3.6 erodes on every scare; a sleep ray (d(6,25)
+        # turns) at the hostile closing in while we are Weak/Fainting keeps it off us through the faint and
+        # leaves a free kill
+        # sources: https://nethackwiki.com/wiki/Healer ("helpful both offensively and defensively"),
+        #          https://nethackwiki.com/wiki/Wand_of_sleep (bounces: never self-hit), https://nethackwiki.com/wiki/Elbereth,
+        #          rec.games.roguelike.nethack "HONEST ASCENSIONS" (Engrave + Wand of Sleep + healing),
+        #          /refs/top/e9c44042710b (emergency sleep zap at low HP)
+        if jf_config.SLEEP_WAND_GUARD and not poly_buffer:
+            zap = self._sleep_wand_guard_zap()
+            if zap is not None:
+                wand, dy, dx, targets = zap
+                yield True
+                self.log(f'SLEEP WAND at {[(y, x) for y, x in targets]} hunger={self.blstats.hunger_state} '
+                         f'HP {self.blstats.hitpoints}/{self.blstats.max_hitpoints}')
+                key = (self.blstats.dungeon_number, self.blstats.level_number)
+                for y, x in targets:
+                    self._sleep_zapped[key + (y, x)] = self.blstats.time
+                dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx,
+                                          allow_nonunit_distance=True)
+                self.zap(wand, dir)
+                return
 
         # hypothesis: a Healer starts knowing healing (5 Pw, 6d4 HP) and extra healing (15 Pw, 6d8 HP) with a -3
         # emergency-spell failure bonus, yet the bot never cast them (AutoAscend left the casts and the spell-menu

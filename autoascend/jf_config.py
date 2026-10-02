@@ -343,3 +343,6 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# the wand of sleep zapped at a hostile closing in while Weak/Fainting (agent.emergency_strategy)
+SLEEP_WAND_GUARD = True
