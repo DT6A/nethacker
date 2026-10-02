@@ -326,6 +326,8 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
+# don't blind Elbereth-respecting monsters with the camera while Elbereth can be written (fight_heur.camera_actions)
+CAMERA_ELBERETH_FIX = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

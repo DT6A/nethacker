@@ -65,9 +65,6 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
-# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
-PICK_DETOUR = True
-PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
@@ -1181,7 +1178,19 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
+        if self._camera_blinded(name):
+            return True
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
+
+    def _camera_blinded(self, name):
+        """A monster of this kind on this level was blinded by our camera flash lately. Adjacent, the flash
+        blinds for good (uhitm.c flash_hits_mon: mblinded = 0, mcansee = 0), and onscary() ignores Elbereth for
+        a monster that can't see -- it attacks the Elbereth square like bare floor."""
+        if not jf_config.CAMERA_ELBERETH_FIX:
+            return False
+        agent = self.agent
+        t = getattr(agent, '_camera_blinded', {}).get((agent.current_level().key(), name))
+        return t is not None and agent.blstats.time - t <= 300
 
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs
@@ -1193,7 +1202,7 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
-        return cls == MON.S_HUMAN or name == 'minotaur'
+        return cls == MON.S_HUMAN or name == 'minotaur' or self._camera_blinded(name)
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -1587,35 +1596,9 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        if MINES_ROUTE and not self.mines_done and \
-                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-                (not self.diving or self.digging_tool() is None):
-            return True
-        return self._pick_detour()
-
-    def _pick_detour(self):
-        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
-        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
-        # hypothesis: the XL 8 stairs dive without a digging tool dies on Dlvl 2-9 (0.075-0.098: soldier/fire
-        # ants, elves, owlbears, snakes) while a dig-dive banks Dlvl 20-29 (0.45-0.65), and the bot only ever
-        # visited the Mines as a dwarf or gnome. To a human the Mines' dwarves are hostile and each filler level
-        # holds ~2 of them, 3/8 carrying a pick-axe or mattock (makemon.c m_initweap): the dev dives that took
-        # the Mines '>' by chance picked a pick-axe up within ~150 turns. Fetch one there before the main dive.
-        # sources: https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Pick-axe,
-        #          https://nethackwiki.com/wiki/Dwarf_(monster), https://nethack.fandom.com/wiki/Digging_for_victory,
-        #          https://nethackwiki.com/wiki/Standard_strategy, /refs/top/5f4a36b6d7e9 (TOOL_RUN: Mines pick run),
-        #          http://crpgaddict.blogspot.com/2024/02/nethack-31-rust-and-ruin.html (comments: a dwarf's pick, dig down)
-        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
-                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
-                self.digging_tool() is not None or self.digging_wand() is not None:
-            return False
-        level = self.agent.current_level()
-        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
-            # the last detour level: its dwarf search (should_search_dwarves) runs first, then back up
-            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
-            self.mines_done = True
-            return False
-        return True
+        return MINES_ROUTE and not self.mines_done and \
+            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+            (not self.diving or self.digging_tool() is None)
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))

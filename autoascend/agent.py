@@ -2073,6 +2073,8 @@ class Agent:
             if not hasattr(self, '_camera_flashed'):
                 self._camera_flashed = {}
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
+            target = next((m[3].mname for m in self.get_visible_monsters()
+                           if (m[1], m[2]) == (self.blstats.y + dy, self.blstats.x + dx)), None)
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
             with self.atom_operation():
@@ -2081,6 +2083,11 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    if 'is blinded by the flash' in self.message and target is not None:
+                        # blind for good: it no longer respects Elbereth (dive_logic._camera_blinded)
+                        if not hasattr(self, '_camera_blinded'):
+                            self._camera_blinded = {}
+                        self._camera_blinded[(self.current_level().key(), target)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():

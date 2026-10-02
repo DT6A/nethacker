@@ -327,12 +327,25 @@ def camera_actions(agent, monsters):
     # https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (_melee_ignores_elbereth, AT_ELBERETH_FIX)
     on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
     dive = agent.global_logic.dive
+    # hypothesis: the flash blinds an adjacent monster for good (uhitm.c flash_hits_mon: mblinded = 0), and a
+    # blind monster ignores Elbereth (monmove.c onscary: !mcansee) -- yet the dive's next move at < 40% HP is
+    # the Elbereth rest: 4 of 5 logged XL8 stair-dive deaths on Dlvl 4-7 (snake, gold golem, soldier ant,
+    # winter wolf cub) flashed the attacker, engraved, and were bitten to death on an intact 'Elbereth'.
+    # While Elbereth can still be written, leave its respecters unflashed (the rest holds them off and they
+    # can't hit back); flash only the ones it can't stop. A monster we did blind counts as ignoring Elbereth.
+    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon(), src/monmove.c onscary()/distfleeck()/dochug(),
+    #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
+    #          https://nethackwiki.com/wiki/Tourist, bot logs (/tmp/logs_v: parent dive deaths s13 s177505-10)
+    can_elbereth = jf_config.CAMERA_ELBERETH_FIX and not in_gehennom(agent) and \
+        (on_elbereth or agent.can_engrave())
     actions = []
     for monster in monsters:
         _, y, x, mon, _ = monster
         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             continue
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
+            continue
+        if can_elbereth and not dive._ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
