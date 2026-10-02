@@ -131,17 +131,21 @@ def ranged_priority(agent, dy, dx, monsters):
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
                 return None
-            if dis == 1 and launcher is None and _bashes_in_melee(agent):
+            if dis == 1 and launcher is None and _bashes_in_melee(agent) and \
+                    not agent.global_logic.dive.diving:
                 # hypothesis: a Tourist's melee is a 1d2 bash with its wielded +2 darts (uhitm.c hmon_hitmon:
                 # missiles and ammo used in hand-to-hand do rnd(2), no enchantment), while a thrown +2 dart
                 # does d3+2 with multishot from Basic skill. The early losses (giant bats, jackals, rats,
                 # geckos, gnomes on Dlvl 1 at XL 1-7) are melee fights lost at 1d2 per hit; throwing the
                 # darts point-blank instead (they land under/behind the target and are picked up again)
-                # roughly triples the damage per turn until a real melee weapon is wielded.
+                # roughly triples the damage per turn until a real melee weapon is wielded. Only in the
+                # pre-dive grind (where the early losses happen): the dive should not linger collecting darts.
                 # sources: https://nethackwiki.com/wiki/Tourist ("it is usually better to kill things by
                 #          throwing your darts in the early stages"), https://nethackwiki.com/wiki/Dart,
                 #          https://nethack.fandom.com/wiki/Giant_bat ("USE YOUR DARTS"), NetHack 3.6.6
-                #          src/uhitm.c hmon_hitmon() (bashing with a missile: tmp = rnd(2))
+                #          src/uhitm.c hmon_hitmon() (bashing with a missile: tmp = rnd(2)), /refs/history/4.diff,
+                #          https://groups.google.com/d/topic/rec.games.roguelike.nethack/U4mv25Zx6rI ("the best way
+                #          to fight at melee range is to throw them")
                 if mon.mname == 'gas spore':
                     return None
                 return 20, y, x, monster[0]
