@@ -71,6 +71,17 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the grind's early losses (homunculus, hill orc, giant ant, coyote, hobgoblin on Dlvl 1 at XL 4-7) are
+# fights with a lone 'weak' monster (level <= 2) that elbereth_rest refuses to hide from at any HP >= 6 -- even while
+# the fast-HP-loss detector (RETREAT_FAST_LOSS of max HP within RETREAT_WINDOW turns) says that monster is winning
+# (832107: one homunculus took a Tourist bashing for 1d2 from 43 to 2 HP before the first rest). When HP is falling
+# fast, hide behind Elbereth from a lone weak monster too, as from any other.
+# sources: /refs/top/4211fd64f1cb (BURST_DEFENSE_EXPERIMENT.md: exempt the rapid-loss case from the weak-monster
+#          rule; a goblin death went 0.018 -> 0.466, other seeds tied), /refs/top/cbd8377702ca (same fix),
+#          https://nethackwiki.com/wiki/Elbereth (a scared monster will not attack you in melee),
+#          https://nethackwiki.com/wiki/Tourist (the early game "demands extreme caution"),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (weak hero vs werejackal / hill orc)
+BURST_DEFENSE = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 RANGED_MONSTERS = frozenset((
     'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound', 'red naga', 'black naga',
@@ -1304,8 +1315,10 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
-        # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # a lone weak monster is better killed than hidden from (engraving gives it a free hit) -- unless it is
+        # winning the fight: BURST_DEFENSE hides from it too while HP is falling fast
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
