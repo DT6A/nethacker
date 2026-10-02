@@ -260,7 +260,12 @@ TRAP_RESORT_MIN_TURNS = 1000   # ...once the dive has spent this long on the lev
 SESSILE_MEMORY = False
 # go_to() re-plans to its real target after a path is blocked mid-way (its loop variables overwrote the target,
 # so the next round aimed at the blocked square: 'end point is no longer accessible' and a strategy restart)
-GOTO_TARGET_FIX = False
+# hypothesis: a go_to() path blocked mid-way (a peaceful steps in, a square turns out unwalkable) re-plans to the
+# blocked square instead of its real target (the 'for y, x in path' loop overwrote the target), so the strategy
+# panics and restarts and the bot loses turns and position next to whatever blocked it -- during fights and flights
+# sources: /refs/top/b517c4ce0c87 pf_base/jf_config.py (GOTO_TARGET_FIX = True); autoascend/agent.py go_to()
+# (lines 1687-1709); https://nethackwiki.com/wiki/Standard_strategy
+GOTO_TARGET_FIX = True
 # the panic-loop breaker closes a square for 100 turns, not for the rest of the game (the failing moves are
 # usually ours: a bear trap, a web; a permanent forbid boxed a Mines dive in for 5000+ turns)
 # hypothesis: a permanent forbid walls the grind/dive into a pocket for thousands of turns (starving, praying
