@@ -349,7 +349,15 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    if not agent.global_logic.dive.diving or ratio >= 0.5:
+    # hypothesis: deep dig dives die beside the monsters Elbereth can't stop -- minotaurs, soldiers, sergeants,
+    # elf-lords (@ and minotaurs: monmove.c onscary) -- because DIG_ESCAPE fights an adjacent one instead of
+    # digging, and the camera waited for HP below half. Flashed adjacent, it is blind for good and flees 3 times in
+    # 4 (uhitm.c flash_hits_mon), which frees the dig: flash those at any HP while diving (seen, not yet blinded).
+    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon(), src/monmove.c onscary(), src/apply.c use_camera();
+    #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Minotaur,
+    #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist
+    early = jf_config.DIVE_FLASH_IGNORERS and agent.global_logic.dive.diving and ratio >= 0.5
+    if not agent.global_logic.dive.diving or (ratio >= 0.5 and not early):
         return []
     flashed = getattr(agent, '_camera_flashed', {})
     # hypothesis: the flash undoes the Elbereth the dive stands on: a blinded monster no longer respects it
@@ -383,6 +391,9 @@ def camera_actions(agent, monsters):
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
         if agent.blstats.time - flashed.get((y, x), -100) < 8:
+            continue
+        if early and (getattr(mon, 'mname', '') == 'unknown' or not dive._melee_ignores_elbereth(mon) or
+                      dive._camera_blinded(getattr(mon, 'mname', ''))):
             continue
         actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
     return actions

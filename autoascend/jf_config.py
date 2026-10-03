@@ -340,6 +340,8 @@ LR_ELBERETH = True
 WAND_STAIRS_FIX = True
 # don't blind Elbereth-respecting monsters with the camera while Elbereth can be written (fight_heur.camera_actions)
 CAMERA_ELBERETH_FIX = True
+# the dive flashes adjacent Elbereth-ignoring melee monsters at any HP (fight_heur.camera_actions)
+DIVE_FLASH_IGNORERS = True
 
 # hypothesis: '<pet> is confused from hunger.' (dogmove.c dog_hunger: 500 turns past its hungrytime -- a starting pet
 # that ate nothing by ~T1500; it starves 250 turns later) means our pet goes for us: mon.c mfndpos gives a confused
