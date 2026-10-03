@@ -190,9 +190,6 @@ THREAT_MIN_DIFFICULTY = 99
 THREAT_MIN_COUNT = 99
 # ... or our HP below this fraction (a faint on a smudged Elbereth took a 90-HP XL7 to 49 in one faint)
 THREAT_HP_FRAC = 0.75
-# hypothesis: an adjacent minotaur is flashed with the camera before any other action (combat/fight_heur.py)
-# sources: https://nethackwiki.com/wiki/Minotaur, https://nethackwiki.com/wiki/Expensive_camera
-CAMERA_MINOTAUR_FIRST = True
 # hypothesis: a peaceful that turns hostile keeps its glyph, and the peaceful mask follows a monster from square to
 # square by glyph (re-read from the game only when the tracking is ambiguous). A former pet comes back untame but
 # peaceful (dog.c mon_catchup_elapsed_time) and turns hostile when abused or caught in an explosion (mon.c
@@ -301,8 +298,6 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# no lycanthropy cure prayer with a hostile within 7 squares or below 3/4 HP (keep it for the fight; see cure_disease)
-LYCAN_CURE_CALM = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True

@@ -2711,20 +2711,6 @@ class Agent:
             if jf_config.LYCAN_CURE_WAIT and self.blstats.hunger_state == Hunger.HUNGRY and \
                     not self.edible_carried_food():
                 yield False
-            # hypothesis: the cure prayer resets the prayer timeout to ~rnz(350); prayed mid-fight it leaves the
-            # next HP emergency with no prayer (dev seed 2: infected by a werejackal, cure prayer at 32/67 HP
-            # beside a wererat and its summoned rats, 9/67 HP 30 turns later, failed prayer, dead at XL6).
-            # Lycanthropy is slow (a change of form, not damage), so keep the prayer while a hostile is close
-            # or HP is down, and cure once the area is calm
-            # sources: https://nethackwiki.com/wiki/Prayer (prayer timeout, major troubles),
-            #          https://nethackwiki.com/wiki/Lycanthropy (cure by prayer, not urgent),
-            #          https://nethackwiki.com/wiki/Tourist (low HP, prayer is the main heal early on),
-            #          /refs/history.md (seed-2 diagnosis: a cure prayer spent shortly before an HP emergency)
-            if jf_config.LYCAN_CURE_CALM and \
-                    (self.blstats.hitpoints * 4 < self.blstats.max_hitpoints * 3 or
-                     any(max(abs(m[1] - self.blstats.y), abs(m[2] - self.blstats.x)) <= 7
-                         for m in self.get_visible_monsters())):
-                yield False
             if self.is_safe_to_pray(jf_config.WEAK_PRAYER_GAP):
                 yield True
                 self.pray()

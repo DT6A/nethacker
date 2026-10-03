@@ -160,7 +160,13 @@ ELBERETH_DIG_RADIUS = 6
 #    (base-jf25 s0: bitten to death in its pit on Medusa-4).
 # ON (train 2): dive-safety A2, 45 games divergence +0.65; Medusa-4 3-4/7 vs 1/7, Medusa-3 2/7 vs 0/7
 DIG_ESCAPE = True
-ELBERETH_TRIES_ESCAPE = 4      # engravings per square and dig phase (before / after the pit)
+# hypothesis: a dust Elbereth erodes each time a monster flees from it, so against a crowd at a deep dig spot
+# 4 engravings per square and phase run out within a few turns, and the digger then fights the whole crowd from its
+# pit (crowds at dig spots end most deep dives: seed 1 fem went 82 -> 1 HP among a dwarf, an ogre and a gargoyle on
+# Dlvl 11); allow 8
+# sources: https://nethackwiki.com/wiki/Elbereth (a dust engraving erodes when monsters flee from it; attacking
+#          from the square erases it), https://nethackwiki.com/wiki/Pick-axe (digging down takes ~5 turns)
+ELBERETH_TRIES_ESCAPE = 8      # engravings per square and dig phase (before / after the pit)
 # DIVE_REST: a digger rests only below DIG_REST_BELOW, never to 95% before stairs, never while its pit is
 # half dug, and on Elbereth. At XL 8 HP comes back at 1 per 5 turns (allmain.c), and the deep rests were
 # fatal:
