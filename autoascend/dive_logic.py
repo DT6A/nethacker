@@ -340,6 +340,19 @@ CRASH_SEARCH_MAX = 1500
 # below 0. So: ~7 kills at turn 20000, ~3 at 9000, 1 at 3000.
 ALIGN_BUDGET = False
 ALIGN_MARGIN = 5
+# hypothesis: an early loss comes from killing our own pet: a dart thrown down a dark corridor hit the little dog
+# hidden in it ('It yelps! You kill it! You hear the rumble of distant thunder...', public seed 4 at T721). mon.c
+# xkilled: a tame kill is adjalign(-15) plus the dog's peaceful malign (-9) and Luck -1, and a neutral Tourist's
+# Dlvl-1 kills give 0 alignment back (makemon.c set_malign: newts, jackals, lichens, rats, bats are alignment 0 and
+# coaligned), so the record stays below 0 for thousands of turns and every prayer fails (pray.c can_pray: p_type 1).
+# The parent then prayed for hunger anyway at T1760 ('The Lady is displeased'), the failed prayer started the rescue
+# dive at XL3 and it died on Dlvl 7. Hold all but certain-death prayers for PET_KILL_PRAYER_HOLD turns after the
+# thunder (as after 'You murderer!'): Weak, the tour then eats its carried food instead.
+# sources: NetHack 3.6.6 src/mon.c xkilled() (mtame: adjalign(-15), change_luck(-1), "rumble of distant thunder"),
+#          src/makemon.c set_malign(), src/pray.c can_pray(), https://nethackwiki.com/wiki/Pet,
+#          https://nethackwiki.com/wiki/Alignment_record, https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Luck, https://nethackwiki.com/wiki/Tourist
+PET_KILL_PRAYER_HOLD = 3000
 # turns prayers wait after each dwarf we kill (assumed Luck -1; the Luck loss doesn't happen, see above)
 KILL_PRAYER_HOLD = 600
 # the Dlvl-1 grind (and the rest of the tour) hunts peaceful dwarves from this XL (0: off) and keeps the tool:
@@ -510,6 +523,7 @@ class DiveLogic:
         self._hp_history = []              # (turn, hp) of the last few turns
         self._status_logged = -1
         self._murder_turn = -1
+        self._pet_kill_seen = 0             # _message_history index read by the PET_KILL_PRAYER_HOLD check
         self._demon_vigil_until = -1       # turn until which a released water demon is kept off with Elbereth
         self._faint_start = None           # turn the current faint began (last awake observation)
         self._guard_weak_since = None      # turn the current Weak spell began (FAINT_GUARD_IDLE)
@@ -688,6 +702,14 @@ class DiveLogic:
             self._murder_turn = turn
             agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), turn) + 1200
             agent.log('MURDER: Luck -2, prayers held 1200 turns')
+        if PET_KILL_PRAYER_HOLD:
+            history = agent._message_history
+            start = self._pet_kill_seen if self._pet_kill_seen <= len(history) else 0
+            self._pet_kill_seen = len(history)
+            new_msgs = ' '.join(history[start:]) + ' ' + agent.message
+            if 'rumble of distant thunder' in new_msgs or 'studio audience applaud' in new_msgs:
+                agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), turn + PET_KILL_PRAYER_HOLD)
+                agent.log(f'PET KILL: alignment -24, Luck -1, prayers held until {agent.prayer_hold_until}')
         if self._hunting and self._DWARF_KILLED.search(agent.message):
             self._hunting = False
             self._dwarves_killed += 1
