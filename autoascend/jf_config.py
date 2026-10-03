@@ -190,6 +190,13 @@ THREAT_MIN_DIFFICULTY = 99
 THREAT_MIN_COUNT = 99
 # ... or our HP below this fraction (a faint on a smudged Elbereth took a 90-HP XL7 to 49 in one faint)
 THREAT_HP_FRAC = 0.75
+# the threat prayer's gap while hurt below THREAT_HURT_FRAC of max HP with a hostile within THREAT_HURT_RADIUS
+# (0: off; see agent.threat_prayer_due)
+THREAT_HURT_GAP = 800
+THREAT_HURT_FRAC = 0.6
+THREAT_HURT_RADIUS = 2
+# ... and from any point of Weak, not only the last THREAT_WEAK_MARGIN nutrition
+THREAT_HURT_WEAK = True
 # hypothesis: a peaceful that turns hostile keeps its glyph, and the peaceful mask follows a monster from square to
 # square by glyph (re-read from the game only when the tracking is ambiguous). A former pet comes back untame but
 # peaceful (dog.c mon_catchup_elapsed_time) and turns hostile when abused or caught in an explosion (mon.c

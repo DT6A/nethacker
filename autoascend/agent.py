@@ -1117,11 +1117,35 @@ class Agent:
         bl = self.blstats
         if bl.hunger_state < Hunger.WEAK:
             return False
-        if bl.hunger_state == Hunger.WEAK:
+        hurt = jf_config.THREAT_HURT_GAP and bl.hitpoints < jf_config.THREAT_HURT_FRAC * bl.max_hitpoints and \
+            any(max(abs(int(y) - bl.y), abs(int(x) - bl.x)) <= jf_config.THREAT_HURT_RADIUS
+                for _, y, x, _, _ in self.get_visible_monsters())
+        # hypothesis: hurt beside a monster while Weak, the faint is still coming (eat.c newuhs: Weak->Fainting
+        # always faints at once) and a monster that already has the bot below 60% gets 10+ free turns then;
+        # Weak is already a major trouble (pray.c in_trouble TROUBLE_STARVING), so the THREAT_HURT_GAP prayer
+        # need not wait for the last THREAT_WEAK_MARGIN nutrition
+        # sources: NetHack 3.6.6 src/pray.c in_trouble(), src/eat.c newuhs(), https://nethackwiki.com/wiki/Prayer,
+        #          https://www.reddit.com/r/nethack/comments/jewx6m/ (early game prayer for a foodless Tourist)
+        if bl.hunger_state == Hunger.WEAK and not (hurt and jf_config.THREAT_HURT_WEAK):
             est = self.uhunger_weak_estimate()
             if est is None or est > jf_config.THREAT_WEAK_MARGIN:
                 return False
-        if not self.is_safe_to_pray(jf_config.THREAT_PRAYER_GAP):
+        gap = jf_config.THREAT_PRAYER_GAP
+        # hypothesis: a Fainting grind that is already losing HP to a monster next to it dies before the 1000-turn
+        # gap comes round: dev 832108 fainted again and again on a dust Elbereth beside two hill orcs at prayer gaps
+        # 949-993 and went 71 -> 55 -> 36 -> 0 HP, dead at gap 993, 7 turns short of the threat prayer. rnz(350)
+        # leaves a prayer at an 800-turn gap a ~8.5% failure chance (5.5% at 1000); a fainted character taking
+        # hits has worse odds than that. So, while Fainting or Weak, hurt below THREAT_HURT_FRAC of max HP
+        # with a hostile within THREAT_HURT_RADIUS, the hunger prayer comes from THREAT_HURT_GAP.
+        # sources: /refs/top/008c6ff1b6ec nhbot/agent.py _hunger_threat (THREAT_NO_ELBERETH: pray when a faint has
+        #          a hostile close and no intact Elbereth), NetHack 3.6.6 src/pray.c can_pray() (major trouble:
+        #          prayer_timeout < 200), src/rnd.c rnz(), src/eat.c newuhs() (Fainting: helpless 10+ turns),
+        #          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Nutrition,
+        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/184ocw1iBkc (pray when faint),
+        #          https://www.reddit.com/r/nethack/comments/jewx6m/ (early game prayer for a foodless Tourist)
+        if hurt:
+            gap = min(gap, jf_config.THREAT_HURT_GAP)
+        if not self.is_safe_to_pray(gap):
             return False
         threat = self._hunger_threat()
         if threat is None:
