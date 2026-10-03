@@ -190,6 +190,18 @@ THREAT_MIN_DIFFICULTY = 99
 THREAT_MIN_COUNT = 99
 # ... or our HP below this fraction (a faint on a smudged Elbereth took a 90-HP XL7 to 49 in one faint)
 THREAT_HP_FRAC = 0.75
+# hypothesis: a peaceful that turns hostile keeps its glyph, and the peaceful mask follows a monster from square to
+# square by glyph (re-read from the game only when the tracking is ambiguous). A former pet comes back untame but
+# peaceful (dog.c mon_catchup_elapsed_time) and turns hostile when abused or caught in an explosion (mon.c
+# setmangry) -- then it bites us while fight2 never answers: 'killed by a kitten' / 'killed by a large cat' on
+# Dlvl 1-2 are early losses (training seed 1 fem at XL 8; the same death text on dev 832110). With HOSTILE_RECHECK
+# a domestic animal (cat, dog, horse kinds) next to us that the mask calls peaceful is taken for hostile when the
+# message says it attacked us ('The kitten bites!') and it is the only one of its name next to us.
+# sources: /refs/top/873cbbe03803 nhbot/monster_tracker/monster_tracker.py (_recheck_attackers) + jf_config.py
+#          HOSTILE_RECHECK (wiz-gno-neu-mal kitten death), /refs/top/8222879f089f, /refs/top/a613fecbf51c (same flag),
+#          https://nethackwiki.com/wiki/Pet (abuse lowers tameness; an untame former pet may turn hostile),
+#          https://nethackwiki.com/wiki/Tourist
+HOSTILE_RECHECK = True
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
 CORPSE_TRACK = False
