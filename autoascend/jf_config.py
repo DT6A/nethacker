@@ -329,6 +329,18 @@ WAND_STAIRS_FIX = True
 # don't blind Elbereth-respecting monsters with the camera while Elbereth can be written (fight_heur.camera_actions)
 CAMERA_ELBERETH_FIX = True
 
+# hypothesis: '<pet> is confused from hunger.' (dogmove.c dog_hunger: 500 turns past its hungrytime -- a starting pet
+# that ate nothing by ~T1500; it starves 250 turns later) means our pet goes for us: mon.c mfndpos gives a confused
+# monster ALLOW_U and dog_move then attacks us; fight2 never answers (the pet glyph is no target). 832111 (XL 1,
+# T1565, 'killed by a kitten', score 0) is this: the bot (and CLAIM-style corpse eating) took every kill the starving
+# kitten would have eaten. A meal cures it (dog_eat: mconf = 0): for PET_HUNGER_TURNS turns after the message, or until
+# the pet is seen eating, eat no corpse off the floor unless we are Weak ourselves.
+# sources: /refs/top/873cbbe03803 (PET_HUNGER_FIX, agent._note_pet_hunger: five 'killed by a kitten' deaths at
+#          XL 1-2, T1504-1625), NetHack 3.6.6 src/dogmove.c dog_hunger() and dog_eat(), src/mon.c mfndpos(),
+#          https://nethackwiki.com/wiki/Pet#Hunger
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
