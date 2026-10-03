@@ -507,6 +507,19 @@ def get_priorities(agent):
         draw_monster_priority_negative(agent, m, priority, walkable)
     priority[~walkable] = float('nan')
 
+    # hypothesis: a Tourist (AC 10, d2-d3 hits) dies to packs it meets in the open on Dlvl 1-5 -- a 7-monster crowd
+    # on Dlvl 1 (training seed 9, rothe), soldier ants and Mordor orcs on Mines 1 (seed 7), hill orcs on Dlvl 3
+    # (seed 6). In a corridor or doorway at most two of them reach us at a time; pull the fight there when four
+    # or more non-trivial hostiles (or any ant) are in it, as AutoAscend's disabled corridor map intended.
+    # sources: https://nethackwiki.com/wiki/Soldier_ant ("avoid being surrounded at all costs, and try to lead
+    #          them through a nearby corridor"),
+    #          GameFAQs NetHack board soldier-ant threads (fight them in a corridor / at the stairs),
+    #          web search "nethack tourist early death" (player advice: fight in corridors, use Elbereth)
+    if jf_config.CORRIDOR_FIGHT and agent.blstats.depth <= jf_config.CORRIDOR_FIGHT_MAX_DEPTH:
+        strong = [m for m in monsters if m[3].mname not in ONLY_RANGED_SLOW_MONSTERS and
+                  m[3].mname not in WEAK_MONSTERS]
+        if len(strong) >= jf_config.CORRIDOR_FIGHT_MIN or any(ord(m[3].mlet) == MON.S_ANT for m in strong):
+            priority += get_corridors_priority_map(walkable)
     # TODO: figure out how to use corridors priority so that it improves the score
     # if len([m for m in monsters if m[3].mname not in chain(ONLY_RANGED_SLOW_MONSTERS, WEAK_MONSTERS)]) >= 4:
     #     priority += get_corridors_priority_map(walkable)

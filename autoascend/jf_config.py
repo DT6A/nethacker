@@ -373,3 +373,8 @@ if LATE_FIXES:
 # wait-on-Elbereth for RANGED_BREAK_TURNS turns (see dive_logic.shot_recently; sources: /refs/top/712a14ce2673)
 RANGED_ON_ELB = True
 RANGED_BREAK_TURNS = 8
+# fight2 moves toward corridor/doorway squares while >= CORRIDOR_FIGHT_MIN non-weak hostiles (or an ant) are in the
+# fight, on Dlvl <= CORRIDOR_FIGHT_MAX_DEPTH (see combat/fight_heur.get_priorities)
+CORRIDOR_FIGHT = True
+CORRIDOR_FIGHT_MIN = 4
+CORRIDOR_FIGHT_MAX_DEPTH = 5
