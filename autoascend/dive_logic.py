@@ -65,6 +65,9 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
+# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
+PICK_DETOUR = True
+PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
@@ -1650,9 +1653,36 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        return MINES_ROUTE and not self.mines_done and \
-            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-            (not self.diving or self.digging_tool() is None)
+        if MINES_ROUTE and not self.mines_done and \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+                (not self.diving or self.digging_tool() is None):
+            return True
+        return self._pick_detour()
+
+    def _pick_detour(self):
+        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
+        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
+        # hypothesis: the Tourist's XL-8 dive without a digging tool walks the main-dungeon stairs and dies on
+        # Dlvl 2-7 (11 of 60 dev games: white unicorn, hill orcs, large cat, giant bat, elven dagger; 0.075 each),
+        # while a dig dive banks Dlvl 20-29 (0.4-0.65). The Mines were only ever routed for dwarves and gnomes; to a
+        # human their dwarves are hostile and ~3/8 carry a pick-axe or mattock, so walk Mines levels 1-2 (with
+        # the parent's dwarf hunt and MINES_CAMP) for one before the main dive.
+        # sources: /refs/top/87db8cf4544f autoascend/dive_logic.py (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
+        #          https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Dwarf_(monster),
+        #          https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tourist,
+        #          https://forums.civfanatics.com/threads/nethack.256120/page-5 (players: the Mines give the pick-axe or
+        #          mattock you need to dig), https://www.tomsarazac.com/tom/Fun/arch.html ("go to the mines first")
+        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
+                self.digging_tool() is not None or self.digging_wand() is not None:
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
+            # the last detour level: its dwarf search (should_search_dwarves) runs first, then back up
+            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
+            self.mines_done = True
+            return False
+        return True
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
