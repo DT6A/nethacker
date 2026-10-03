@@ -301,6 +301,8 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
+# no lycanthropy cure prayer with a hostile within 7 squares or below 3/4 HP (keep it for the fight; see cure_disease)
+LYCAN_CURE_CALM = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
