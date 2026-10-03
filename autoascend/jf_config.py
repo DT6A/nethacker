@@ -378,3 +378,6 @@ RANGED_BREAK_TURNS = 8
 CORRIDOR_FIGHT = True
 CORRIDOR_FIGHT_MIN = 4
 CORRIDOR_FIGHT_MAX_DEPTH = 5
+
+# 'A' monsters (lawful minions, Angels) ignore Elbereth, melee included (dive_logic._melee_ignores_elbereth)
+MINION_ELBERETH_FIX = True

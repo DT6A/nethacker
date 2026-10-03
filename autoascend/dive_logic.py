@@ -1234,6 +1234,8 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if self._camera_blinded(name):
             return True
+        if jf_config.MINION_ELBERETH_FIX and cls == MON.S_ANGEL:
+            return True   # lawful minions and Angels (see _melee_ignores_elbereth)
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _camera_blinded(self, name):
@@ -1256,6 +1258,18 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
+        # hypothesis: onscary() exempts lawful minions and Angels before it even looks at the engraving
+        # (is_lminion: M2_MINION + lawful -- every 'A': couatl, Aleax, Angel, ki-rin, Archon), so they melee
+        # through Elbereth like @ and minotaurs. Counted as Elbereth-respecting here, an adjacent couatl let
+        # DIG_ESCAPE keep digging under its bites (public 9: Dlvl 23, 68 -> 9 HP in 5 turns, dead) instead of
+        # handing it to fight2, whose camera flashes such ignorers at any HP (DIVE_FLASH_IGNORERS)
+        # sources: NetHack 3.6.6 src/monmove.c onscary() ('lawful minions, Angels' resist scaring),
+        #          include/mondata.h is_lminion, src/monst.c (couatl/Aleax/ki-rin/Archon: M2_MINION, lawful),
+        #          https://nethackwiki.com/wiki/Elbereth ("No monster represented by @ or A will respect the word"),
+        #          https://nethackwiki.com/wiki/Couatl ("Couatls ignore Elbereth like other angelic beings"),
+        #          https://nethackwiki.com/wiki/Expensive_camera
+        if jf_config.MINION_ELBERETH_FIX and cls == MON.S_ANGEL:
+            return True
         return cls == MON.S_HUMAN or name == 'minotaur' or self._camera_blinded(name)
 
     def on_medusa_level(self):
