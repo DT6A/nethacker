@@ -72,6 +72,8 @@ PICK_DETOUR_LEVELS = 2
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
+# a lone monster whose bite puts us to sleep is never 'weak' in elbereth_rest (see the hypothesis there)
+SLEEP_BITERS = ('homunculus',)
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # hypothesis: the grind's early losses (homunculus, hill orc, giant ant, coyote, hobgoblin on Dlvl 1 at XL 4-7) are
@@ -160,13 +162,7 @@ ELBERETH_DIG_RADIUS = 6
 #    (base-jf25 s0: bitten to death in its pit on Medusa-4).
 # ON (train 2): dive-safety A2, 45 games divergence +0.65; Medusa-4 3-4/7 vs 1/7, Medusa-3 2/7 vs 0/7
 DIG_ESCAPE = True
-# hypothesis: a dust Elbereth erodes each time a monster flees from it, so against a crowd at a deep dig spot
-# 4 engravings per square and phase run out within a few turns, and the digger then fights the whole crowd from its
-# pit (crowds at dig spots end most deep dives: seed 1 fem went 82 -> 1 HP among a dwarf, an ogre and a gargoyle on
-# Dlvl 11); allow 8
-# sources: https://nethackwiki.com/wiki/Elbereth (a dust engraving erodes when monsters flee from it; attacking
-#          from the square erases it), https://nethackwiki.com/wiki/Pick-axe (digging down takes ~5 turns)
-ELBERETH_TRIES_ESCAPE = 8      # engravings per square and dig phase (before / after the pit)
+ELBERETH_TRIES_ESCAPE = 4      # engravings per square and dig phase (before / after the pit)
 # DIVE_REST: a digger rests only below DIG_REST_BELOW, never to 95% before stairs, never while its pit is
 # half dug, and on Elbereth. At XL 8 HP comes back at 1 per 5 turns (allmain.c), and the deep rests were
 # fatal:
@@ -1362,7 +1358,14 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit) -- unless it is
         # winning the fight: BURST_DEFENSE hides from it too while HP is falling fast
+        # hypothesis: a homunculus is level 2 but its bite puts a non-resistant hero to sleep (AD_SLEE), and a
+        # sleeping Tourist takes free bites: dev seed 832107 fought one from 43 to 12 HP, slept, woke at 2 HP. Hide
+        # from it on Elbereth like from a strong monster once below ELBERETH_REST_BELOW
+        # sources: https://nethackwiki.com/wiki/Homunculus (sleep bite; resisted only with sleep resistance),
+        #          https://nethackwiki.com/wiki/Elbereth (a homunculus respects it),
+        #          https://steamcommunity.com/app/341390/discussions/0/613948093896568171/ ('died while helpless')
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                getattr(near[0][3], 'mname', '') not in SLEEP_BITERS and \
                 not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False

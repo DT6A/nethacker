@@ -190,6 +190,9 @@ THREAT_MIN_DIFFICULTY = 99
 THREAT_MIN_COUNT = 99
 # ... or our HP below this fraction (a faint on a smudged Elbereth took a 90-HP XL7 to 49 in one faint)
 THREAT_HP_FRAC = 0.75
+# hypothesis: an adjacent minotaur is flashed with the camera before any other action (combat/fight_heur.py)
+# sources: https://nethackwiki.com/wiki/Minotaur, https://nethackwiki.com/wiki/Expensive_camera
+CAMERA_MINOTAUR_FIRST = True
 # hypothesis: a peaceful that turns hostile keeps its glyph, and the peaceful mask follows a monster from square to
 # square by glyph (re-read from the game only when the tracking is ambiguous). A former pet comes back untame but
 # peaceful (dog.c mon_catchup_elapsed_time) and turns hostile when abused or caught in an explosion (mon.c

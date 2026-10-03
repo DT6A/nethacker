@@ -395,7 +395,16 @@ def camera_actions(agent, monsters):
         if early and (getattr(mon, 'mname', '') == 'unknown' or not dive._melee_ignores_elbereth(mon) or
                       dive._camera_blinded(getattr(mon, 'mname', ''))):
             continue
-        actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+        priority = 25 + 20 * (1 - ratio)
+        # hypothesis: an adjacent minotaur (maze fillers below Medusa) does 3d10/3d10/2d8 a turn and ignores
+        # Elbereth -- 2 of 12 deep fem games ended to one at Dlvl 25-26, one of them while the flash went to a
+        # black dragon beside it and the other trading melee blows at 65/65 HP; a blinded minotaur flees 3 times
+        # in 4 and can't find us, so flash it before anything else
+        # sources: https://nethackwiki.com/wiki/Minotaur, https://nethackwiki.com/wiki/Expensive_camera,
+        #          NetHack 3.6.6 src/uhitm.c flash_hits_mon(), src/monmove.c onscary()
+        if jf_config.CAMERA_MINOTAUR_FIRST and getattr(mon, 'mname', '') == 'minotaur':
+            priority = 200
+        actions.append((priority, ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
     return actions
 
 
