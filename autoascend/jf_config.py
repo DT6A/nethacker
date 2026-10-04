@@ -358,6 +358,10 @@ DIVE_FLASH_IGNORERS = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250
 
+# BLIND_QUAFF: agent.emergency_strategy drinks a known healing potion when blind and hurt in the dive
+BLIND_QUAFF = True
+BLIND_QUAFF_BELOW = 0.9
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

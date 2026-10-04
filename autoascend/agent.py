@@ -2419,6 +2419,26 @@ class Agent:
             self.inventory.quaff(items[0])
             return
 
+        # hypothesis: the dig dive's deep deaths are blind ones (training s3/s13: Medusa-3's ravens, 67 -> 5 HP in 5
+        # turns; s7: blinded on Dlvl 10, then hill giants on Dlvl 11). Blind, a dust Elbereth keeps all 8 letters ~1
+        # time in 3 (engrave.c: each letter degrades 1 in 11) and can't be read back, so the escape re-engraves
+        # under attack instead of digging (dust can't be felt blind: read_engr_at). Extra and full healing always cure
+        # blindness, healing unless cursed (potion.c healup cureblind): drink a known one as soon as a blind diver is
+        # being hurt, not only at 1/3 HP (the Tourist's 2 starting extra healings often last until the dive)
+        # sources: NetHack 3.6.6 src/potion.c peffects POT_HEALING/EXTRA_HEALING/FULL_HEALING (healup cureblind),
+        #          src/engrave.c doengrave (Blind && !rn2(11) per letter) and read_engr_at (DUST only if !Blind),
+        #          https://nethackwiki.com/wiki/Blindness ("any potion of extra healing"),
+        #          https://nethackwiki.com/wiki/Raven (blinding claw, "prevent reliably engraving Elbereth"),
+        #          https://www.steelypips.org/nethack/elbereth_faq.html (rec.games.roguelike.nethack FAQ: "don't count
+        #          on engraving Elbereth correctly if you're impaired"), https://nethackwiki.com/wiki/Tourist
+        if jf_config.BLIND_QUAFF and items and not poly_buffer and self.character.prop.blind and \
+                self.global_logic.dive.diving and self._hurt_recently(2) and \
+                self.blstats.hitpoints < jf_config.BLIND_QUAFF_BELOW * self.blstats.max_hitpoints:
+            yield True
+            self.log(f'BLIND quaff {items[0].text!r} at hp {self.blstats.hitpoints}/{self.blstats.max_hitpoints}')
+            self.inventory.quaff(items[0])
+            return
+
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['fruit juice']]
         if items and self.blstats.hunger_state >= Hunger.FAINTING:
