@@ -72,8 +72,6 @@ PICK_DETOUR_LEVELS = 2
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
-# a lone monster whose bite puts us to sleep is never 'weak' in elbereth_rest (see the hypothesis there)
-SLEEP_BITERS = ('homunculus',)
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # hypothesis: the grind's early losses (homunculus, hill orc, giant ant, coyote, hobgoblin on Dlvl 1 at XL 4-7) are
@@ -180,6 +178,7 @@ MEDUSA_WET_SQUARES = 30
 # ON (train 2): dive-safety A2
 DIG_TRY_FIX = True
 DIG_MAX_APPLIES = 80           # hard cap on all applies on one level (interrupted ones included)
+DIG_WALK_MIN_HP = 0.35          # DIG_ESCAPE doesn't walk off its square to dig below this with a hostile adjacent
 DIG_WALK_RADIUS = 6            # DIG_ESCAPE walks this far (BFS steps) to a square it can dig
 MEDUSA_REROLL_WET = 2          # stranded where every square has this many moat neighbours: climb and re-fall
 MEDUSA_REROLLS = 3
@@ -1358,14 +1357,7 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit) -- unless it is
         # winning the fight: BURST_DEFENSE hides from it too while HP is falling fast
-        # hypothesis: a homunculus is level 2 but its bite puts a non-resistant hero to sleep (AD_SLEE), and a
-        # sleeping Tourist takes free bites: dev seed 832107 fought one from 43 to 12 HP, slept, woke at 2 HP. Hide
-        # from it on Elbereth like from a strong monster once below ELBERETH_REST_BELOW
-        # sources: https://nethackwiki.com/wiki/Homunculus (sleep bite; resisted only with sleep resistance),
-        #          https://nethackwiki.com/wiki/Elbereth (a homunculus respects it),
-        #          https://steamcommunity.com/app/341390/discussions/0/613948093896568171/ ('died while helpless')
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                getattr(near[0][3], 'mname', '') not in SLEEP_BITERS and \
                 not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
@@ -2216,6 +2208,15 @@ class DiveLogic:
         # standing on stairs, in a doorway, on a wetter square (Medusa-3's island): walk to the nearest
         # square we can dig, a few steps at most
         if agent.blstats.time < self._dig_walk_blocked_until:
+            return None
+        # hypothesis: stepping off our square to reach a diggable one, below DIG_WALK_MIN_HP with a hostile
+        # adjacent and the HP still falling, hands it free hits for the walk and the ~5 dig turns of the pit
+        # (train logs: s13 fell to Dlvl 24 at 19/57 and walked next to an unseen attacker, s8/s1 walked at
+        # 3-4 HP): there the fight/emergency/upstairs logic plays instead, as dig_first already does below
+        # DIG_FIRST_MIN_HP
+        # sources: https://nethackwiki.com/wiki/Why_do_I_keep_dying (don't move into melee while low),
+        # https://nethackwiki.com/wiki/Elbereth (stay on the square), https://nethackwiki.com/wiki/Tourist
+        if adjacent and bl.hitpoints < DIG_WALK_MIN_HP * bl.max_hitpoints and agent._hurt_recently(2):
             return None
         target = self._dig_walk_target(max_wet)
         return None if target is None else ('step', target)
