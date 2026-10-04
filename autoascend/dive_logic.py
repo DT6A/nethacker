@@ -191,6 +191,14 @@ DIG_WAND_ESCAPE = True
 # Resting to 95% on a deep level lets its monsters come to us (an s7 dig-dive rested for 150 turns on
 # Dlvl 15 until a leocrotta took it to 2 HP): with a digging tool, rest only below this.
 DIG_REST_BELOW = 0.6
+# hypothesis: below Dlvl 13 a rest to 60% costs ~100 turns at XL 8 (1 HP per 5-6 turns, allmain.c) while the
+# level's difficulty-(depth+XL)/2 spawns and, from the filler mazes on, 0-2 Elbereth-blind minotaurs per level
+# come to the resting digger (the DIVE_REST deaths above: Dlvl 14 and 15); a hole banks a level in ~20 turns,
+# so a digger digs on unless badly hurt, as GEHENNOM_DIG_REST_BELOW already does below the Valley.
+# sources: NLE 3.6.6 mkmaze.c makemaz (minotaurs in filler mazes), https://nethackwiki.com/wiki/Minotaur,
+#          https://nethackwiki.com/wiki/Hit_points (XL<10 regeneration), https://nethackwiki.com/wiki/Monster_difficulty
+DEEP_DIG_REST_DEPTH = 13
+DEEP_DIG_REST_BELOW = 0.35
 DIG_MAX_TRIES = 20             # applies on one level without falling through: floor can't be holed
 # A cursed pick-axe digs like any other (dig.c: the curse only matters on the Plane of Earth); applied, it
 # welds to the hand, which a dig-dive can live with. Without this, the first apply of an unidentified cursed
@@ -1105,7 +1113,7 @@ class DiveLogic:
         # (not a Gehennom digger: see GEHENNOM_DIG_REST_BELOW)
         bl = agent.blstats
         digger = DIVE_REST and self._digger_here()
-        rest_below = DIG_REST_BELOW if digger else REST_BELOW
+        rest_below = self._dig_rest_below() if digger else REST_BELOW
         if bl.hitpoints < rest_below * bl.max_hitpoints and not agent.get_visible_monsters() and \
                 bl.hunger_state < Hunger.WEAK and not (digger and self._in_own_pit()) and \
                 not self._gehennom_digger():
@@ -1957,7 +1965,7 @@ class DiveLogic:
         digger = DIVE_REST and self.diving and self.digging_tool() is not None
         # a digger takes stairs like a hole: a deep rest to 95% at XL 8 (1 HP per 5 turns) lets the level's
         # monsters come (base-jf25 s13 rested 180 turns at a Dlvl 14 '>' and died there)
-        threshold = DIG_REST_BELOW if digger else REST_BEFORE_DESCEND
+        threshold = self._dig_rest_below() if digger else REST_BEFORE_DESCEND
         if agent.blstats.hitpoints >= threshold * agent.blstats.max_hitpoints:
             return False
         if digger and agent._hurt_recently(3):
@@ -1973,6 +1981,12 @@ class DiveLogic:
             return True
         agent.search(1 if agent.get_visible_monsters() else 20)
         return True
+
+    def _dig_rest_below(self):
+        """HP fraction under which a digger rests (see DEEP_DIG_REST_BELOW)."""
+        if self.agent.blstats.depth >= DEEP_DIG_REST_DEPTH and not self.in_gehennom():
+            return DEEP_DIG_REST_BELOW
+        return DIG_REST_BELOW
 
     def _digger_here(self):
         """Diving with a usable digging tool on a level we can still dig through."""
@@ -3142,7 +3156,7 @@ class DiveLogic:
             agent.go_to(*min(spots)[1])
             return True
         if tool is not None:
-            rest_below = GEHENNOM_DIG_REST_BELOW if self.in_gehennom() else DIG_REST_BELOW
+            rest_below = GEHENNOM_DIG_REST_BELOW if self.in_gehennom() else self._dig_rest_below()
             if agent.blstats.hitpoints < rest_below * agent.blstats.max_hitpoints and \
                     not (DIVE_REST and self._in_own_pit()):
                 self._task('rest before digging')
