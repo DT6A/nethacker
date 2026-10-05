@@ -2411,8 +2411,13 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+        # hypothesis: early deaths come while the prayer timeout runs (hunger prayer just used) and the Tourist's
+        # 2 starting extra healings are still unused; without a safe prayer, drink one already below 1/2 HP
+        # sources: /refs/top/d262e4b284bd (TOU_QUAFF), https://nethackwiki.com/wiki/Tourist,
+        #   https://nethackwiki.com/wiki/Potion_of_extra_healing
+        quaff_frac = 1 / 2 if not self.is_safe_to_pray() else 1 / 3
         if (
-                (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
+                (self.blstats.hitpoints < quaff_frac * self.blstats.max_hitpoints
                  or self.blstats.hitpoints < 8) and items and not poly_buffer
         ):
             yield True
