@@ -1010,6 +1010,14 @@ class GlobalLogic:
                            self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY),
                 self.agent.eat_corpses_from_ground(only_below_me=not jf_config.EAT_NEARBY_CORPSES).every(5)
                 .condition(lambda: self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY),
+                # hypothesis: Wizards' early losses are largely deaths while Weak/Fainting between hunger prayers
+                # (11 of 24 dev early losses); their force-bolt kills leave corpses beyond CLAIM_DIST, so once Hungry
+                # walk to any fresh edible corpse within HUNGRY_CORPSE_DIST steps (roles.py: Wizards only)
+                # sources: nethackwiki Corpse/Starvation ("eat everything you kill which is safe to eat");
+                # rec.games.roguelike.nethack "Eating" thread and GameFAQs "Noob questions" (eat fresh kills, pray as backup)
+                self.agent.eat_corpses_from_ground(only_below_me=False, max_dist=jf_config.HUNGRY_CORPSE_DIST).every(3)
+                .condition(lambda: jf_config.HUNGRY_CORPSE_DIST and not self.dive.diving and
+                           self.agent.blstats.hunger_state >= Hunger.HUNGRY),
                 # after a failed prayer corpses are the only food left: walk to the ones nearby
                 self.agent.eat_corpses_from_ground(only_below_me=False).every(3)
                 .condition(lambda: self.agent.prayer_failed and self.agent.blstats.hunger_state >= Hunger.HUNGRY),

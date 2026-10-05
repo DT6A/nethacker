@@ -352,6 +352,8 @@ CORPSE_TRACK = True
 CLAIM_CORPSES = True
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
+# Hungry or worse in the tour: walk to fresh edible corpses (< CORPSE_MAX_AGE) within this many steps (0: off)
+HUNGRY_CORPSE_DIST = 0
 # LIZARD_KEEP (off, verified-tier): keep one lizard corpse (10 weight, never rots) as the stoning cure -- not eaten off
 # the floor or from the pack as food; emergency_strategy eats it when Stoned (eat.c: a lizard corpse fixes petrification;
 # a prayer is the only other cure the bot has). s23, 360 pinned games: 4 'petrified by a chickatrice' deaths (Mines and
