@@ -352,8 +352,6 @@ CORPSE_TRACK = True
 CLAIM_CORPSES = True
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
-# Hungry or worse in the tour: walk to fresh edible corpses (< CORPSE_MAX_AGE) within this many steps (0: off)
-HUNGRY_CORPSE_DIST = 0
 # LIZARD_KEEP (off, verified-tier): keep one lizard corpse (10 weight, never rots) as the stoning cure -- not eaten off
 # the floor or from the pack as food; emergency_strategy eats it when Stoned (eat.c: a lizard corpse fixes petrification;
 # a prayer is the only other cure the bot has). s23, 360 pinned games: 4 'petrified by a chickatrice' deaths (Mines and
@@ -665,6 +663,11 @@ REST_FIGHT_WEAK = False
 # at 19 HP: ~0.24; a giant bat at 16: ~0.66; a jackal or newt: ~0). Off pending an A/B (research/shallow_deaths.md)
 LONE_WEAK_THREAT = False
 LONE_WEAK_TURNS = 3
+# GROUP_THREAT_ELB (dive_logic.elbereth_rest): rest on Elbereth below ELBERETH_REST_UNTIL once two or more nearby
+# hostiles could together kill us within GROUP_THREAT_TURNS turns with P >= GROUP_THREAT_PDIE
+GROUP_THREAT_ELB = True
+GROUP_THREAT_TURNS = 3
+GROUP_THREAT_PDIE = 0.1
 LONE_WEAK_PDIE = 0.1
 # never kill a gas spore whose blast reaches any @, a shop's squares (its shopkeeper may be out of view) or anything in
 # Minetown; its melee is filtered out of fight2 (throws already skip it). Explosion damage from our kill is our

@@ -164,11 +164,3 @@ OVERRIDES["wiz-hum-neu-fem"] = {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE
 OVERRIDES["wiz-hum-neu-mal"] = {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True, 'jf_config.UNSEEN_PET_GUARD': True, 'jf_config.ROLE_GRIND_LEVELS': {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}}
 OVERRIDES["wiz-orc-cha-fem"] = {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False, 'jf_config.UNSEEN_PET_GUARD': True, 'jf_config.ROLE_GRIND_LEVELS': {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}}
 OVERRIDES["wiz-orc-cha-mal"] = {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False, 'jf_config.UNSEEN_PET_GUARD': True, 'jf_config.ROLE_GRIND_LEVELS': {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}}
-# hypothesis: Wizards kill with force bolt from range, so their kills' corpses mostly lie beyond CLAIM_DIST and the
-# Dlvl 2-3 grind rides Weak/Fainting cycles between hunger prayers (11 of 24 dev early losses died fainting); walking
-# to fresh edible corpses within 8 steps once Hungry feeds them (held-out 49036-49065, 150 wiz games: 0.2359 -> 0.2596)
-# sources: nethackwiki Corpse/Starvation ("eat everything you kill which is safe"); rec.games.roguelike.nethack
-# "Eating" thread and GameFAQs "Noob questions" thread (eat fresh kills, prayer only as the backup)
-OVERRIDES["wiz"]["jf_config.HUNGRY_CORPSE_DIST"] = 8
-# gnome Wizards lost with it on the same held-out blocks (wiz-gno-neu-fem -0.005 on 30, wiz-gno-neu-mal -0.075 on 15)
-OVERRIDES.setdefault("wiz-gno", {})["jf_config.HUNGRY_CORPSE_DIST"] = 0
