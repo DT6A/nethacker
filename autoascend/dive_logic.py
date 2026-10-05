@@ -73,6 +73,13 @@ PICK_DETOUR_LEVELS = 2
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
+# proven fix: killing our own pet (a dart into a dark corridor) prints 'You hear the rumble of distant thunder...'
+# and costs alignment -15 and Luck -1 (mon.c xkilled); with Luck < 0 or a negative alignment record every prayer fails
+# (pray.c can_pray), so the grind's hunger prayers then anger the god -- hold all but certain-death prayers a while
+# sources: NetHack 3.6.6 src/mon.c xkilled(), src/pray.c can_pray(), /refs/top/a7cb4a65fa6a (PET_KILL_PRAYER_HOLD),
+#          https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Prayer
+PET_KILL_PRAYER_HOLD = 3000
+BURST_DEFENSE = True            # hide from a lone weak monster too while HP falls fast (see elbereth_rest)
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 RANGED_MONSTERS = frozenset((
@@ -493,6 +500,7 @@ class DiveLogic:
         self._hp_history = []              # (turn, hp) of the last few turns
         self._status_logged = -1
         self._murder_turn = -1
+        self._pet_kill_seen = 0            # _message_history index read by the PET_KILL_PRAYER_HOLD check
         self._demon_vigil_until = -1       # turn until which a released water demon is kept off with Elbereth
         self._faint_start = None           # turn the current faint began (last awake observation)
         self._guard_weak_since = None      # turn the current Weak spell began (FAINT_GUARD_IDLE)
@@ -671,6 +679,14 @@ class DiveLogic:
             self._murder_turn = turn
             agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), turn) + 1200
             agent.log('MURDER: Luck -2, prayers held 1200 turns')
+        if PET_KILL_PRAYER_HOLD:
+            history = agent._message_history
+            start = self._pet_kill_seen if self._pet_kill_seen <= len(history) else 0
+            self._pet_kill_seen = len(history)
+            new_msgs = ' '.join(history[start:]) + ' ' + agent.message
+            if 'rumble of distant thunder' in new_msgs or 'studio audience applaud' in new_msgs:
+                agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), turn + PET_KILL_PRAYER_HOLD)
+                agent.log(f'PET KILL: alignment -15, Luck -1, prayers held until {agent.prayer_hold_until}')
         if self._hunting and self._DWARF_KILLED.search(agent.message):
             self._hunting = False
             self._dwarves_killed += 1
@@ -1302,7 +1318,13 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # hypothesis: the lone-weak-monster exemption kept a Tourist fighting a homunculus / bat / jackal-form
+        # werejackal while it lost 30%+ of max HP within 3 turns (seed 2: homunculus, Dlvl 1, XL 7); while HP is
+        # falling fast, hide behind Elbereth from it as from any other monster (BURST_DEFENSE)
+        # sources: /refs/top/a7cb4a65fa6a autoascend/dive_logic.py (BURST_DEFENSE), https://nethackwiki.com/wiki/Elbereth,
+        #   https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
