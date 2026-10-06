@@ -1049,6 +1049,10 @@ class GlobalLogic:
             .preempt(self.agent, [
                 self.agent.fight2(),
             ])
+            .preempt(self.agent, [
+                # Weak/Fainting: ready food before waiting on a hunger prayer (agent.emergency_meal)
+                self.agent.emergency_meal(),
+            ])
             # Knight only: throw the kit's apples/carrots to the pony before hunger confuses it into
             # attacking us (dogmove.c dog_hunger / mfndpos ALLOW_U); no-op for every other role
             .preempt(self.agent, [

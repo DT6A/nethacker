@@ -3634,6 +3634,46 @@ class Agent:
 
         yield False
 
+    @Strategy.wrap
+    def emergency_meal(self):
+        """Eat ready, ordinary carried food at Weak or worse when nothing but passive molds/jellies is in view."""
+        # hypothesis: early losses in the long Dlvl 1-3 grind die Weak/Fainting while the bot waits for a hunger
+        # prayer (18 of 94 sampled early losses died during a Fainting spell, 19 after a failed prayer), with food
+        # in the pack. Eating ordinary safe food at Weak instead keeps the hero able to fight and leaves the prayer
+        # timeout free for a low-HP emergency.
+        # sources: /refs/top/035e12f00029 (agent.emergency_meal, leads pri-hum-neu-fem, val-hum-law-fem);
+        #          https://nethackwiki.com/wiki/Nutrition (Weak: -Str; Fainting: helpless for turns);
+        #          https://nethackwiki.com/wiki/Prayer (prayer timeout: keep prayer for emergencies)
+        bl = self.blstats
+        if bl.hunger_state < Hunger.WEAK or bl.carrying_capacity >= 4 or bl.prop_mask or \
+                self.character.prop.polymorph or self.global_logic.dive.levitating() or \
+                self.glyphs[bl.y, bl.x] in G.SWALLOW or self._hurt_recently(6):
+            yield False
+        # immobile, passive-only (monst.c AT_NONE): any other visible monster, even far away, rejects the meal
+        stationary = {'blue jelly', 'brown mold', 'yellow mold', 'green mold', 'red mold'}
+        for _, y, x, mon, _ in self.get_visible_monsters():
+            if mon.mname not in stationary or getattr(mon, 'mmove', None) != 0 or \
+                    max(abs(y - bl.y), abs(x - bl.x)) <= 1:
+                yield False
+        ordinary = {'apple', 'orange', 'pear', 'melon', 'banana', 'carrot',
+                    'candy bar', 'fortune cookie', 'pancake', 'lembas wafer',
+                    'cram ration', 'food ration'}
+        food = []
+        for item in self.edible_carried_food():
+            # no bag retrieval, tin opening, corpse risk, special cure or dog food
+            if item not in self.inventory.items.all_items or not item.is_unambiguous() or \
+                    item.is_corpse() or item.status not in (Item.UNCURSED, Item.BLESSED):
+                continue
+            obj = item.object
+            if obj.name in ordinary and 0 < obj.delay <= 5 and obj.nutrition > 0:
+                food.append(item)
+        if not food:
+            yield False
+        item = max(food, key=lambda i: (i.object.nutrition, -i.object.delay))
+        yield True
+        self.log(f'EMERGENCY_MEAL eating {item.text!r} (hunger {bl.hunger_state})')
+        self.inventory.eat(item, smart=False)
+
     @utils.debug_log('eat_from_inventory')
     @Strategy.wrap
     def eat_from_inventory(self):
