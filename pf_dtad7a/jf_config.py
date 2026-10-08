@@ -224,6 +224,23 @@ LOWHP_FIRST_TURN = 100
 #          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%202/ (player: molds only from range),
 #          https://nethack.fandom.com/wiki/Mold, /refs/history/6.diff, NetHack 3.6.6 src/uhitm.c passive()
 MOLD_NO_MELEE = True
+# hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon (it out-hits bare
+# hands), and get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist,
+# whose darts are its one trained (Basic, up to Expert) attack and whose melee with them is only rnd(2) (uhitm.c:
+# missiles in melee), had NO ranged attack at all: every jackal, giant bat, rothe, hobgoblin or were reaching it
+# unhurt at XL 1-7 in the Dlvl 1-4 grind, and MOLD_NO_MELEE's molds / jellies (plus floating eyes, acid blobs,
+# gas spores) unkillable blockers. dothrow.c throw_obj() splits one dart off a wielded stack (splitobj; the rest
+# stays wielded, no prompt), so with WIELDED_STACK_THROW the stack is also a throwing option while 2+ are left:
+# darts at d3+2 for monsters still approaching (2-7 squares; adjacent ones keep the melee priority), molds killed
+# from range, and the darts picked back up after the fight (decide_what_to_pickup). Melee is unchanged, unlike
+# DART_THROWER (unwield + point-blank throws), so fewer early losses to monsters that reach melee at full HP.
+# sources: https://nethackwiki.com/wiki/Tourist ('much safer to ... use [darts] against hostile monsters'),
+#          https://nethackwiki.com/wiki/Dart ('ineffective in melee, ... must be used by throwing'),
+#          https://nethackwiki.com/wiki/Source:NetHack_3.6.1/src/dothrow.c (throw_obj splitobj / remove_worn_item),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/ql26zUYXgIc (player: Tourist 'can throw the
+#          darts and still have a weapon'), https://groups.google.com/g/rec.games.roguelike.nethack/c/Gmy45ilIIIQ
+#          (floating eye blocking the way out: carry throwing weapons), /refs/history/1.diff + 10.diff (DART_THROWER)
+WIELDED_STACK_THROW = True
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -329,9 +346,21 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
-HOSTILE_RECHECK = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
+# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
+# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist can be bitten to death by its own kitten (T1504-1625 / XL 1-2 signature). A meal ends the
+# confusion (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating,
+# we eat no corpse off the floor ourselves unless Weak (PET_HUNGER_FIX, port of /refs/history/68.diff into the
+# #4/#29/#44 chain; kept in three other chains: held-out #68 0.2105->0.2191, #72 0.2070->0.2226, #73 0.2127->0.2283).
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku),
+#          src/mon.c mfndpos (mconf -> ALLOW_ALL), https://nethackwiki.com/wiki/Pet ('avoid attacking the hero
+#          themselves ... unless they are confused'), https://nethack.fandom.com/wiki/Pet,
+#          https://steamcommunity.com/app/341390/discussions/0/610573751148849294/, /refs/history/68.diff,
+#          /refs/history/72.diff, /refs/history/73.diff, /refs/past_runs/20261004-221634/1.diff
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
