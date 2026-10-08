@@ -121,23 +121,6 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
-        # hypothesis: wands come only after darts, food and the unknown bulk in this split (here: never named at
-        # all), so a Tourist whose pack is near its low capacity drops them or never picks them up on Dlvl 1-4.
-        # Gnome lords, hobbits, kobolds and orcs of the grind pick them up and zap them at the AC 10 Tourist
-        # (muse.c find_offensive/use_offensive): this parent dies 'killed by a bolt of lightning' (s1, Dlvl 3),
-        # 'a blast of frost' (s3) and 'a death ray' (421796, Dlvl 2). A wand weighs 7: during the tour keep every
-        # wand before the bulk, so none is left lying about for them (the dive keeps its own food/passage order).
-        # sources: https://nethackwiki.com/wiki/Gnome_With_the_Wand_of_Death (monsters pick up floor wands and
-        #          zap them; 'pick up every unknown wand you see'), https://nethack.fandom.com/wiki/Gnome_With_the_Wand_of_Death,
-        #          https://nethackwiki.com/wiki/Forum:What's_your_unluckiest_death%3F (players killed by picked-up wands),
-        #          /refs/history/13.diff (KEEP_WANDS_FIRST: held-out 0.2302 vs parent #6 0.2146),
-        #          /refs/past_runs/20261001-063522/2.diff and /refs/past_runs/20261001-115010/1.diff (kept on
-        #          held-out seeds for these Tourist identities in the autoascend engine)
-        if jf_config.KEEP_WANDS_FIRST and not (dive is not None and dive.diving):
-            for item in sorted(filter(lambda i: i.category == nh.WAND_CLASS, items),
-                               key=lambda i: i.unit_weight(with_content=False)):
-                add_item(item)
-
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):
