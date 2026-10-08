@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -198,24 +200,7 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
-# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
-# prayer failed and cannot pray again for PRAYER_FAILURE_WAIT turns; with the timeout at 0 it only resets the timeout
-# to rnz(350), so the real critical-HP prayer soon after fails. Now that the Tourist throws its darts (#2) and fights
-# longer bouts at range/point blank, praying only at critically_low_hp (u.uhp <= 5 or u.uhp * divisor <= min(maxhp,
-# 15 * XL)) keeps the prayer for the moment it heals fully -- and the first HP prayer is allowed from turn 100, when
-# the starting timeout of 300 has already dropped to <= 200, pray.c's limit for major trouble. Fewer Dlvl 1-4 grind
-# deaths at XL 1-5 right after a wasted or failed prayer (jackal, wererat, hobgoblin, sewer rat, kobold).
-# Port of past run 20261008-132537 #2/#24/#27 (same pf_dtad7a engine and Tourists: +0.078 over its parent, kept, on
-# the dart chain; +0.137 on a sibling chain).
-# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
-#          p_type == 0 branch; u.ublesscnt = 300 in u_init.c), https://nethackwiki.com/wiki/Prayer,
-#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Tourist,
-#          /refs/past_runs/20261008-132537/27.diff (+ 2.diff, 24.diff)
-LOWHP_EXACT = True
-# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
-# major trouble needs <= 200) instead of 300
-LOWHP_FIRST_TURN = 100
+LOWHP_EXACT = False
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
