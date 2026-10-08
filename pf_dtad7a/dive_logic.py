@@ -71,6 +71,11 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the lone-weak-monster exemption keeps a low-XL Tourist (no armour, -4 unskilled melee) swinging at a
+# jackal / bat / wererat / gnome zombie while it strips 30%+ of max HP within 3 turns -- the Dlvl 1-3 early losses;
+# while HP is falling that fast, hide behind Elbereth from it as from any other monster (BURST_DEFENSE)
+# sources: /refs/past_runs/20261004-221634/2.diff, https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy
+BURST_DEFENSE = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1263,7 +1268,8 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
