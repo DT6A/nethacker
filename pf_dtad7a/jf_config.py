@@ -309,6 +309,11 @@ WAND_STAIRS_FIX = True
 # ignored it
 HOSTILE_RECHECK = True
 
+# brown molds and blue jellies are never meleed at full HP any more, only by a cold-resistant Valkyrie
+# (combat/monster_utils.consider_melee_only_ranged_if_hp_full, see its hypothesis): their passive cold is 2d6 / 5d6
+# on 2/3 of the hits and heals and splits them
+MOLD_NO_MELEE = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
