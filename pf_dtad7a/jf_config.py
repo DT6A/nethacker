@@ -320,12 +320,25 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
+# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
+# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist is bitten to death by its own kitten -- dev seed 421796, both identities: 'killed by a
+# kitten' at XL2, T1509, the T1504-1625 / XL 1-2 signature nhbot's fix was made for. A meal ends the confusion
+# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
+# no corpse off the floor ourselves unless Weak (PET_HUNGER_FIX, port of nhbot's fix into this engine).
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku),
+#          src/mon.c mfndpos (mconf -> ALLOW_ALL), https://nethackwiki.com/wiki/Pet ('avoid attacking the hero
+#          themselves ... unless they are confused'), https://steamcommunity.com/app/341390/discussions/0/610573751148849294/
+#          ('tame but so hungry it attacked from confusion'), /workspace/nhbot/agent.py _note_pet_hunger (PET_HUNGER_FIX),
+#          /refs/past_runs/20261004-221634/1.diff (kept proven fix on these Tourist identities)
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
+
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
-
-# wear_best_stuff also puts on unknown-BUC armour of the low-stakes slots/kinds (item/inventory.WEAR_UNKNOWN_SLOTS)
-WEAR_UNKNOWN_ARMOR = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
