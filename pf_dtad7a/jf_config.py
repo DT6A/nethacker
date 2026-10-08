@@ -191,19 +191,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
-# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8, ~T24-26k on dev seeds) come in
-# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
-# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
-# the dive start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
-# (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -317,9 +304,38 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
+# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
+# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist can be bitten to death by its own kitten in the Dlvl 1-2 grind where most unseen-seed games
+# are lost, and the pet -- a Tourist's main early fighter (wiki: Tourist) -- starves. A meal ends the confusion
+# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
+# no corpse off the floor ourselves unless Weak. Port of past run 20261008-132537 #68/#72/#73/#79 (held-out
+# 0.2105->0.2191, 0.2070->0.2226, 0.2127->0.2283, 0.1883->0.2096; never below its parent).
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku)
+#          + dog_eat (mconf = 0), src/mon.c mfndpos (mconf -> ALLOW_ALL), include/mfndpos.h (ALLOW_ALL has ALLOW_U),
+#          https://nethackwiki.com/wiki/Pet ('avoid attacking the hero ... unless they are confused'),
+#          https://nethackwiki.com/wiki/Tourist (rely on the pet early), https://nethack.fandom.com/wiki/Pet,
+#          rec.games.roguelike.nethack 'why does my pet attack me?' (groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A),
+#          /refs/past_runs/20261008-132537/79.diff
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats (parent dev seeds 480659 hill orc, 480660 rothe,
+# 480661 Uruk-hai, 480657 sewer rat, 480658/480665 wererat, s1 jackal) -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-132537 #5/#65 (kept both times on this pf_dtad7a engine; #5 held-out 0.2114 vs 0.1517).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway),
+#          /refs/past_runs/20261008-132537/65.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
