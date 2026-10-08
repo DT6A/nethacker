@@ -71,6 +71,18 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the lone-weak-monster exemption in elbereth_rest fights on down to 6 HP, counting on the low-HP
+# prayer (emergency_strategy: is_safe_to_pray(500) and low_hp). Within 500 turns of the last prayer (the grind's
+# Weak hunger prayers come every ~1150-1300 turns) or after a failed one there is no such prayer, and the AC 10
+# Tourist trades blows at 6-15 HP with a rabid rat / iguana / newt / kobold / wererat until a desperate too-soon
+# prayer fails. Without a safe HP prayer, hide on Elbereth below 40% HP from a lone weak monster too
+# (PRAYERLESS_GUARD): fewer Dlvl 1-4 grind deaths at XL 5-8 (parent: rabid rat, iguana, newt, large kobold,
+# hobgoblin, wererat, homunculus on Dlvl 1-4). Complements DIVE_PRAYER_READY (#4): both keep the HP prayer in hand.
+# sources: /refs/past_runs/20261008-132537/4.diff and 39.diff (kept twice on this engine, held-out
+#          0.1517->0.2196 and 0.0887->0.0940), /refs/history/10.diff, https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Elbereth,
+#          https://nethackwiki.com/wiki/Tourist
+PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -562,6 +574,8 @@ class DiveLogic:
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
         self._fed_wait_logged = False
+        self._pray_wait_start = None    # DIVE_PRAYER_READY: turn the grind first reached its end XL
+        self._pray_wait_logged = False
 
     # ------------------------------------------------------------------ state
 
@@ -894,6 +908,8 @@ class DiveLogic:
         xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
+        if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.prayer_ready_for_dive():
+            xl_trigger = False   # DIVE_PRAYER_READY: start the dive with the HP prayer available
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
                 rescue or late_rescue or planned:
             tag = ', rescue' if rescue else ', late rescue' if late_rescue else ', early' if planned else ''
@@ -1263,7 +1279,9 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(500)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -2399,7 +2417,29 @@ class DiveLogic:
     def first_level_done(self):
         """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive() and \
+            self.prayer_ready_for_dive()
+
+    def prayer_ready_for_dive(self):
+        """jf_config.DIVE_PRAYER_READY: the grind ends with the low-HP prayer available (the HP prayer's own
+        is_safe_to_pray(500) test) and HP >= ELBERETH_REST_UNTIL; else it goes on on Dlvl 1, at most
+        DIVE_PRAYER_MAX_WAIT turns. A failed prayer doesn't wait (the rescue dive handles that)."""
+        # hypothesis: dive-start losses on Dlvl 2-8 come right after a hunger prayer, with no HP prayer left
+        # sources: NetHack 3.6.6 pray.c (rnz(350) timeout); nethackwiki.com/wiki/Prayer_timeout; see jf_config
+        if not jf_config.DIVE_PRAYER_READY:
+            return True
+        agent = self.agent
+        bl = agent.blstats
+        if self._pray_wait_start is None:
+            self._pray_wait_start = bl.time
+        if bl.time - self._pray_wait_start > jf_config.DIVE_PRAYER_MAX_WAIT or agent.prayer_failed:
+            return True
+        ready = agent.is_safe_to_pray(500) and bl.hitpoints >= ELBERETH_REST_UNTIL * bl.max_hitpoints
+        if not ready and not self._pray_wait_logged:
+            self._pray_wait_logged = True
+            agent.log(f'DIVE_PRAYER_READY waiting: gap={None if agent.last_prayer_turn is None else bl.time - agent.last_prayer_turn} '
+                      f'hp={bl.hitpoints}/{bl.max_hitpoints}')
+        return ready
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
