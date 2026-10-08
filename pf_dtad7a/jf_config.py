@@ -321,23 +321,6 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses are mostly packs -- hill orcs, rothes, large
-# kobolds, hobgoblins, rats and jackals (parent seeds 1 rothe, 2 hill orc, 4 rabid rat, 7 large kobold, 8 hobgoblin)
-# -- that surround it in an open room while fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile
-# hostiles within 7 squares, prefer corridor squares and open doors (at most 2 squares to be attacked from; nothing
-# passes a door diagonally) and hold one there for a few turns, so the pack arrives one or two at a time and the
-# dart volley (MISSILES_NOT_MELEE) hits them in a line (combat/fight_heur.py). Complements DIVE_PRAYER_READY: it
-# protects the grind itself, which still ends most dev/held-out games.
-# Port of tree node #8 (held-out 0.1157 -> 0.1392 on its parent) / past run 20261008-132537 #5/#65 (kept both).
-# sources: /refs/history/8.diff, /refs/past_runs/20261008-132537/65.diff,
-#          https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway)
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
