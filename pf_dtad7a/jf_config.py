@@ -198,7 +198,20 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-LOWHP_EXACT = False
+# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
+# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
+# prayer failed and starts an XL-1 rescue dive (dev s421795: prayed at 10/14, dead on Dlvl 3 at T1664); with the
+# timeout at 0 it only resets the timeout to rnz(350), so the real critical-HP prayer soon after fails (s1: prayed
+# at 11/12 at T526, the 3/14 prayer at T787 failed, dead). Praying only at critically_low_hp -- and for that
+# first HP prayer from turn 100, when the starting timeout of 300 is already <= 200, pray.c's major-trouble
+# limit -- keeps the prayer for the moment it heals, so fewer early losses on Dlvl 1-3.
+# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
+#          p_type == 0 branch), https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
+#          /refs/top/84bfc1860a92 (Howuhh: Tourist grind deaths at critical HP after a stale prayer)
+LOWHP_EXACT = True
+# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
+# major trouble needs <= 200) instead of 300
+LOWHP_FIRST_TURN = 100
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -261,6 +274,22 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
+# engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
+# hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
+# only while u.ulycn == NON_PM), and the bot fights it bare-handed like any jackal (melee priority +1 for weres): the
+# parent's seed 13 was bitten at T6871, cured by prayer at T6898, re-bitten at T6901 while meleeing the same
+# werejackal, then turned into a jackal under its load and died at T7639 when the next (too early) prayer failed;
+# seed 8 the same with a wererat (cured T13929, re-bitten T14095, fainted as a rat). The animal form respects
+# Elbereth and a scared monster neither melees nor summons (monmove.c distfleeck/dochug: no mattacku while scared;
+# were_summon is only called from mattacku), and a monster that stepped adjacent this turn has not attacked yet, so
+# engraving at once costs no bite. The @ form ignores Elbereth but does not infect, and is still meleed as before.
+# sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Elbereth,
+#          NetHack 3.6.6 src/mhitu.c (AD_WERE, mattacku were_summon), src/monmove.c (onscary, distfleeck, dochug),
+#          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
+#          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
+WERE_KEEP_AWAY = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
@@ -303,14 +332,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-# hypothesis (node #17, DART_THROWER): un-wielded darts + fight_heur.POINT_BLANK_THROW together make the thrown +2 dart
-# the Tourist's attack at every range, cutting the HP lost in the Dlvl 1-4 grind fights where 18/30 parent games die
-# (rothes, wererats, hobbits, bats, coyotes) -- the pair raised held-out 0.134 -> 0.230 in the sibling #1 -> #10 chain
-# sources: /refs/history/1.diff, /refs/history/10.diff, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart
-MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
