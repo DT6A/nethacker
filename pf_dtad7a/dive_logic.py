@@ -82,6 +82,24 @@ ELBERETH_REST_UNTIL = 0.85
 #          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying = failed prayer),
 #          /refs/top/008c6ff1b6ec (retreat keyed on prayer/Elbereth availability)
 PRAYERLESS_GUARD = True
+# hypothesis: the lone-weak exemption in elbereth_rest keys on the base level (mlevel <= 2), which takes in the grind's
+# worst killers -- rothes (claw 1d3, bite 1d3, bite 1d8: up to 14 a turn), giant bats (d6 at speed 22), iguanas, giant
+# rats in numbers, weres in animal form, gnome lords and hobbits with weapons -- so the AC-10 Tourist below 40% HP fights
+# them on down to 6 HP. The critical-HP prayer it counts on (LOWHP_EXACT, PRAYERLESS_GUARD) only catches a fall that
+# stops in the HP <= 5 window; a rothe or a bat takes 10-14 HP to 0 in one or two moves. With LONE_WEAK_THREAT the
+# exemption holds only while the monster's own melee (nhbot nhmodel.prayer.monster_turn_damage: mhitu.c to-hit vs
+# our AC, its attacks, adj_lev and speed) leaves P(it deals >= our HP within LONE_WEAK_TURNS turns) below
+# LONE_WEAK_PDIE (XL 6-7, AC 10: a rothe at 18 HP ~0.6, a giant bat at 16 ~0.8; a jackal, newt or iguana ~0: quick kills).
+# Fewer Dlvl 1-4 losses of the 'killed by a rothe / giant bat / iguana at XL 5-7' kind; all of them respect Elbereth.
+# sources: /refs/top/c555b140edba (nhbot dive_logic._lone_weak_deadly, LONE_WEAK_THREAT on for 'tou' in roles.py),
+#          https://nethackwiki.com/wiki/Rothe ('can hit quite hard ... respect Elbereth'),
+#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist ('extreme caution'),
+#          https://forum.rpg.net/threads/lets-play-nethack-3-6-1.841385/page-4 (rothes: max 14 a round),
+#          https://nethackwiki.com/wiki/Talk:Elbereth ('not possible to engrave Elbereth too early ... too late'),
+#          NetHack 3.6.6 src/pray.c critically_low_hp, src/mhitu.c mattacku
+LONE_WEAK_THREAT = True
+LONE_WEAK_TURNS = 3
+LONE_WEAK_PDIE = 0.1
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1253,6 +1271,26 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
+    def _lone_weak_deadly(self, monster):
+        """LONE_WEAK_THREAT: P(this monster's melee deals >= our HP within LONE_WEAK_TURNS turns) >= LONE_WEAK_PDIE
+        (nhbot's nhmodel.prayer.monster_turn_damage per move times its moves per turn, normal approximation; False
+        when the model is unavailable)."""
+        if not LONE_WEAK_THREAT:
+            return False
+        try:
+            import math
+            from nhbot.nhmodel.prayer import _phi, monster_turn_damage
+            bl = self.agent.blstats
+            name = getattr(monster[3], 'mname', 'unknown')
+            m1, v1, spd = monster_turn_damage(name, int(bl.armor_class), int(bl.depth), int(bl.experience_level))
+            mean, var = m1 * spd * LONE_WEAK_TURNS, v1 * spd * LONE_WEAK_TURNS
+            if mean <= 0:
+                return False
+            p_die = 1.0 - _phi((bl.hitpoints - 0.5 - mean) / math.sqrt(max(var, 1.0)))
+            return p_die >= LONE_WEAK_PDIE
+        except Exception:
+            return False
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1275,9 +1313,11 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        # (LONE_WEAK_THREAT: and only while that monster can't kill us within a few turns)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
                 not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
-                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
+                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)) and \
+                not self._lone_weak_deadly(near[0]):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
