@@ -224,6 +224,29 @@ LOWHP_FIRST_TURN = 100
 #          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%202/ (player: molds only from range),
 #          https://nethack.fandom.com/wiki/Mold, /refs/history/6.diff, NetHack 3.6.6 src/uhitm.c passive()
 MOLD_NO_MELEE = True
+# hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon (it out-hits bare
+# hands), and get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist,
+# whose darts are its one trained (Basic, up to Expert) attack and whose melee with them is only rnd(2) (uhitm.c:
+# missiles in melee), had NO ranged attack at all: every jackal, giant bat, rothe, hobgoblin or were reaching it
+# unhurt at XL 1-7 in the Dlvl 1-4 grind, and MOLD_NO_MELEE's molds / jellies (plus floating eyes, acid blobs,
+# gas spores) unkillable blockers. dothrow.c throw_obj() splits one dart off a wielded stack (splitobj; the rest
+# stays wielded, no prompt), so with WIELDED_STACK_THROW the stack is also a throwing option while 2+ are left:
+# darts at d3+2 for monsters still approaching (2-7 squares; adjacent ones keep the melee priority), molds killed
+# from range, and the darts picked back up after the fight (decide_what_to_pickup). Melee is unchanged, unlike
+# DART_THROWER (unwield + point-blank throws), so fewer early losses to monsters that reach melee at full HP.
+# sources: https://nethackwiki.com/wiki/Tourist ('much safer to ... use [darts] against hostile monsters'),
+#          https://nethackwiki.com/wiki/Dart ('ineffective in melee, ... must be used by throwing'),
+#          https://nethackwiki.com/wiki/Source:NetHack_3.6.1/src/dothrow.c (throw_obj splitobj / remove_worn_item),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/ql26zUYXgIc (player: Tourist 'can throw the
+#          darts and still have a weapon'), https://groups.google.com/g/rec.games.roguelike.nethack/c/Gmy45ilIIIQ
+#          (floating eye blocking the way out: carry throwing weapons), /refs/history/1.diff + 10.diff (DART_THROWER)
+# (#77: ported onto the #4/#29/#43 chain -- PRAYERLESS_GUARD + MOLD_NO_MELEE + LONE_WEAK_THREAT keep the darts
+# wielded, so this chain also had no ranged attack: public s9 'killed by a gas spore's explosion' on Dlvl 1 at XL4,
+# and LONE_WEAK_THREAT's Elbereth rests now leave a hidden Tourist able to dart the iguana / bat / were it hides from;
+# the wiki's gas spore advice is exactly 'step back and use ... arrows or darts')
+# sources (#77): https://nethackwiki.com/wiki/Gas_spore, https://nethackwiki.com/wiki/Tourist,
+#          https://groups.google.com/d/topic/rec.games.roguelike.nethack/U4mv25Zx6rI, /refs/history/44.diff
+WIELDED_STACK_THROW = True
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -328,26 +351,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
-# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
-# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
-# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
-# so an XL 1-2 Tourist is bitten to death by its own kitten -- dev seed 421796, both identities: 'killed by a
-# kitten' at XL2, T1509, the T1504-1625 / XL 1-2 signature nhbot's fix was made for. A meal ends the confusion
-# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
-# no corpse off the floor ourselves unless Weak (PET_HUNGER_FIX, port of nhbot's fix into this engine).
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku),
-#          src/mon.c mfndpos (mconf -> ALLOW_ALL), https://nethackwiki.com/wiki/Pet ('avoid attacking the hero
-#          themselves ... unless they are confused'), https://steamcommunity.com/app/341390/discussions/0/610573751148849294/
-#          ('tame but so hungry it attacked from confusion'), /workspace/nhbot/agent.py _note_pet_hunger (PET_HUNGER_FIX),
-#          /refs/past_runs/20261004-221634/1.diff (kept proven fix on these Tourist identities)
-# (port into the #4/#29/#43 chain, as #68 in the #28/#40 chain: held-out 0.2191 vs 0.2105; a confused pet also picks
-#  us as a target in dogmove.c score_targ 2/3 of the time -> mattacku. Sources added for this port:
-#  https://nethack.fandom.com/wiki/Pet ('starving pets may attack you if confused from hunger'),
-#  https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/dogmove.c, /refs/history/68.diff)
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
