@@ -5,14 +5,17 @@ import numpy as np
 from nle.nethack import actions as A
 
 from .kernels import figure_out_monster_movement
-from .. import utils
+from .. import jf_config, utils
 from ..exceptions import AgentPanic
-from ..glyph import C, G
+from ..glyph import C, G, MON
 
 
 class MonsterTracker:
     _UNSEEN_ATTACK = re.compile(r"\bIt (?:hits|bites|misses|just misses|stings|touches|butts|kicks|claws|"
                                 r"thrusts|swings|lashes|squeezes|gores|pummels|scratches|stabs|zaps|casts|spits)")
+    # mhitu.c hitmsg()/missmu(): 'The rothe bites!', 'The pony kicks!', 'The giant ant misses!'
+    _SEEN_ATTACK = re.compile(r"\bThe ([a-z][a-z -]*?) (?:bites|hits|kicks|butts|stings|touches you|misses|"
+                              r"just misses)!")
 
     def __init__(self, agent):
         self.agent = agent
@@ -109,5 +112,38 @@ class MonsterTracker:
                     near = np.s_[max(sy - 1, 0):sy + 2, max(sx - 1, 0):sx + 2]
                     self.peaceful_monster_mask[near] |= unseen[near] & self.monster_mask[near]
 
+        if jf_config.HOSTILE_RECHECK and self.peaceful_monster_mask.any() and not self.agent.character.prop.hallu:
+            self._recheck_attackers()
+
         assert (~self.peaceful_monster_mask | self.monster_mask).all()
         self._last_glyphs = self.agent.glyphs.copy()
+
+    def _recheck_attackers(self):
+        # hypothesis: the peaceful mask is carried by glyph movement and never re-asked, so a monster marked
+        # peaceful (swapped with a look-alike, or one that turned hostile) is skipped by fight2 / the Elbereth
+        # rest while it bites the unarmoured Tourist; a peaceful never melees us (outside Conflict), so 'The
+        # <name> bites!' with exactly one adjacent peaceful-marked <name> makes that one hostile (not @: shopkeepers,
+        # priests, the watch are never fought on a guess). Fewer Dlvl 1-4 grind losses to an ignored attacker.
+        # (port of #11/#70, kept on both chains, into the LOWHP_EXACT + PRAYERLESS_GUARD + MOLD_NO_MELEE +
+        # LONE_WEAK_THREAT chain)
+        # sources: NetHack 3.6.6 monmove.c dochug() (attacks only if !mpeaceful || Conflict), makemon.c peace_minded()
+        # (neutral monsters ~half peaceful to a neutral Tourist), mhitu.c hitmsg(); https://nethackwiki.com/wiki/Peaceful;
+        # rec.games.roguelike.nethack 'Peaceful monsters and rings of conflict'; /refs/history/70.diff,
+        # /refs/history/11.diff, /refs/top/2134946fb4f1 monster_tracker.py HOSTILE_RECHECK (domestic animals only)
+        names = set(self._SEEN_ATTACK.findall(self.agent.message or ''))
+        if not names:
+            return
+        y0, x0 = self.agent.blstats.y, self.agent.blstats.x
+        seen = {}
+        for y in range(max(y0 - 1, 0), min(y0 + 2, C.SIZE_Y)):
+            for x in range(max(x0 - 1, 0), min(x0 + 2, C.SIZE_X)):
+                g = self.agent.glyphs[y, x]
+                if (y, x) == (y0, x0) or not self.monster_mask[y, x] or not MON.is_monster(g):
+                    continue
+                mon = MON.permonst(g)
+                if mon.mname in names and ord(mon.mlet) != MON.S_HUMAN:
+                    seen.setdefault(mon.mname, []).append((y, x))
+        for name, squares in seen.items():
+            if len(squares) == 1 and self.peaceful_monster_mask[squares[0]]:
+                self.peaceful_monster_mask[squares[0]] = False
+                self.agent.log(f'HOSTILE_RECHECK: the {name} at {squares[0]} attacked us: not peaceful')
