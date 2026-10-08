@@ -64,21 +64,7 @@ def consider_melee_only_ranged_if_hp_full(agent, monster):
     if name == 'gelatinous cube':
         return _adjacent_turns(agent, monster) >= 6 and bl.hitpoints >= 0.4 * bl.max_hitpoints
     # their passive cold does nothing to a cold-resistant Valkyrie
-    # hypothesis: the 'HP full' melee permission walks the AC 10 Tourist into the passive cold of a brown mold or
-    # blue jelly. uhitm.c passive() deals d(mlvl + 1, 6) cold (2d6 for a brown mold, 5d6 = 5-30 for a blue jelly,
-    # more for higher-level ones) on 2/3 of the hits that don't kill it, heals it by half that and splits it once its
-    # max HP passes (mlvl + 1) * 8 -- one swing at full HP takes an XL 1-4 Tourist (10-30 max HP) to the brink, and
-    # its wielded-dart stab (rnd(2), Unskilled -4) can't outpace the healing, so it trades blows or ends boxed in by
-    # the split molds. Without cold resistance they stay ranged-only targets or squares to walk around (speed 0).
-    # Fewer Dlvl 1-4 grind / dive-start losses to an early mold or jelly; no change for a Valkyrie.
-    # Port of past run 20261008-132537 #6 (same pf_dtad7a engine; kept, held-out 0.1517 -> 0.2146).
-    # sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
-    #          https://nethackwiki.com/wiki/Passive_attack (2/3 chance per hit, heals the monster),
-    #          https://nethackwiki.com/wiki/Tourist (melee only harmless foes like lichens; darts for the rest),
-    #          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%202/ (player: molds are meleed with care
-    #          early on; shoot them), NetHack 3.6.6 src/uhitm.c passive(), /refs/past_runs/20261008-132537/6.diff
     if name in ('brown mold', 'blue jelly') and \
-            ((bl.hitpoints == bl.max_hitpoints and not jf_config.MOLD_NO_MELEE) or
-             agent.character.role == agent.character.VALKYRIE):
+            (bl.hitpoints == bl.max_hitpoints or agent.character.role == agent.character.VALKYRIE):
         return True
     return False

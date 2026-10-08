@@ -191,6 +191,25 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
+# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8, ~T24-26k on dev seeds) come in
+# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
+# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
+# the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
+# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
+# (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
+# node #14 (tree round 1): port of node #4's DIVE_PRAYER_READY (held-out 0.1792 -> 0.2112 on the dart chain) onto
+# #5's LOWHP_EXACT chain. LOWHP_EXACT saves the HP prayer for pray.c's critically_low_hp, the one HP level where it
+# heals fully -- but only if the timeout allows it; starting the dive with that prayer ready (HP >= 85%) is what
+# makes the saved prayer count at the dive start, where the grind's XL 7-8 losses on Dlvl 2-8 happen.
+# sources (#14): /refs/history/4.diff, /refs/past_runs/20261008-132537/75.diff, NetHack 3.6.6 src/pray.c
+#          (critically_low_hp, can_pray: p_trouble > 0 needs u.ublesscnt <= 200), https://nethackwiki.com/wiki/Prayer
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -198,7 +217,24 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-LOWHP_EXACT = False
+# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
+# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
+# prayer failed and cannot pray again for PRAYER_FAILURE_WAIT turns; with the timeout at 0 it only resets the timeout
+# to rnz(350), so the real critical-HP prayer soon after fails. Now that the Tourist throws its darts (#2) and fights
+# longer bouts at range/point blank, praying only at critically_low_hp (u.uhp <= 5 or u.uhp * divisor <= min(maxhp,
+# 15 * XL)) keeps the prayer for the moment it heals fully -- and the first HP prayer is allowed from turn 100, when
+# the starting timeout of 300 has already dropped to <= 200, pray.c's limit for major trouble. Fewer Dlvl 1-4 grind
+# deaths at XL 1-5 right after a wasted or failed prayer (jackal, wererat, hobgoblin, sewer rat, kobold).
+# Port of past run 20261008-132537 #2/#24/#27 (same pf_dtad7a engine and Tourists: +0.078 over its parent, kept, on
+# the dart chain; +0.137 on a sibling chain).
+# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
+#          p_type == 0 branch; u.ublesscnt = 300 in u_init.c), https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Tourist,
+#          /refs/past_runs/20261008-132537/27.diff (+ 2.diff, 24.diff)
+LOWHP_EXACT = True
+# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
+# major trouble needs <= 200) instead of 300
+LOWHP_FIRST_TURN = 100
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -304,15 +340,9 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
-
-# brown molds and blue jellies are never meleed at full HP any more, only by a cold-resistant Valkyrie
-# (combat/monster_utils.consider_melee_only_ranged_if_hp_full, see its hypothesis): their passive cold is 2d6 / 5d6
-# on 2/3 of the hits and heals and splits them
-MOLD_NO_MELEE = True
+# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
+# could not be thrown, so the Tourist never used its starting ranged attack
+MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
