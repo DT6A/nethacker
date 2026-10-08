@@ -88,8 +88,6 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
-# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
-KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -214,23 +212,6 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- coyotes/jackals (s2, s9's
-# coyote fight), rothes (s5), giant/sewer rats (s8, s12), hobbits/hill orcs -- that surround it in an open room, and
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles about and none adjacent, prefer corridor
-# squares and open doors (at most 2 squares to be attacked from, no diagonal through a door) and hold one there for
-# a few turns (combat/fight_heur.py), so the pack arrives one or two at a time -- fewer early losses on Dlvl 1-4.
-# Port of this run's #5 (held-out 0.2114 vs root 0.1517; with MOLD_PASSIVE as #21: 0.2020) into the
-# LOWHP_EXACT / MOLD_PASSIVE / KEEP_WANDS_FIRST chain, which has no positioning fix.
-# sources: /refs/history/5.diff, https://nethackwiki.com/wiki/Movement_tactics (corridors: one adjacent at a time;
-#          doorways not passable diagonally -> bottlenecks), https://nethackwiki.com/wiki/Tourist ('extreme caution'
-#          early), https://nethackwiki.com/wiki/Hill_orc (draw groups into a corridor),
-#          https://www.melankolia.net/nethack/nethack.guide.html (rothes; retreat into a corridor),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          https://cdn.aaai.org/ojs/12923/12923-52-16440-1-2-20201228.pdf (BotHack lures monsters into corridors),
-#          AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
