@@ -308,9 +308,9 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
-HOSTILE_RECHECK = True
+# the levelling grind flashes the expensive camera at an adjacent attacker below the Elbereth-rest threshold
+# (combat/fight_heur.grind_camera_actions); before, the camera was used only while diving
+GRIND_CAMERA = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
