@@ -1263,18 +1263,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # hypothesis: this exemption fights a lone jackal/bat/grid bug/homunculus on down to 6 HP counting on the
-        # low-HP prayer (emergency_strategy: is_safe_to_pray(500)); within 500 turns of the last prayer (the grind
-        # prays for hunger every ~1300 turns) or after a failed one there is no such prayer, and nearly every game of
-        # this chain ends exactly so -- a lone mlevel<=2 monster on Dlvl 1-4 at XL 3-8. Without a safe HP prayer,
-        # hide on Elbereth below the rest threshold from a lone weak monster too (PRAYERLESS_GUARD, port of tree #4)
-        # sources: https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Prayer,
-        #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist,
-        #          https://nethackwiki.com/wiki/Things_To_Do_If_You're_Going_to_Die_Next_Turn (Elbereth before prayer),
-        #          https://strategywiki.org/wiki/NetHack/Staying_Alive, crpgaddict.blogspot.com 2012/10 'NetHack: Dos
-        #          and Don'ts' comments ('tactical retreat ... is a vital skill'), /refs/history/4.diff
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (jf_config.PRAYERLESS_GUARD and not agent.is_safe_to_pray(500)):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \

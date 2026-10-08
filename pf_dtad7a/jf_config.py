@@ -312,9 +312,21 @@ MISSILES_NOT_MELEE = True
 # and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
 HOSTILE_RECHECK = True
 
-# the lone-weak-monster exemption of the Elbereth rest (dive_logic.elbereth_rest: fight on down to 6 HP) applies only
-# while the low-HP prayer is safe (agent.is_safe_to_pray(500), emergency_strategy's test)
-PRAYERLESS_GUARD = True
+# hypothesis: since MISSILES_NOT_MELEE the Tourist punches (d2) whatever reaches it, so a pack that surrounds it in an
+# open room (jackals/coyotes, rothes, hill orcs -- several of this chain's Dlvl 1-4 deaths) hits it from up to 8
+# squares while it kills one at a time; fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
+# about and none adjacent, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal
+# through a door) and hold one there for a few turns (combat/fight_heur.py), so the pack arrives one or two at a time
+# and the darts thrown down the corridor (get_available_actions 'ranged') hit them on the way in.
+# Port of this run's #5 (held-out 0.2114 vs its parent's 0.1517) into the MISSILES_NOT_MELEE/HOSTILE_RECHECK chain.
+# sources: /refs/history/5.diff, https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Corridor,
+#          https://nethackwiki.com/wiki/Tourist ('extreme caution' early, darts against hostile monsters),
+#          https://nethackwiki.com/wiki/Jackal (packs), https://nethackwiki.com/wiki/Hill_orc (groups),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
