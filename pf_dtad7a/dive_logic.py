@@ -25,7 +25,7 @@ from scipy import ndimage
 
 from . import objects as O
 
-from . import jf_config, jf_log, mondata, power, utils, valley
+from . import jf_config, jf_log, power, utils, valley
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -71,10 +71,21 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# THREAT_REST: include/monattk.h attack types that hit an adjacent hero (no passive, spit, engulf, breath, explosion,
-# gaze, spell)
-THREAT_MELEE_ATTACK_TYPES = frozenset((1, 2, 3, 4, 5, 6, 7, 16, 254))
-THREAT_AT_WEAP = 254
+# hypothesis: the lone-weak-monster exemption below fights on to 6 HP counting on the HP prayer at critically_low_hp
+# (the only HP prayer since LOWHP_EXACT, #5); within 500 turns of the last prayer (the grind's Weak hunger prayers
+# come every ~1150-1300 turns, so ~40% of grind turns) or after a failed one there is no such prayer, and the
+# desperate prayer then fails with no shimmering light (pray.c: p_type 3 only gives u.uinvulnerable) while a jackal,
+# coyote, hobgoblin or giant rat bites the AC10 Tourist through the three helpless turns. With the darts thrown (#2)
+# the fights last more rounds at point blank, so the exemption runs longer too. Without a safe HP prayer, hide on
+# Elbereth below 40% HP from a lone weak monster as well (PRAYERLESS_GUARD) -- fewer Dlvl 1-4 grind deaths at XL 1-7.
+# Port of past run 20261008-132537 #4 (kept on a LOWHP_EXACT parent: held-out 0.1517 -> 0.2196).
+# sources: https://nethackwiki.com/wiki/Prayer (a successful prayer protects; above timeout 200 in major trouble it
+#          fails and smites), https://nethackwiki.com/wiki/Elbereth ('engrave early', dust fails ~27%),
+#          https://nethackwiki.com/wiki/Tourist, https://strategywiki.org/wiki/NetHack/Staying_Alive (if you prayed too
+#          recently you need other ways to survive), https://forums.civfanatics.com/threads/nethack.256120/page-5
+#          (player thread: Elbereth for all it's worth), NetHack 3.6.6 src/pray.c dopray/can_pray,
+#          /refs/past_runs/20261008-132537/4.diff
+PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -491,8 +502,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._threat_since = 0             # THREAT_REST: first and last turn of the current threat streak
-        self._threat_last = -10 ** 9
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1258,9 +1267,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        threat = jf_config.THREAT_REST and self._threat_rest()
-        if threat:
-            falling = True
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1272,8 +1278,10 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # (THREAT_REST: not a 'weak' one that lands half our HP in a turn -- a lone rothe or giant bat is level 2)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and not threat:
+        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
+                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1524,35 +1532,6 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
-
-    def _near_melee_damage(self):
-        """THREAT_REST: expected damage of one of our turns if every near (radius 2) hostile lands all its melee
-        attacks (monst.c attacks, mhitu.c: nearly every attack hits AC 10; speed over 12 counted as extra attacks).
-        Kinds that average under THREAT_REST_MIN_DMG a turn (jackals, newts, sewer rats, kobolds) are left out: the
-        darts / the lone-weak rule fight them."""
-        total = 0.0
-        for m in self._near_hostiles():
-            data = mondata.MONS.get(getattr(m[3], 'mname', ''))
-            if data is None:
-                continue
-            dmg = sum(3.5 if aatyp == THREAT_AT_WEAP and damn == 0 else damn * (damd + 1) / 2
-                      for aatyp, _, damn, damd in data[5] if aatyp in THREAT_MELEE_ATTACK_TYPES)
-            dmg *= max(1.0, data[1] / 12)
-            if dmg >= jf_config.THREAT_REST_MIN_DMG:
-                total += dmg
-        return total
-
-    def _threat_rest(self):
-        """THREAT_REST: HP within two rounds of the near hostiles' melee damage, for at most THREAT_REST_TURNS turns in
-        a row (no endless stand-off at full HP)."""
-        bl = self.agent.blstats
-        dmg = self._near_melee_damage()
-        if dmg <= 0 or bl.hitpoints > 2 * dmg:
-            return False
-        if bl.time - self._threat_last > 5:
-            self._threat_since = bl.time
-        self._threat_last = bl.time
-        return bl.time - self._threat_since <= jf_config.THREAT_REST_TURNS
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats

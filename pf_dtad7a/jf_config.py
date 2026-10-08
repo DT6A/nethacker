@@ -321,28 +321,6 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# hypothesis: with LOWHP_EXACT (#5) the HP prayer waits for pray.c's critically_low_hp (HP <= 1/5 max at XL 1-5,
-# 1/6 at XL 6-13), and the Elbereth rest skips a lone level <= 2 monster down to 6 HP -- but a lone rothe (claw d3,
-# bites d3 + d8: 8.5 a turn, 14 max) or giant bat (d6 at speed 22) is level 2 and jumps straight past that window
-# from 7-17 HP, and 2-3 rothes / hill orcs / ants pass the fixed 40% trigger and kill in the turn or two after it.
-# The parent's public deaths are mostly those kinds (rothe x4, giant bat x2, giant ant, fire ant, jaguar, panther).
-# So start (and keep) the Elbereth rest once HP is within two rounds of the near (radius 2) hostiles' expected melee
-# damage (kinds averaging under THREAT_REST_MIN_DMG a turn left out), the lone-weak exemption included, for at most
-# THREAT_REST_TURNS turns in a row: the engraving is down before the killing round and the prayer window is kept.
-# sources: https://nethackwiki.com/wiki/Rothe (3 attacks up to 14/turn, groups of 2-4, "Rothes respect Elbereth"),
-#          https://nethackwiki.com/wiki/Elbereth (fast dust engraving works at once; scared adjacent monsters flee
-#          and don't melee), https://nethackwiki.com/wiki/Tourist (AC 10, "extreme caution" early),
-#          https://nethackwiki.com/wiki/Prayer (no trouble + timeout > 0 = failed prayer),
-#          https://www.melankolia.net/nethack/nethack.guide.html (rothes: many attacks a round, groups),
-#          https://beforeiplay.com/index.php?title=Nethack and https://forums.civfanatics.com/threads/nethack.256120/page-2
-#          (players: swarms of rothes / ants kill; Elbereth as a breather, never attack from it),
-#          /refs/past_runs/20261008-132537/42.diff (THREAT_REST, kept: held-out 0.2097 -> 0.2127),
-#          /refs/top/9e75ceeb9559 (zReactiveRest: Elbereth rest even next to one 'weak' monster after a burst),
-#          NetHack 3.6.6 src/monst.c attacks (nhbot/nhmodel/mondata.py, copied as pf_dtad7a/mondata.py)
-THREAT_REST = True
-THREAT_REST_TURNS = 300
-THREAT_REST_MIN_DMG = 3.0
-
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
