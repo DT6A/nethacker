@@ -481,19 +481,8 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                # hypothesis: tty menus restart their item letters at 'a' on every page and self.popup
-                # concatenates the pages, so a two-page Tourist #enhance list (e.g. dart on page 1, bare hands
-                # on page 2 -- both trained since #28 throws darts and punches) shows 'a -' twice; the old
-                # assert then raised inside fight2's parse_enhance_view on every call (no fighting).
-                # Keep the first page's skill (type_letter selects the first 'a - ' page); once it is
-                # advanced the list is re-read and the other skill gets its own letter.
-                # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() ('if ((n % lmax) == 0) menu_ch = 'a''),
-                #          pf_dtad7a/agent.py update_message_and_popup (popup = popup_prefix + single_popup),
-                #          /refs/past_runs/20261001-183129/2.diff (same fix kept on autoascend: XL-6 Tourist
-                #          killed by a gecko, log 'a -   dagger [Basic]' ... 'a -   dart [Basic]'),
-                #          https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Tourist
-                if letter not in self.upgradable_skills.values():
-                    self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
+                assert letter not in self.upgradable_skills.values()
+                self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):
