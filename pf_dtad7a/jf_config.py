@@ -308,20 +308,9 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: with the darts thrown (MISSILES_NOT_MELEE + point-blank throws), the unarmoured Tourist's Dlvl 1-4
-# losses are packs that surround it in an open room (rothes s1, hill orcs s2, coyotes 421792, rats/hobgoblins), and
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles about, prefer corridor squares and open
-# doors (at most 2 squares to be attacked from, no diagonal through a door) and hold one there for a few turns, so the
-# pack arrives one at a time down a line -- into thrown darts -- instead of 3-6 attackers at once (port of #5).
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Doorway,
-#          https://www.melankolia.net/nethack/nethack.guide.html ("retreat-into-a-corridor-trick", rothes),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          https://forum.rpg.net/threads/lets-play-nethack-3-6-1.841385/page-4 (rothes early),
-#          /refs/history/5.diff (#5, held-out 0.2114 vs 0.1517), AutoAscend's get_corridors_priority_map TODO
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# brown molds / blue jellies are never meleed without cold resistance (combat/monster_utils
+# consider_melee_only_ranged_if_hp_full): no 'HP full' permission; darts or walking around them instead
+MOLD_PASSIVE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
