@@ -312,6 +312,10 @@ MISSILES_NOT_MELEE = True
 # and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
 HOSTILE_RECHECK = True
 
+# the lone-weak-monster exemption of the Elbereth rest (dive_logic.elbereth_rest: fight on down to 6 HP) applies only
+# while the low-HP prayer is safe (agent.is_safe_to_pray(500), emergency_strategy's test)
+PRAYERLESS_GUARD = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
