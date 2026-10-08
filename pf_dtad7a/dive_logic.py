@@ -71,6 +71,21 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the Dlvl-1 grind (tour) never rests when hurt -- it explores/searches on at 25-50% HP (the
+# dive rests below REST_BELOW, the tour doesn't), so the next coyote/hobbit/jackal finds a Tourist at 6-10 HP
+# and the low-HP prayer fails (parent seed 9: coyote 28->6, walked off at 7/28, hobbit at 10/28, dead).
+# TOUR_IDLE_REST: below TOUR_IDLE_REST_BELOW with no mobile hostile in view, engrave Elbereth and search in
+# place until TOUR_IDLE_REST_UNTIL; only preempts the tour's exploration (eating, fight2, elbereth_rest and
+# the emergency rules still win). Fewer early (XL 3-8) Dlvl-1 deaths, so more games reach the dive.
+# sources: https://nethackwiki.com/wiki/Why_do_I_keep_dying (wait until HP recovers when nothing is near),
+# https://nethackwiki.com/wiki/Hit_points (XL<10 regen 1 HP per 42/(XL+2)+1 turns),
+# https://nethackwiki.com/wiki/Elbereth (rest on it to recover HP), https://nethackwiki.com/wiki/Tourist,
+# https://nethack.fandom.com/wiki/Forum:General_gameplay_tips_for_a_newbie%3F (heal up before advancing),
+# https://gamefaqs.gamespot.com/boards/978087-nethack/59952741 (early-game golden rules thread),
+# /refs/past_runs/20261001-115010/4.diff (TOUR_IDLE_REST in the autoascend engine).
+TOUR_IDLE_REST = True
+TOUR_IDLE_REST_BELOW = 0.5
+TOUR_IDLE_REST_UNTIL = 0.9
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -487,6 +502,7 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
+        self._tour_resting = False           # TOUR_IDLE_REST in progress
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1282,6 +1298,35 @@ class DiveLogic:
             agent.engrave('Elbereth')
             return
         agent.search()
+
+    @Strategy.wrap
+    @_hold_loop
+    def tour_idle_rest(self):
+        """TOUR_IDLE_REST: the grind (not the dive) rests on Elbereth when hurt and nothing mobile is in view."""
+        agent = self.agent
+        bl = agent.blstats
+        threshold = TOUR_IDLE_REST_UNTIL if self._tour_resting else TOUR_IDLE_REST_BELOW
+        y0, x0 = bl.y, bl.x
+        # a far-off mold/lichen can't come to us: rest anyway
+        mobile = [m for m in agent.get_visible_monsters()
+                  if getattr(m[3], 'mmove', 1) > 0 or max(abs(m[1] - y0), abs(m[2] - x0)) <= 1]
+        if not TOUR_IDLE_REST or self.diving or mobile or bl.hitpoints >= threshold * bl.max_hitpoints or \
+                bl.hunger_state >= Hunger.HUNGRY or self.in_gehennom() or \
+                agent.character.prop.blind or agent.character.prop.polymorph:
+            self._tour_resting = False
+            yield False
+        yield True
+        if not self._tour_resting:
+            agent.log(f'TOUR idle rest start: {bl.hitpoints}/{bl.max_hitpoints}')
+        self._tour_resting = True
+        if (agent.inventory.engraving_below_me or '').lower() != 'elbereth' and agent.can_engrave():
+            spot = (agent.current_level().key(), y0, x0, 'tour_rest')
+            tries = self.__dict__.setdefault('_elbereth_tries', {})
+            if tries.get(spot, 0) < ELBERETH_TRIES_ESCAPE:
+                tries[spot] = tries.get(spot, 0) + 1
+                agent.engrave('Elbereth')
+                return
+        agent.search(5)
 
     WATER_DEMON = None
     RAVEN = None
