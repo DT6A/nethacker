@@ -883,14 +883,9 @@ class Inventory:
             wielded_melee_weapon = None
             if not allow_wielded_melee:
                 wielded_melee_weapon = self.items.main_hand
-            # (WIELDED_STACK_THROW: a wielded / best-melee stack of thrown missiles is thrown one at a time --
-            # dothrow.c throw_obj splits one off and the rest stays wielded -- so it is not excluded while 2+ are
-            # left; never a cursed one: throw_obj refuses a welded weapon and the fight loop would retry it)
             valid_combinations.extend([(None, i) for i in items
                                        if i.is_thrown_projectile()
-                                       and ((i != best_melee_weapon and i != wielded_melee_weapon) or
-                                            (jf_config.WIELDED_STACK_THROW and i.count >= 2 and
-                                             i.status != Item.CURSED))])
+                                       and i != best_melee_weapon and i != wielded_melee_weapon])
 
         return valid_combinations
 

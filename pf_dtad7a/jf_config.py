@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -290,21 +292,6 @@ LYCAN_FIXES = True
 #          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
 #          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
 WERE_KEEP_AWAY = True
-# hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon, and
-# get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist had NO ranged
-# attack at all. With WERE_KEEP_AWAY it hides on Elbereth from an animal-form were and with MOLD_NO_MELEE it never
-# melees a brown mold / blue jelly, so neither could ever be killed: the were circles the Elbereth square (bot
-# waits, starving) and molds stay blockers. dothrow.c throw_obj() splits one dart off a wielded stack (no prompt,
-# the rest stays wielded), so with WIELDED_STACK_THROW the stack is also a throwing option while 2+ are left:
-# d3+2 darts at monsters still 3-7 squares away (adjacent ones keep the melee priority, ranged_priority), the were
-# that fled the Elbereth square and the molds killed from range, darts picked up again after the fight. Port of
-# #44 (held-out 0.1883 vs its parent's 0.1665) into the #2/#6/#15 chain -- fewer Dlvl 1-4 grind stalls and losses.
-# sources: /refs/history/44.diff (WIELDED_STACK_THROW), https://nethackwiki.com/wiki/Source:NetHack_3.6.1/src/dothrow.c
-#          (throw_obj: splitobj(obj, 1L), remove_worn_item only for the last one), https://nethackwiki.com/wiki/Tourist
-#          ('much safer to ... use [darts] against hostile monsters'), https://nethackwiki.com/wiki/Dart,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/ql26zUYXgIc (player: Tourist 'can throw the
-#          darts and still have a weapon')
-WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
