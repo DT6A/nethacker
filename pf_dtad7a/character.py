@@ -481,17 +481,7 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                # hypothesis: tty menus restart their selector letters at 'a' on every page, and a Tourist's
-                # skill list runs over two pages, so darts (thrown) and bare hands (punching) can both be
-                # advanceable as 'a -'; the old assert then panicked fight2 (which re-reads #enhance on every
-                # call) until death. Keep the first page's skill: once it is advanced the list is re-read and the
-                # other skill gets its own letter. Proven neutral fix.
-                # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() (menu_ch reset per page),
-                #          src/weapon.c enhance_weapon_skill() (add_menu with selector 0),
-                #          /refs/past_runs/20261008-132537/47.diff, /refs/past_runs/20261001-183129/2.diff
-                if letter in self.upgradable_skills.values():
-                    self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
-                    continue
+                assert letter not in self.upgradable_skills.values()
                 self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
