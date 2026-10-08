@@ -304,9 +304,23 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
+# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
+# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist can be bitten to death by its own kitten in the Dlvl 1-2 grind where most unseen-seed games
+# are lost, and the pet -- a Tourist's main early fighter (wiki: Tourist) -- starves. A meal ends the confusion
+# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
+# no corpse off the floor ourselves unless Weak. Port of past run 20261008-132537 #68/#72/#73/#79 (held-out
+# 0.2105->0.2191, 0.2070->0.2226, 0.2127->0.2283, 0.1883->0.2096; never below its parent).
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku)
+#          + dog_eat (mconf = 0), src/mon.c mfndpos (mconf -> ALLOW_ALL), include/mfndpos.h (ALLOW_ALL has ALLOW_U),
+#          https://nethackwiki.com/wiki/Pet ('avoid attacking the hero ... unless they are confused'),
+#          https://nethackwiki.com/wiki/Tourist (rely on the pet early), https://nethack.fandom.com/wiki/Pet,
+#          rec.games.roguelike.nethack 'why does my pet attack me?' (groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A),
+#          /refs/past_runs/20261008-132537/79.diff
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
