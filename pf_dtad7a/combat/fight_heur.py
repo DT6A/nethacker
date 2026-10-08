@@ -352,7 +352,7 @@ def camera_actions(agent, monsters):
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
     if not agent.global_logic.dive.diving:
-        return grind_camera_actions(agent, monsters, camera, ratio)
+        return []
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
@@ -396,42 +396,6 @@ def camera_actions(agent, monsters):
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
         if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
-            continue
-        if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
-            continue
-        if agent.blstats.time - flashed.get((y, x), -100) < 8:
-            continue
-        actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
-    return actions
-
-
-def grind_camera_actions(agent, monsters, camera, ratio):
-    # hypothesis: nearly every game of this Tourist ends in the Dlvl 1-4 levelling grind at XL 3-8, trading blows at
-    # a few HP with a jackal, bat, grid bug, homunculus, rothe or were-creature -- and the camera, the role's best
-    # escape, was kept for the dive ('a fleeing monster is lost XP'). By the time fight2 runs below the Elbereth-rest
-    # threshold, that rest has declined (the lone-weak-monster exemption, an Elbereth-ignoring @ were form, blind,
-    # no engraving possible), so nothing else stops the next hit. Flash the adjacent attacker there: it is blinded for
-    # good and flees 3 times in 4 (apply.c use_camera -> uhitm.c flash_hits_mon: monflee for rnd(100) turns or
-    # indefinitely), which buys the turns to rest. An Elbereth we stand on is left to do its job (a blinded monster
-    # no longer respects it), and above the threshold the grind keeps fighting for XP as before.
-    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Talk:Expensive_camera,
-    #          https://nethackwiki.com/wiki/Tourist ('one of the most useful starting items'),
-    #          https://dataswamp.org/~solene/2020-11-15-nethack-Tou-Hum-Fem-Neu.html (player: a panicked flash made a
-    #          giant rat run), NetHack 3.6.6 src/uhitm.c flash_hits_mon, /refs/past_runs/20260929-112307/23.diff
-    from ..dive_logic import ELBERETH_REST_BELOW
-    if not jf_config.GRIND_CAMERA:
-        return []
-    if ratio >= ELBERETH_REST_BELOW and not agent._critically_low_hp():
-        return []
-    dive = agent.global_logic.dive
-    on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
-    flashed = getattr(agent, '_camera_flashed', {})
-    actions = []
-    for monster in monsters:
-        _, y, x, mon, _ = monster
-        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
-            continue
-        if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
