@@ -1232,8 +1232,20 @@ class Agent:
             self.inventory.carried_nutrition() >= jf_config.FOOD_FIRST_MIN and \
             not self.is_safe_to_pray(jf_config.FOOD_FIRST_GAP)
 
+    def _tour_food_first_items(self):
+        """TOUR_FOOD_FIRST: the safe carried food (named in BUY_FOOD_NUTRITION: no eggs, tins, tripe or corpses) the
+        tour may eat without going below TOUR_FOOD_RESERVE, the biggest meal first."""
+        if not jf_config.TOUR_FOOD_FIRST or self.global_logic.dive.diving:
+            return []
+        nutrition = self.inventory.BUY_FOOD_NUTRITION
+        total = self.inventory.carried_nutrition()
+        food = [item for item in self.edible_carried_food()
+                if item.is_unambiguous() and item.object.name in nutrition and
+                total - nutrition[item.object.name] >= jf_config.TOUR_FOOD_RESERVE]
+        return sorted(food, key=lambda item: (-nutrition[item.object.name], item.object.name != 'food ration'))
+
     def _eat_before_praying(self):
-        if self._food_first():
+        if self._food_first() or self._tour_food_first_items():
             return True
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
@@ -2571,6 +2583,12 @@ class Agent:
     def eat_from_inventory(self):
         if self.blstats.hunger_state < Hunger.HUNGRY:
             yield False
+        # TOUR_FOOD_FIRST: Hungry in the tour with food to spare -- eat it now, keep the prayer for HP
+        tour_food = self._tour_food_first_items()
+        if tour_food:
+            yield True
+            self.inventory.eat(tour_food[0])
+            return
         # hypothesis: prayer is the main food source, but a hunger prayer made on the bare ~900-1100 turn
         # starvation cycle comes too soon in ~4-7% of cases -- the hunger is not fixed and the god gets angry,
         # so the character usually starves or dies while fainting (a common cause of early deaths); keeping

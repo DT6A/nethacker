@@ -224,18 +224,23 @@ LOWHP_FIRST_TURN = 100
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (monster_utils) makes things worse.
-# uhitm.c passive() deals (lvl+1)d6 cold (2d6 brown mold, 5d6 blue jelly) on 2/3 of the swings that don't kill,
-# heals the target by half of it and splits it once its max HP passes (lvl+1)*8; a Tourist's weak melee can't
-# outpace that. This chain's seed 8 dies 'of starvation' on Dlvl 1 at XL3 after 10277 turns -- the brown-mold box
-# #6 found (swing at full HP, 'multiplies from your heat!', Elbereth rest, swing again, faint). Without cold
-# resistance they are only targets for thrown darts or squares to walk around. (Port of #6, held-out +0.063.)
-# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
-#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
-#          http://crpgaddict.blogspot.com/2024/03/nethack-31-quest-for-glory.html (player: backed off, darts),
-#          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%209/ (player killed meleeing a blue jelly),
-#          /refs/history/6.diff, NetHack 3.6.6 src/uhitm.c passive()
-MOLD_NO_MELEE = True
+# hypothesis: the grind hoards its food and prays for hunger at Weak every ~1300 turns, though the Tourist carries
+# 3000-6700 nutrition (4-8 food rations, lembas, fruit) from turn 1. Each hunger prayer resets the prayer timeout to
+# rnz(350), so for the next ~500 turns (is_safe_to_pray(500)) there is no HP prayer, and since LOWHP_EXACT that
+# critical-HP prayer is the grind's backstop: replays of this parent -- s0 killed by a hobgoblin 290 turns after a
+# hunger prayer made with 4920 nutrition carried, s2 by a coyote 298 turns after one (2980 carried; the desperate
+# HP prayer at gap 298 failed). In the tour, eat carried safe food (rations, lembas, fruit -- no eggs, tins,
+# tripe or corpses) as soon as Hungry, down to TOUR_FOOD_RESERVE nutrition kept for the dive, and don't pray for
+# hunger while such food is left: the prayer stays ready for the fight that goes wrong, so fewer XL 3-6 grind
+# deaths on Dlvl 1.
+# sources: https://nethackwiki.com/wiki/Prayer (timeout, major trouble <= 200, 'not 100% reliable'),
+#          https://nethackwiki.com/wiki/Tourist (10-20 starting comestibles), https://nethackwiki.com/wiki/Nutrition,
+#          https://en.wikibooks.org/wiki/NetHack/Staying_Alive, https://www.steelypips.org/nethack/pray.html,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/184ocw1iBkc (pray for food only when out of
+#          it: prayer is needed for worse emergencies), NetHack 3.6.6 src/pray.c (pleased: u.ublesscnt = rnz(350))
+TOUR_FOOD_FIRST = True
+# with TOUR_FOOD_FIRST: carried nutrition (inventory.carried_nutrition) the tour leaves uneaten for the dive
+TOUR_FOOD_RESERVE = 800
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
