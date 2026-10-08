@@ -843,19 +843,6 @@ class Inventory:
         best_item = None
         best_dps = utils.calc_dps(*self.agent.character.get_melee_bonus(None, large_monster=False))
         for item in flatten_items(items):
-            # hypothesis: the Tourist wields its whole stack of +2 darts as its 'best melee weapon' (the +2 to-hit
-            # beats bare hands in get_melee_bonus), and get_ranged_combinations never throws the best/wielded melee
-            # weapon -- so the class's only real attack (a thrown dart: d3+2, trained toward Skilled multishot) is
-            # never used in the Dlvl 1 grind where the early losses happen (jackal, bat, wererat, gnome zombie).
-            # A missile or ammo in melee does only rnd(2) (uhitm.c hmon_hitmon), no better than unskilled bare hands
-            # (d2 +1 skill damage, weapon.c weapon_dam_bonus), so keep them out of the melee choice and throw them.
-            # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart,
-            #          NetHack 3.6.6 src/uhitm.c hmon_hitmon (is_missile/is_ammo -> rnd(2)), src/weapon.c
-            #          (node #58: ported with #10's point-blank throws onto #2/#6/#13; wiki Tourist: 'throw darts at
-            #          real threats, melee only harmless monsters' -- and #6's molds become dart targets)
-            if jf_config.MISSILES_NOT_MELEE and item.is_weapon() and \
-                    (item.is_fired_projectile() or item.objs[0].name in ('dart', 'shuriken')):
-                continue
             if item.is_weapon() and \
                     (item.status in [Item.UNCURSED, Item.BLESSED] or
                      (allow_unknown_status and item.status == Item.UNKNOWN)):

@@ -71,6 +71,18 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: (PRAYERLESS_GUARD, port of #4 into the #2/#6/#13 chain) the lone-weak-monster exemption below fights
+# on to 6 HP counting on the HP prayer at critically_low_hp, the only HP prayer since LOWHP_EXACT (#2). Within 500
+# turns of the last prayer (the grind prays for hunger at Weak every ~1150-1300 turns) or after a failed one there is
+# no such prayer, and this chain's Dlvl 1-3 losses are mostly such lone weak monsters (coyote s2, hobbit s9, sewer
+# rat s12, giant rat s8, cave spider s6, giant bat s13, coyote 421793). Without a safe HP prayer, hide on Elbereth
+# below 40% HP from a lone weak monster too; with one, keep the old behaviour.
+# sources: /refs/history/4.diff (#4: held-out 0.1517 -> 0.2196 on #2), https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Elbereth,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy,
+#          https://nethackwiki.com/wiki/Why_do_I_keep_dying, https://groups.google.com/g/rec.games.roguelike.nethack/c/s-H_MMO_nJY
+#          (pray at 1/7 HP only off timeout; otherwise Elbereth and rest without attacking), /refs/top/008c6ff1b6ec
+PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1263,7 +1275,10 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
+                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
