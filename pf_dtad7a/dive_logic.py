@@ -71,18 +71,16 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the lone-weak-monster exemption below fights on to 6 HP counting on the low-HP prayer (emergency_strategy:
-# is_safe_to_pray(500)); within 500 turns of the last prayer (the grind prays for hunger every ~1150-1300 turns) or
-# after a failed one there is no such prayer, and this chain's Tourist -- punching bare-handed since MISSILES_NOT_MELEE
-# (d2, unskilled -4 to-hit) -- loses most of its Dlvl 1-4 games exactly so: a lone jackal, fox, grid bug, giant rat,
-# giant bat or giant ant at XL 2-7. Without a safe HP prayer, hide on Elbereth below the rest threshold from a lone
-# weak monster too (PRAYERLESS_GUARD, port of tree #4: held-out 0.1517 -> 0.2196 on its chain); with the prayer ready
-# the fight-on exemption (and the grind camera behind it) is unchanged
+# hypothesis: the lone-weak-monster exemption below fights on to 6 HP counting on the HP prayer at critically_low_hp
+# (the only HP prayer since LOWHP_EXACT); within 500 turns of the last prayer (the grind's Weak prayers come every
+# ~1150-1300 turns) or after a failed one there is no such prayer -- #2's seed 2 meleed coyotes 28->7/38 HP 298
+# turns after a hunger prayer, seed 0 a hobgoblin at XL5 ~200 turns after one, and both died during the too-soon
+# desperate prayer ('You begin praying... The coyote bites!': no shimmering light). Without a safe HP prayer, hide
+# on Elbereth below 40% HP from a lone weak monster too (PRAYERLESS_GUARD)
 # sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-#          https://nethackwiki.com/wiki/Elbereth ('not ... only a last resort when the character is down to 1 HP'),
-#          https://nethackwiki.com/wiki/Tourist, https://en.wikibooks.org/wiki/NetHack/Staying_Alive,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/s-H_MMO_nJY (player thread: save prayer for
-#          emergencies, it is not reliable), /refs/history/4.diff, /refs/top/008c6ff1b6ec (nhbot _lone_weak_deadly)
+#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist,
+#          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying = failed prayer),
+#          /refs/top/008c6ff1b6ec (retreat keyed on prayer/Elbereth availability)
 PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
@@ -1278,7 +1276,8 @@ class DiveLogic:
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(500)):
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
+                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
