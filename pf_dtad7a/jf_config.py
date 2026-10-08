@@ -198,32 +198,7 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
-# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
-# prayer failed and starts an XL-1 rescue dive (dev s421795: prayed at 10/14, dead on Dlvl 3 at T1664); with the
-# timeout at 0 it only resets the timeout to rnz(350), so the real critical-HP prayer soon after fails (s1: prayed
-# at 11/12 at T526, the 3/14 prayer at T787 failed, dead). Praying only at critically_low_hp -- and for that
-# first HP prayer from turn 100, when the starting timeout of 300 is already <= 200, pray.c's major-trouble
-# limit -- keeps the prayer for the moment it heals, so fewer early losses on Dlvl 1-3.
-# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
-#          p_type == 0 branch), https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
-#          /refs/top/84bfc1860a92 (Howuhh: Tourist grind deaths at critical HP after a stale prayer)
-LOWHP_EXACT = True
-# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
-# major trouble needs <= 200) instead of 300
-LOWHP_FIRST_TURN = 100
-# hypothesis: the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
-# surround it in an open room, and fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
-# about, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal through a
-# door) and hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Corridor, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          https://forum.rpg.net/threads/lets-play-nethack-the-life-and-many-many-deaths-of-a-noob.522116/,
-#          AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+LOWHP_EXACT = False
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
