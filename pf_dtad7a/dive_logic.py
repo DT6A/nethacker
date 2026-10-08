@@ -71,17 +71,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the lone-weak-monster exemption below fights on to 6 HP counting on the HP prayer at critically_low_hp
-# (the only HP prayer since LOWHP_EXACT); within 500 turns of the last prayer (the grind's Weak prayers come every
-# ~1150-1300 turns) or after a failed one there is no such prayer -- #2's seed 2 meleed coyotes 28->7/38 HP 298
-# turns after a hunger prayer, seed 0 a hobgoblin at XL5 ~200 turns after one, and both died during the too-soon
-# desperate prayer ('You begin praying... The coyote bites!': no shimmering light). Without a safe HP prayer, hide
-# on Elbereth below 40% HP from a lone weak monster too (PRAYERLESS_GUARD)
-# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist,
-#          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying = failed prayer),
-#          /refs/top/008c6ff1b6ec (retreat keyed on prayer/Elbereth availability)
-PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1274,10 +1263,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
-                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
