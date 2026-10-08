@@ -1005,7 +1005,7 @@ class Agent:
             self.stats_logger.log_event('container_untrap_fail')
             return self.message
 
-    def is_safe_to_pray(self, limit=500, certain_death=False):
+    def is_safe_to_pray(self, limit=500, certain_death=False, first_turn=None):
         # pray.c: 'Since you are in Gehennom, Tyr can't help you' -- nothing is fixed, and unless the alignment
         # record is high the god gets angry (angrygods) -- so no prayer at all there, not even for certain death
         if jf_config.GEHENNOM_DIVE and self.current_level().dungeon_number == 1:
@@ -1023,7 +1023,8 @@ class Agent:
                 self.blstats.time - self.last_prayer_turn < self.PRAYER_FAILURE_WAIT:
             return False
         return (
-                (self.last_prayer_turn is None and self.blstats.time > (100 if jf_config.EXACT_PRAYER else 300)) or
+                (self.last_prayer_turn is None and self.blstats.time > (
+                    first_turn if first_turn is not None else 100 if jf_config.EXACT_PRAYER else 300)) or
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
@@ -2419,7 +2420,8 @@ class Agent:
         if poly_buffer:
             low_hp = False
         if (
-                (self.is_safe_to_pray(500) and low_hp)
+                (self.is_safe_to_pray(500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)
+                 and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and
