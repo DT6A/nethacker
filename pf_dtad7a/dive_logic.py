@@ -86,15 +86,6 @@ ELBERETH_REST_UNTIL = 0.85
 TOUR_IDLE_REST = True
 TOUR_IDLE_REST_BELOW = 0.5
 TOUR_IDLE_REST_UNTIL = 0.9
-# hypothesis: the lone-weak-monster exemption in elbereth_rest fights on to 6 HP counting on the HP prayer at
-# critically_low_hp (the only HP prayer since LOWHP_EXACT); within 500 turns of the last prayer (the grind's Weak
-# prayers come every ~1150-1300 turns) or after a failed one there is no such prayer, and this chain's early losses
-# are exactly lone mlevel<=2 monsters (rothe x3, coyote x2, sewer rat on Dlvl 1-3 at XL 2-7). Without a safe HP
-# prayer, hide on Elbereth below 40% HP from a lone weak monster too (PRAYERLESS_GUARD, port of #4 -- held-out
-# 0.1517 -> 0.2196 on #2); TOUR_IDLE_REST then heals only once nothing is in view, this covers the fight itself
-# sources: /refs/history/4.diff, https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe
-PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1288,10 +1279,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
-                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
