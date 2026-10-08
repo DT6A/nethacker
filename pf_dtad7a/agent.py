@@ -2719,25 +2719,6 @@ class Agent:
                 self.pray()
                 return
 
-        # hypothesis: a cursed dwarvish mattock the dive applied (CURSED_PICK_OK) welds to both hands, and with no
-        # free hand there is no Elbereth for the rest of the game (can_engrave): no Elbereth rest, nothing before
-        # digging -- s11 fell to Dlvl 6 beside 3 fire ants with one and died 'digging out', 50 -> 9 HP in 4 turns.
-        # pray.c rates a welded weapon with no free hand TROUBLE_UNUSEABLE_HANDS, a major trouble that a safe
-        # prayer fixes by uncursing it; waiting for the next Weak prayer fixes it only half the time (Luck 0:
-        # pleased() fixes only the worst trouble, starvation). Not while Hungry without food: Hungry is a minor
-        # trouble the prayer leaves alone, so the timeout would restart just before Weak.
-        # sources: NetHack 3.6.6 src/pray.c (in_trouble, fix_worst_trouble, pleased), src/engrave.c (freehand),
-        #          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Dwarvish_mattock
-        main = self.inventory.items.main_hand
-        if jf_config.WELDED_PRAY and main is not None and main.status == Item.CURSED and \
-                getattr(main.objs[0], 'bi', False) and not self.prayer_failed and \
-                not (self.blstats.hunger_state == Hunger.HUNGRY and not self.edible_carried_food()) and \
-                self.is_safe_to_pray(jf_config.WEAK_PRAYER_GAP):
-            self._pray_reason = 'welded'
-            yield True
-            self.pray()
-            return
-
         yield False
 
     ####### MAIN

@@ -121,6 +121,24 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
+        # hypothesis: wands come only after darts, food and the unknown bulk in this split, so a Tourist whose
+        # pack is near its (low) capacity drops them in the Dlvl 1-4 grind or never picks them up ('You drop a
+        # wand of fire.'). Gnomes, gnome lords, hobbits, kobolds and orcs of the grind pick them up and zap them
+        # at the AC 10 Tourist (muse.c find_offensive/use_offensive): this parent dies 'killed by a blast of
+        # frost' (s1, Dlvl 3 XL 8), 'killed by a wand' (s2, Dlvl 5 XL 7) and 'by a magic missile' (s9 fem) --
+        # 5 of 30 games. A wand weighs 7: during the tour keep every wand before the bulk, so none is left lying
+        # about for them (the dive keeps its own food/passage order).
+        # sources: https://nethackwiki.com/wiki/Gnome_With_the_Wand_of_Death (don't drop or leave unknown wands:
+        #          hobbits, goblins, kobolds pick them up and zap them),
+        #          https://nethackwiki.com/wiki/Forum:What's_your_unluckiest_death%3F (players killed by picked-up
+        #          wands on Dlvl 1-2), /refs/history/13.diff (#13 in the #2/#6 chain: held-out 0.2146 -> 0.2302),
+        #          /refs/past_runs/20261001-063522/2.diff (KEEP_WANDS_FIRST kept on held-out seeds for these
+        #          Tourist identities in the autoascend engine)
+        if jf_config.KEEP_WANDS_FIRST and not (dive is not None and dive.diving):
+            for item in sorted(filter(lambda i: i.category == nh.WAND_CLASS, items),
+                               key=lambda i: i.unit_weight(with_content=False)):
+                add_item(item)
+
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):

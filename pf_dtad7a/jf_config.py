@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -276,9 +278,6 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# a welded cursed two-hander (no free hand: no Elbereth) is a major prayer trouble: pray it off once a prayer is safe
-# (agent.cure_disease)
-WELDED_PRAY = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
