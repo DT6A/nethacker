@@ -212,6 +212,23 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
+# hypothesis: (node #62, port of #5 into the #2/#6/#14 chain; #5 alone held-out 0.2114 vs 0.1517) this chain's
+# public early losses are rothe x3 and coyote x2 on Dlvl 1-3 -- packs; #14's idle rest heals between fights, this
+# fights the pack itself one or two at a time.
+# sources: https://nethackwiki.com/wiki/Jackal (hallway so you are not surrounded), /refs/history/5.diff,
+#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: in a hallway only 1-2 attack)
+# hypothesis (#5): the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
+# surround it in an open room, and fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
+# about, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal through a
+# door) and hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Corridor, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          https://forum.rpg.net/threads/lets-play-nethack-the-life-and-many-many-deaths-of-a-noob.522116/,
+#          AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -316,13 +333,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# hypothesis: (node #63, port of history #1 + #10 into the #2/#6/#14 chain) un-wielded, point-blank-thrown darts end the
-# Dlvl 1-4 grind fights faster than stabbing with the wielded stack (rnd(2)); #14's idle rest then recovers between fights.
-# sources: /refs/history/1.diff, /refs/history/10.diff, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
