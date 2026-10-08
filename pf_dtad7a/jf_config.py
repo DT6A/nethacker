@@ -209,6 +209,18 @@ TOUR_GAPS_BY_XL = []
 #          p_type == 0 branch), https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
 #          /refs/top/84bfc1860a92 (Howuhh: Tourist grind deaths at critical HP after a stale prayer)
 LOWHP_EXACT = True
+# hypothesis: every grind's first prayer is a hunger prayer at Weak around T850 (900 starting nutrition), at XL 1-2
+# with an alignment record of 0-3 ('is satisfied': at 0 it fixes nothing half the time, !rnl(2)), and it resets
+# the timeout to rnz(350) -- so through T850-1350 there is no critical-HP prayer, exactly where the XL 1-3 Tourist
+# (12-25 max HP, a kobold's spear hits 7) dies (dev logs: kobold T977 135 turns after it; hobbit T1274 after a
+# failed desperate prayer at gap 327; kitten T1509 at gap 451). Below XL PRAYER_RESERVE_XL the tour eats its
+# best safe carried meal at Weak instead (never tripe/eggs/tins/corpses), keeping the prayer for HP: fewer
+# Dlvl-1 losses at XL 1-3; from XL 4 the usual hoard-and-pray grind resumes (unlike #20, ~2-3 meals, not all food).
+# sources: NetHack 3.6.6 src/pray.c (pleased: u.ualign.record < STRIDENT -> action = record > 0 || !rnl(2) ? 1 : 0;
+#          prayer_done/u.ublesscnt = rnz(350)), https://nethackwiki.com/wiki/Prayer,
+#          https://www.steelypips.org/nethack/pray.html, https://nethackwiki.com/wiki/Tourist,
+#          https://nethackwiki.com/wiki/Tripe_ration
+PRAYER_RESERVE_XL = 4
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
@@ -276,6 +288,9 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
+# a welded cursed two-hander (no free hand: no Elbereth) is a major prayer trouble: pray it off once a prayer is safe
+# (agent.cure_disease)
+WELDED_PRAY = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
@@ -320,18 +335,6 @@ WAND_STAIRS_FIX = True
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
-
-# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting kitten/little dog (which ate nothing)
-# starves by ~T1500: dogmove.c dog_hunger confuses it ('<pet> is confused from hunger.'), mon.c mfndpos gives a
-# confused monster ALLOW_U, dog_move then mattacku()s us -- and fight2 never answers a pet (parent dev seed 421796,
-# both identities: 'killed by a kitten' at XL2, T1509, score ~0). Leaving floor corpses to the pet (unless we are
-# Weak) until we see it eat (dog_eat clears mconf) or PET_HUNGER_TURNS pass lets it feed and calm down.
-# sources: /refs/past_runs/20261004-221634/1.diff + /refs/past_runs/20261002-164932/17.diff (PET_HUNGER_FIX, kept as a
-#          proven fix there), /refs/top/008c6ff1b6ec (PET_HUNGER_FIX), https://nethackwiki.com/wiki/Pet,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A ("it begins to see you as potential lunch"),
-#          https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_PostRelease/src/dogmove.c (dog_hunger, dog_eat)
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

@@ -66,7 +66,6 @@ class Agent:
         self.last_bfs_dis = None
         self.last_bfs_step = None
         self.last_prayer_turn = None
-        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
         self.prayer_hold_until = -1
         self._fainting_since = None   # turn Fainting was first seen (jf_config.STARVE_CLOCK)
         self._weak_since = None       # turn Weak was first seen (jf_config.THREAT_PRAYER_GAP)
@@ -431,8 +430,6 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
-        if jf_config.PET_HUNGER_FIX:
-            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -1235,8 +1232,21 @@ class Agent:
             self.inventory.carried_nutrition() >= jf_config.FOOD_FIRST_MIN and \
             not self.is_safe_to_pray(jf_config.FOOD_FIRST_GAP)
 
+    def _reserve_meal(self):
+        """PRAYER_RESERVE_XL: below that XL in the tour, the biggest safe carried meal (BUY_FOOD_NUTRITION: rations,
+        lembas, cram, fruit -- no tripe, eggs, tins or corpses) to eat at Weak instead of a hunger prayer."""
+        if not jf_config.PRAYER_RESERVE_XL or self.blstats.experience_level >= jf_config.PRAYER_RESERVE_XL or \
+                self.global_logic.dive.diving:
+            return None
+        nutrition = self.inventory.BUY_FOOD_NUTRITION
+        meals = [item for item in self.edible_carried_food()
+                 if item.is_unambiguous() and item.object.name in nutrition and item.status != Item.CURSED]
+        return max(meals, key=lambda item: nutrition[item.object.name], default=None)
+
     def _eat_before_praying(self):
         if self._food_first():
+            return True
+        if self._reserve_meal() is not None:
             return True
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
@@ -2239,29 +2249,10 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
-    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
-
-    def _note_pet_hunger(self):
-        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
-        it is 500 turns past its hungrytime; the pet eating something (dog_eat clears mconf) ends it."""
-        bl = getattr(self, 'blstats', None)
-        if bl is None:
-            return
-        msg = self.message or ''
-        if 'is confused from hunger' in msg:
-            if self._pet_starving_until < bl.time:
-                self.log('PET starving (confused from hunger): leaving the corpses to it')
-            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
-        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
-            self._pet_starving_until = -1
-
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
-        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
-                self.blstats.hunger_state < Hunger.WEAK:
-            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
@@ -2600,7 +2591,8 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        for item in self.edible_carried_food():
+        meal = self._reserve_meal() if self.blstats.hunger_state >= Hunger.WEAK else None
+        for item in [meal] if meal is not None else self.edible_carried_food():
             yield True
             self.inventory.eat(item)
             return
@@ -2740,6 +2732,25 @@ class Agent:
                 yield True
                 self.pray()
                 return
+
+        # hypothesis: a cursed dwarvish mattock the dive applied (CURSED_PICK_OK) welds to both hands, and with no
+        # free hand there is no Elbereth for the rest of the game (can_engrave): no Elbereth rest, nothing before
+        # digging -- s11 fell to Dlvl 6 beside 3 fire ants with one and died 'digging out', 50 -> 9 HP in 4 turns.
+        # pray.c rates a welded weapon with no free hand TROUBLE_UNUSEABLE_HANDS, a major trouble that a safe
+        # prayer fixes by uncursing it; waiting for the next Weak prayer fixes it only half the time (Luck 0:
+        # pleased() fixes only the worst trouble, starvation). Not while Hungry without food: Hungry is a minor
+        # trouble the prayer leaves alone, so the timeout would restart just before Weak.
+        # sources: NetHack 3.6.6 src/pray.c (in_trouble, fix_worst_trouble, pleased), src/engrave.c (freehand),
+        #          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Dwarvish_mattock
+        main = self.inventory.items.main_hand
+        if jf_config.WELDED_PRAY and main is not None and main.status == Item.CURSED and \
+                getattr(main.objs[0], 'bi', False) and not self.prayer_failed and \
+                not (self.blstats.hunger_state == Hunger.HUNGRY and not self.edible_carried_food()) and \
+                self.is_safe_to_pray(jf_config.WEAK_PRAYER_GAP):
+            self._pray_reason = 'welded'
+            yield True
+            self.pray()
+            return
 
         yield False
 
