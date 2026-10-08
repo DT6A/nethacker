@@ -1005,7 +1005,7 @@ class Agent:
             self.stats_logger.log_event('container_untrap_fail')
             return self.message
 
-    def is_safe_to_pray(self, limit=500, certain_death=False, first_turn=None):
+    def is_safe_to_pray(self, limit=500, certain_death=False):
         # pray.c: 'Since you are in Gehennom, Tyr can't help you' -- nothing is fixed, and unless the alignment
         # record is high the god gets angry (angrygods) -- so no prayer at all there, not even for certain death
         if jf_config.GEHENNOM_DIVE and self.current_level().dungeon_number == 1:
@@ -1023,8 +1023,7 @@ class Agent:
                 self.blstats.time - self.last_prayer_turn < self.PRAYER_FAILURE_WAIT:
             return False
         return (
-                (self.last_prayer_turn is None and self.blstats.time > (
-                    first_turn if first_turn is not None else 100 if jf_config.EXACT_PRAYER else 300)) or
+                (self.last_prayer_turn is None and self.blstats.time > (100 if jf_config.EXACT_PRAYER else 300)) or
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
@@ -1232,20 +1231,8 @@ class Agent:
             self.inventory.carried_nutrition() >= jf_config.FOOD_FIRST_MIN and \
             not self.is_safe_to_pray(jf_config.FOOD_FIRST_GAP)
 
-    def _tour_food_first_items(self):
-        """TOUR_FOOD_FIRST: the safe carried food (named in BUY_FOOD_NUTRITION: no eggs, tins, tripe or corpses) the
-        tour may eat without going below TOUR_FOOD_RESERVE, the biggest meal first."""
-        if not jf_config.TOUR_FOOD_FIRST or self.global_logic.dive.diving:
-            return []
-        nutrition = self.inventory.BUY_FOOD_NUTRITION
-        total = self.inventory.carried_nutrition()
-        food = [item for item in self.edible_carried_food()
-                if item.is_unambiguous() and item.object.name in nutrition and
-                total - nutrition[item.object.name] >= jf_config.TOUR_FOOD_RESERVE]
-        return sorted(food, key=lambda item: (-nutrition[item.object.name], item.object.name != 'food ration'))
-
     def _eat_before_praying(self):
-        if self._food_first() or self._tour_food_first_items():
+        if self._food_first():
             return True
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
@@ -2057,11 +2044,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2432,8 +2414,7 @@ class Agent:
         if poly_buffer:
             low_hp = False
         if (
-                (self.is_safe_to_pray(500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)
-                 and low_hp)
+                (self.is_safe_to_pray(500) and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and
@@ -2583,12 +2564,6 @@ class Agent:
     def eat_from_inventory(self):
         if self.blstats.hunger_state < Hunger.HUNGRY:
             yield False
-        # TOUR_FOOD_FIRST: Hungry in the tour with food to spare -- eat it now, keep the prayer for HP
-        tour_food = self._tour_food_first_items()
-        if tour_food:
-            yield True
-            self.inventory.eat(tour_food[0])
-            return
         # hypothesis: prayer is the main food source, but a hunger prayer made on the bare ~900-1100 turn
         # starvation cycle comes too soon in ~4-7% of cases -- the hunger is not fixed and the god gets angry,
         # so the character usually starves or dies while fainting (a common cause of early deaths); keeping
