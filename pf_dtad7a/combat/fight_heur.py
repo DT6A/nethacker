@@ -77,60 +77,6 @@ def missiles_risk_the_watch(agent):
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
 
-# hypothesis: with its darts no longer wielded (MISSILES_NOT_MELEE), the Tourist punches every monster that reaches
-# melee (bare hands, unskilled: to-hit +1, d2+1), because ranged_priority gives an adjacent target -11 against
-# melee's 16. A +2 dart thrown point blank is far better (dothrow.c thitmonst: +2 for a throwing weapon, +(3 - distance)
-# = +2 at distance 1, +2 enchantment; d3+2 damage) and trains the dart skill toward Skilled/Expert multishot -- so the
-# Dlvl 1-4 grind fights (jackals, coyotes, bats, rats, hill orcs, were-creatures) end in fewer rounds, i.e. less HP
-# lost. A thrown missile also avoids the target's passive attack. As nhbot's Ranger point-blank archery: one above
-# what melee would get (so the HP <= 8 retreat ordering is kept); weak / ranged-only / exploding kinds keep their
-# old handling (darts break 1 in 4 on a hit, dothrow.c; lichens and newts are punched).
-# Port of #1+#10 into the LOWHP_EXACT + PRAYERLESS_GUARD + MOLD_NO_MELEE chain: this chain's early losses (6/15 per
-# identity, Dlvl 1-3 at XL 4-7: iguana, gnome, manes, werejackal, giant bat, rothe) are grind fights stabbed with a
-# wielded dart stack; faster kills mean fewer fights that reach the Elbereth/prayer backstops, and the molds that
-# MOLD_NO_MELEE stops meleeing are left to the thrown darts.
-# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
-#          https://nethackwiki.com/wiki/Ranged_attack (thrown attacks skip passives at melee range),
-#          rec.games.roguelike.nethack "it took me 4 years to understand" (Expert dart/dagger: throw them at melee
-#          range), nhbot/combat/fight_heur.py ranger_point_blank (this repo), NetHack 3.6.6 src/dothrow.c thitmonst
-#          https://nethackwiki.com/wiki/Multishot, https://nethackwiki.com/wiki/Tourists, /refs/history/1.diff,
-#          /refs/history/10.diff, /refs/history/28.diff, https://groups.google.com/g/rec.games.roguelike.nethack/c/U4mv25Zx6rI
-POINT_BLANK_THROW = True
-
-
-def point_blank_throw(agent, launcher, ammo):
-    """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
-    try:
-        ch = agent.character
-        if not POINT_BLANK_THROW or launcher is not None or ammo is None or ch.prop.polymorph or \
-                ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
-            return False
-        main = agent.inventory.items.main_hand
-        # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-            main.objs[0].name in ('dart', 'shuriken')
-    except Exception:
-        return False
-
-
-def point_blank_priority(agent, monster, default):
-    """One above melee_monster_priority for the same monster, bare-handed (16, or 1 at HP <= 8 against a
-    monster that isn't faster: the retreat keeps winning there)."""
-    try:
-        _, _, _, mon, _ = monster
-        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
-                mon.mname in EXPLODING_MONSTERS:
-            return default
-        ret = 2
-        if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
-            ret += 15
-        if 'were' in mon.mname:
-            ret += 1
-        return ret
-    except Exception:
-        return default
-
-
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -196,8 +142,6 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
-            if dis == 1 and point_blank_throw(agent, launcher, ammo):
-                ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
 
