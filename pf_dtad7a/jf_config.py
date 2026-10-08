@@ -212,21 +212,6 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# hypothesis: the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
-# surround it in an open room, and fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
-# about, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal through a
-# door) and hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# (node #65: port of #5 -- held-out 0.2114 vs 0.1517 alone -- into the LOWHP_EXACT / mold / WERE_KEEP_AWAY chain,
-# whose Dlvl-1 losses still include coyote (s2, 421793) and rothe (s12) packs; on a chokepoint a were pack's
-# summoned jackals/rats also come one at a time to the Elbereth square WERE_KEEP_AWAY engraves)
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Corridor, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          https://forum.rpg.net/threads/lets-play-nethack-the-life-and-many-many-deaths-of-a-noob.522116/,
-#          AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -305,6 +290,21 @@ LYCAN_FIXES = True
 #          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
 #          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
 WERE_KEEP_AWAY = True
+# hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon, and
+# get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist had NO ranged
+# attack at all. With WERE_KEEP_AWAY it hides on Elbereth from an animal-form were and with MOLD_NO_MELEE it never
+# melees a brown mold / blue jelly, so neither could ever be killed: the were circles the Elbereth square (bot
+# waits, starving) and molds stay blockers. dothrow.c throw_obj() splits one dart off a wielded stack (no prompt,
+# the rest stays wielded), so with WIELDED_STACK_THROW the stack is also a throwing option while 2+ are left:
+# d3+2 darts at monsters still 3-7 squares away (adjacent ones keep the melee priority, ranged_priority), the were
+# that fled the Elbereth square and the molds killed from range, darts picked up again after the fight. Port of
+# #44 (held-out 0.1883 vs its parent's 0.1665) into the #2/#6/#15 chain -- fewer Dlvl 1-4 grind stalls and losses.
+# sources: /refs/history/44.diff (WIELDED_STACK_THROW), https://nethackwiki.com/wiki/Source:NetHack_3.6.1/src/dothrow.c
+#          (throw_obj: splitobj(obj, 1L), remove_worn_item only for the last one), https://nethackwiki.com/wiki/Tourist
+#          ('much safer to ... use [darts] against hostile monsters'), https://nethackwiki.com/wiki/Dart,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/ql26zUYXgIc (player: Tourist 'can throw the
+#          darts and still have a weapon')
+WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
