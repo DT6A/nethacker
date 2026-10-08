@@ -9,7 +9,7 @@ from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
 from .monster_utils import is_monster_faster, is_dangerous_monster, \
-    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full, infectious_were
+    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
 
@@ -36,7 +36,7 @@ def melee_monster_priority(agent, monsters, monster):
         ret -= 6
     if mon.mname in EXPLODING_MONSTERS:
         ret -= 17
-    if 'were' in mon.mname and not infectious_were(agent, mon):
+    if 'were' in mon.mname:
         ret += 1
     # if not wielding_melee_weapon(agent):
     #     ret -= 5
@@ -262,19 +262,6 @@ def in_gehennom(agent):
     return jf_config.GEHENNOM_DIVE and agent.current_level().dungeon_number == 1
 
 
-def were_keep_away(agent, monsters, radius=1):
-    """WERE_KEEP_AWAY: a were in animal form within `radius` whose bite can still give us lycanthropy, and
-    nothing adjacent that would melee through an Elbereth (an @ were, a minotaur) -- hide from it on Elbereth."""
-    if not jf_config.WERE_KEEP_AWAY or in_gehennom(agent):
-        return False
-    y0, x0 = agent.blstats.y, agent.blstats.x
-    dive = agent.global_logic.dive
-    if any(adjacent((my, mx), (y0, x0)) and dive._melee_ignores_elbereth(mon) for _, my, mx, mon, _ in monsters):
-        return False
-    return any(max(abs(my - y0), abs(mx - x0)) <= radius and infectious_were(agent, mon)
-               for _, my, mx, mon, _ in monsters)
-
-
 def elbereth_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
         return []
@@ -282,9 +269,6 @@ def elbereth_action(agent, monsters):
         return []
     if not agent.can_engrave():
         return []
-    if were_keep_away(agent, monsters):
-        # before any melee (~17) or pickup: a were that just stepped next to us has not bitten yet
-        return [(40, ('elbereth',))]
     adj_monsters_count = 0
     for monster in monsters:
         _, my, mx, mon, _ = monster
@@ -312,9 +296,6 @@ def wait_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
-        if were_keep_away(agent, monsters, radius=2):
-            # stay on the square while it circles (stepping off to chase it hands it the first bite)
-            priority = max(priority, 20)
         return [(priority, ('wait',))]
     return []
 

@@ -33,7 +33,6 @@ from .glyph import G, MON, SS, Hunger
 from .level import Level
 from .item import Item, flatten_items
 from .strategy import Strategy
-from .combat.monster_utils import infectious_were
 
 ROOM_FLOOR = frozenset({SS.S_room, SS.S_darkroom})
 PLAIN_FLOOR = frozenset({SS.S_room, SS.S_darkroom, SS.S_corr, SS.S_litcorr})
@@ -72,6 +71,26 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the lone-weak-monster exemption keeps a low-XL Tourist (no armour, -4 unskilled melee) swinging at a
+# jackal / bat / wererat / gnome zombie while it strips 30%+ of max HP within 3 turns -- the Dlvl 1-3 early losses;
+# while HP is falling that fast, hide behind Elbereth from it as from any other monster (BURST_DEFENSE)
+# sources: /refs/past_runs/20261004-221634/2.diff, https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy
+BURST_DEFENSE = True
+# hypothesis: the Elbereth rest keys on a fixed 40% HP and exempts any lone 'weak' (mlevel <= 2) monster, which takes in
+# the grind's worst killers -- rothes (2-4 per group, three attacks, up to 14 a turn: 4 of the parent's 15 early losses),
+# giant bats (speed 22), hill orcs/hobbits with weapons, weres in animal form -- so an unarmoured AC-10 Tourist trades
+# blows until one turn from death. THREAT_ELBERETH judges the near monsters by their real melee instead (nhbot's
+# nhmodel.prayer.monster_turn_damage: mhitu.c to-hit vs our AC, their attacks and speed): when they could kill us
+# within THREAT_TURNS turns with P >= THREAT_PDIE, rest on Elbereth already below ELBERETH_REST_UNTIL HP, and never
+# take the lone-weak exemption for such a monster (a jackal or newt stays an exempt kill)
+# sources: /refs/top/2e8711968a25 + 74cf6b61c783 + bb0a41daf499 (GROUP_THREAT_ELB), nhbot/dive_logic.py _lone_weak_deadly
+#          (LONE_WEAK_THREAT), https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Elbereth ('it is
+#          generally not possible to engrave Elbereth too early ... you must not wait until you are one turn from
+#          death'), https://nethackwiki.com/wiki/Tourist, https://www.steelypips.org/nethack/elbereth_faq.html (r.g.r.n),
+#          https://forum.rpg.net/threads/lets-play-nethack-3-6-1.841385/page-4 (rothes: 'max 14 a round ... watch your HP')
+THREAT_ELBERETH = True
+THREAT_TURNS = 3
+THREAT_PDIE = 0.1
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -334,6 +353,17 @@ KILL_PRAYER_HOLD = 600
 # dwarves spawn on Dlvl 1 from XL 7 (difficulty 4 <= (1 + XL) / 2); 51 of 90 baseline grinds heard one
 # digging there ('You hear crashing rock.') and 5 of those dives still never got a tool
 GRIND_HUNT_XL = 0
+# hypothesis: a dwarf killed during the Dlvl-1 grind (they spawn there from XL ~7, hostile to a human Tourist, 1 in 4
+# with a pick-axe or mattock) leaves its pile in its own fresh tunnel, and the pile is only fetched when the dive
+# starts thousands of turns later, when that tunnel square is often 'end point is no longer accessible' /
+# 'unreachable' (parent seed 5: dwarf killed at T16535, fetch failed at T19279, tool-less dive died on Dlvl 2 at
+# 0.075 while the root dug to Dlvl 27 from the same pile). GRIND_PILES: the tour checks such a pile at once,
+# stepping into the tunnel from a reachable neighbour, and keeps the digging tool (no dwarf hunting)
+# sources: https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tunneling_monster,
+#          https://nethackwiki.com/wiki/Digging_for_victory, https://nethackwiki.com/wiki/Tourist,
+#          https://nethackwiki.com/wiki/Forum:When_is_digging_for_victory_a_good_idea%3F,
+#          https://forums.tomshardware.com/threads/pet-umber-hulks-and-enchanted-pick-axes.137522/ (r.g.r.n)
+GRIND_PILES = True
 GRIND_HUNT_DIGGERS_ONLY = False
 # the tool-less dive's Mines route explores Dlvl 2-4 only until the branch '>' is known (see _search_branch);
 # the tour-mode pick trip (jf_config.PICK_TRIP_XL) too, through trip_branch_strategy
@@ -1243,6 +1273,29 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
+    def _threat_deadly(self, near):
+        """THREAT_ELBERETH: P(the near monsters' melee deals >= our HP within THREAT_TURNS turns) >= THREAT_PDIE
+        (independent hits, normal approximation; False when the model is unavailable)."""
+        if not THREAT_ELBERETH or not near:
+            return False
+        try:
+            import math
+            from nhbot.nhmodel.prayer import _phi, monster_turn_damage
+            bl = self.agent.blstats
+            mean = var = 0.0
+            for m in near:
+                name = getattr(m[3], 'mname', 'unknown')
+                m1, v1, spd = monster_turn_damage(name, int(bl.armor_class), int(bl.depth),
+                                                  int(bl.experience_level))
+                mean += m1 * spd * THREAT_TURNS
+                var += v1 * spd * THREAT_TURNS
+            if mean <= 0:
+                return False
+            p_die = 1.0 - _phi((bl.hitpoints - 0.5 - mean) / math.sqrt(max(var, 1.0)))
+            return p_die >= THREAT_PDIE
+        except Exception:
+            return False
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1253,7 +1306,9 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
+        threat = bl.hitpoints < ELBERETH_REST_UNTIL * bl.max_hitpoints and \
+            self._threat_deadly(self._near_hostiles())
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling and not threat) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False
@@ -1264,9 +1319,8 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not infectious_were(agent, near[0][3]):
+                not (BURST_DEFENSE and falling) and not threat:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -2347,7 +2401,7 @@ class DiveLogic:
         return sorted(found)
 
     def keep_digging_tool(self):
-        return self.diving or KEEP_TOOL_IN_TOUR or bool(jf_config.PICK_TRIP_XL) or bool(GRIND_HUNT_XL)
+        return self.diving or KEEP_TOOL_IN_TOUR or bool(jf_config.PICK_TRIP_XL) or bool(GRIND_HUNT_XL) or GRIND_PILES
 
     def _grind_hunting(self):
         """GRIND_HUNT_XL: the tour hunts dwarves too (the Dlvl-1 grind meets them from XL 7)."""
@@ -2357,11 +2411,12 @@ class DiveLogic:
     def hunt_strategy(self):
         """The tour's Mines visit hunts too, and checks the piles a killed dwarf left (the dive does
         both from plan_step)."""
-        if self.diving or not DWARF_HUNT or not (HUNT_IN_TOUR or self.pick_trip or self._grind_hunting()):
+        hunting = HUNT_IN_TOUR or self.pick_trip or self._grind_hunting()
+        if self.diving or not DWARF_HUNT or not (hunting or GRIND_PILES):
             yield False
         spot = self._local_tool_spot() if self.digging_tool() is None else None
-        hunt = spot is None and self.should_hunt_dwarf()
-        approach = spot is None and not hunt and self.should_approach_dwarf()
+        hunt = spot is None and hunting and self.should_hunt_dwarf()
+        approach = spot is None and not hunt and hunting and self.should_approach_dwarf()
         if spot is None and not hunt and not approach:
             yield False
         yield True
@@ -2381,6 +2436,13 @@ class DiveLogic:
         dis = agent.bfs()
         spots = [(dis[p], p) for k, p in self.tool_spots
                  if k == here and (k, p) not in self._fetch_given_up and dis[p] != -1]
+        if GRIND_PILES:
+            # a dwarf's fresh tunnel isn't on our map: reachable through a neighbour
+            for k, p in self.tool_spots:
+                if k == here and (k, p) not in self._fetch_given_up and dis[p] == -1:
+                    d = self._neighbour_distance(dis, *p)
+                    if d is not None:
+                        spots.append((d + 1, p))
         return min(spots)[1] if spots else None
 
     def _visit_tool_spot(self, spot):
@@ -2391,6 +2453,13 @@ class DiveLogic:
             self._spot_visits[(key, spot)] = tries
             if tries > 20:
                 self._fetch_given_up.add((key, spot))
+                return
+            pos = (agent.blstats.y, agent.blstats.x)
+            if GRIND_PILES and agent.bfs()[spot] == -1:
+                if not utils.adjacent(pos, spot):
+                    agent.go_to(*spot, stop_one_before=True)
+                else:
+                    agent.move(agent.calc_direction(pos[0], pos[1], *spot))
                 return
             agent.go_to(*spot)
             return
