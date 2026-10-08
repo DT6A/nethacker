@@ -191,25 +191,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
-# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8, ~T24-26k on dev seeds) come in
-# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
-# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
-# the dive start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
-# (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-# node #14 (tree round 1): port of node #4's DIVE_PRAYER_READY (held-out 0.1792 -> 0.2112 on the dart chain) onto
-# #5's LOWHP_EXACT chain. LOWHP_EXACT saves the HP prayer for pray.c's critically_low_hp, the one HP level where it
-# heals fully -- but only if the timeout allows it; starting the dive with that prayer ready (HP >= 85%) is what
-# makes the saved prayer count at the dive start, where the grind's XL 7-8 losses on Dlvl 2-8 happen.
-# sources (#14): /refs/history/4.diff, /refs/past_runs/20261008-132537/75.diff, NetHack 3.6.6 src/pray.c
-#          (critically_low_hp, can_pray: p_trouble > 0 needs u.ublesscnt <= 200), https://nethackwiki.com/wiki/Prayer
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -339,6 +320,28 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
+
+# hypothesis: with LOWHP_EXACT (#5) the HP prayer waits for pray.c's critically_low_hp (HP <= 1/5 max at XL 1-5,
+# 1/6 at XL 6-13), and the Elbereth rest skips a lone level <= 2 monster down to 6 HP -- but a lone rothe (claw d3,
+# bites d3 + d8: 8.5 a turn, 14 max) or giant bat (d6 at speed 22) is level 2 and jumps straight past that window
+# from 7-17 HP, and 2-3 rothes / hill orcs / ants pass the fixed 40% trigger and kill in the turn or two after it.
+# The parent's public deaths are mostly those kinds (rothe x4, giant bat x2, giant ant, fire ant, jaguar, panther).
+# So start (and keep) the Elbereth rest once HP is within two rounds of the near (radius 2) hostiles' expected melee
+# damage (kinds averaging under THREAT_REST_MIN_DMG a turn left out), the lone-weak exemption included, for at most
+# THREAT_REST_TURNS turns in a row: the engraving is down before the killing round and the prayer window is kept.
+# sources: https://nethackwiki.com/wiki/Rothe (3 attacks up to 14/turn, groups of 2-4, "Rothes respect Elbereth"),
+#          https://nethackwiki.com/wiki/Elbereth (fast dust engraving works at once; scared adjacent monsters flee
+#          and don't melee), https://nethackwiki.com/wiki/Tourist (AC 10, "extreme caution" early),
+#          https://nethackwiki.com/wiki/Prayer (no trouble + timeout > 0 = failed prayer),
+#          https://www.melankolia.net/nethack/nethack.guide.html (rothes: many attacks a round, groups),
+#          https://beforeiplay.com/index.php?title=Nethack and https://forums.civfanatics.com/threads/nethack.256120/page-2
+#          (players: swarms of rothes / ants kill; Elbereth as a breather, never attack from it),
+#          /refs/past_runs/20261008-132537/42.diff (THREAT_REST, kept: held-out 0.2097 -> 0.2127),
+#          /refs/top/9e75ceeb9559 (zReactiveRest: Elbereth rest even next to one 'weak' monster after a burst),
+#          NetHack 3.6.6 src/monst.c attacks (nhbot/nhmodel/mondata.py, copied as pf_dtad7a/mondata.py)
+THREAT_REST = True
+THREAT_REST_TURNS = 300
+THREAT_REST_MIN_DMG = 3.0
 
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
