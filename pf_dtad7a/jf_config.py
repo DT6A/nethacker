@@ -304,9 +304,19 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (monster_utils) makes things worse.
+# uhitm.c passive() deals (lvl+1)d6 cold (2d6 brown mold, 5d6 blue jelly) on 2/3 of the swings that don't kill,
+# heals the target by half of it and splits it once its max HP passes (lvl+1)*8; a Tourist's weak melee (-4
+# unskilled, no armour, 10-30 max HP in the grind) can't outpace that. This chain's seed 14 (fem and mal) dies 'of
+# starvation' on Dlvl 1 at XL3 after 9564 turns, the brown-mold box #6/#21 found (swing at full HP, 'multiplies from
+# your heat!', Elbereth rest -- held to 85% by REST_HOLD -- swing again, faint). Without cold resistance they are only
+# targets for thrown darts or squares to walk around. (Port of #6 into the BURST_DEFENSE + REST_HOLD chain; #6 gave
+# held-out +0.063 over its parent.)
+# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
+#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
+#          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%209/ (player killed meleeing a blue jelly),
+#          /refs/history/6.diff, /refs/history/21.diff, NetHack 3.6.6 src/uhitm.c passive()
+MOLD_NO_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
