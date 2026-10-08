@@ -121,26 +121,6 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
-        # hypothesis: wands come only after darts, food and the unknown bulk in this split, so a Tourist whose
-        # pack is near its (low) capacity drops them on Dlvl 1 or never picks them up ('You drop a wand of
-        # fire.'). Gnomes, gnome lords, hobbits and kobolds of the grind pick them up and zap them at the AC 10
-        # Tourist (muse.c find_offensive/use_offensive; #6's seed 0 died 'killed by a wand' on Dlvl 1 at XL 6,
-        # and an 'invisible kobold' -- a self-zapped wand of make invisible, muse.c find_misc -- kills dev s421794
-        # in this chain). A wand weighs 7: during the tour keep every wand before the bulk, so none is left lying
-        # about for them (the dive keeps its own food/passage order). Port of node #13 (#6 -> #13 held-out
-        # 0.2146 -> 0.2302) into the #6/#15 chain.
-        # sources: https://nethackwiki.com/wiki/Gnome_With_the_Wand_of_Death (pick up floor wands: hobbits,
-        #          goblins, kobolds zap them), https://nethackwiki.com/wiki/Wand_of_striking,
-        #          https://nethackwiki.com/wiki/Invisibility (monsters zap make invisible at themselves),
-        #          https://nethackwiki.com/wiki/Forum:What's_your_unluckiest_death%3F (players killed by picked-up
-        #          wands), https://groups.google.com/g/rec.games.roguelike.nethack/c/cf7NJKZOVlI,
-        #          https://nethack.fandom.com/wiki/Lessons_learned_the_hard_way ('take every unknown wand'),
-        #          /refs/history/13.diff (node #13)
-        if jf_config.KEEP_WANDS_FIRST and not (dive is not None and dive.diving):
-            for item in sorted(filter(lambda i: i.category == nh.WAND_CLASS, items),
-                               key=lambda i: i.unit_weight(with_content=False)):
-                add_item(item)
-
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):

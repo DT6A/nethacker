@@ -276,9 +276,6 @@ PIT_AWARE_FIGHT = False
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# a welded cursed two-hander (no free hand: no Elbereth) is a major prayer trouble: pray it off once a prayer is safe
-# (agent.cure_disease)
-WELDED_PRAY = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
@@ -319,13 +316,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
-
-# wear_best_stuff also puts on unknown-BUC armour of the low-stakes slots/kinds (item/inventory.WEAR_UNKNOWN_SLOTS)
-WEAR_UNKNOWN_ARMOR = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

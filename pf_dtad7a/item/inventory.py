@@ -19,6 +19,26 @@ from pf_dtad7a.item.inventory_items import InventoryItems
 from pf_dtad7a.strategy import Strategy
 
 
+# hypothesis: the AC10 Tourist grinds Dlvl 1-4 for ~25k turns and dives at XL8 in its Hawaiian shirt, though
+# ItemPriority already carries the best unknown-BUC armour set (allow_unknown_status) -- wear_best_stuff only ever
+# put on pieces known uncursed/blessed, and the Dlvl-1 grind has no altar, so the hobbit's elven mithril-coat
+# (AC 5), the dwarf's hard hat / iron shoes and floor armour stayed in the pack while jackals, giant bats, rothes,
+# fire ants and Woodland-elves hit AC 10. Random armour is cursed only ~12% (mkobj.c), and for a fixed-appearance
+# helm, suit, boots or gloves a curse only means a stuck piece of usually -1..-3 (prayer/remove curse fix it);
+# the dangerous kinds (autocursing helms, levitation/fumble boots, fumbling gauntlets: ambiguous until identified,
+# and excluded by name once they are) and the slots whose curse blocks other gear (a cloak blocks the suit, a
+# shield blocks the two-handed digging mattock) still need a known BUC. So: wear unknown-BUC armour of those
+# four slots too -> lower AC through the grind and the dive.
+# sources: https://nethackwiki.com/wiki/Tourist (mid-game kit: mithril-coat, iron shoes, dwarvish iron helm),
+#          https://nethackwiki.com/wiki/Curse (12.31% of random armour cursed; risky armour list),
+#          https://nethackwiki.com/wiki/Helm (randomised helms dangerous untested), https://nethackwiki.com/wiki/Elven_mithril-coat,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/UI2gYjm7c9c (players: body armour/shield low-stakes,
+#          headgear only once identified), NetHack 3.6.6 src/do_wear.c cursed() (bknown on a refused take-off)
+WEAR_UNKNOWN_SLOTS = frozenset((O.ARM_SUIT, O.ARM_HELM, O.ARM_BOOTS, O.ARM_GLOVES))
+NEVER_WEAR_UNTESTED = frozenset(('dunce cap', 'helm of opposite alignment', 'cornuthaum', 'levitation boots',
+                                 'fumble boots', 'gauntlets of fumbling'))
+
+
 class Inventory:
     _name_to_category = {
         'Amulets': nh.AMULET_CLASS,
@@ -56,6 +76,7 @@ class Inventory:
         self.multi_container_squares = set()  # (dungeon, level, y, x) where #loot asks 'Loot which containers?'
         self._container_failures = {}         # (dungeon, level, y, x) -> failed use_container attempts
         self.unreachable_items_until = {}     # (dungeon, level, y, x) -> turn: items at a pit bottom out of reach
+        self._wear_blocked_until = {}         # armour slot -> turn: a take-off was refused (WEAR_UNKNOWN_ARMOR)
 
     def is_known_empty(self, item):
         return item.text in self.empty_wands
@@ -843,6 +864,17 @@ class Inventory:
         best_item = None
         best_dps = utils.calc_dps(*self.agent.character.get_melee_bonus(None, large_monster=False))
         for item in flatten_items(items):
+            # hypothesis: the Tourist wields its whole stack of +2 darts as its 'best melee weapon' (the +2 to-hit
+            # beats bare hands in get_melee_bonus), and get_ranged_combinations never throws the best/wielded melee
+            # weapon -- so the class's only real attack (a thrown dart: d3+2, trained toward Skilled multishot) is
+            # never used in the Dlvl 1 grind where the early losses happen (jackal, bat, wererat, gnome zombie).
+            # A missile or ammo in melee does only rnd(2) (uhitm.c hmon_hitmon), no better than unskilled bare hands
+            # (d2 +1 skill damage, weapon.c weapon_dam_bonus), so keep them out of the melee choice and throw them.
+            # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart,
+            #          NetHack 3.6.6 src/uhitm.c hmon_hitmon (is_missile/is_ammo -> rnd(2)), src/weapon.c
+            if jf_config.MISSILES_NOT_MELEE and item.is_weapon() and \
+                    (item.is_fired_projectile() or item.objs[0].name in ('dart', 'shuriken')):
+                continue
             if item.is_weapon() and \
                     (item.status in [Item.UNCURSED, Item.BLESSED] or
                      (allow_unknown_status and item.status == Item.UNKNOWN)):
@@ -909,7 +941,7 @@ class Inventory:
             return best_launcher, best_ammo, best_dps
         return best_launcher, best_ammo
 
-    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False):
+    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False, wear_unknown=False):
         if items is None:
             items = self.items
         items = flatten_items(items)
@@ -926,13 +958,23 @@ class Inventory:
             is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
 
             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
-            if item.status not in allowed_statuses and not is_dragonscale_armor:
+            # WEAR_UNKNOWN_ARMOR: unknown-BUC pieces of the low-stakes slots and kinds (see wear_best_stuff)
+            unknown_ok = wear_unknown and item.status == Item.UNKNOWN and \
+                item.object.sub in WEAR_UNKNOWN_SLOTS and item.object.name not in NEVER_WEAR_UNTESTED
+            if item.status not in allowed_statuses and not is_dragonscale_armor and not unknown_ok:
                 continue
 
             slot = item.object.sub
             ac = item.get_ac()
 
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
+                continue
+
+            # (WEAR_UNKNOWN_ARMOR: a tie keeps what we wear, else prefers a known BUC -- no swap for nothing)
+            if wear_unknown and best_ac[slot] == ac and best_items[slot] is not None and \
+                    not best_items[slot].equipped and \
+                    (item.equipped or (best_items[slot].status == Item.UNKNOWN and item.status != Item.UNKNOWN)):
+                best_items[slot] = item
                 continue
 
             if best_ac[slot] is None or best_ac[slot] > ac:
@@ -1343,7 +1385,7 @@ class Inventory:
             return
         yielded = False
         while 1:
-            best_armorset = self.get_best_armorset()
+            best_armorset = self.get_best_armorset(wear_unknown=jf_config.WEAR_UNKNOWN_ARMOR)
 
             # TODO: twoweapon
             for slot, name in [(O.ARM_SHIELD, 'off_hand'), (O.ARM_HELM, 'helm'), (O.ARM_GLOVES, 'gloves'),
@@ -1353,6 +1395,9 @@ class Inventory:
                         (getattr(self.items, name) is not None and getattr(self.items, name).status == Item.CURSED):
                     continue
                 additional_cond = True
+                if jf_config.WEAR_UNKNOWN_ARMOR:
+                    # a refused take-off (a cursed unknown-BUC piece) passes no turn: wait before trying again
+                    additional_cond = self.agent.blstats.time >= self._wear_blocked_until.get(slot, 0)
                 if slot == O.ARM_SHIELD:
                     additional_cond &= self.items.main_hand is None or not self.items.main_hand.objs[0].bi
                 if slot == O.ARM_GLOVES:
@@ -1373,7 +1418,13 @@ class Inventory:
                         self.takeoff(self.items.suit)
                         break
                     if getattr(self.items, name) is not None:
-                        self.takeoff(getattr(self.items, name))
+                        if not self.takeoff(getattr(self.items, name)) and jf_config.WEAR_UNKNOWN_ARMOR:
+                            self._wear_blocked_until[slot] = self.agent.blstats.time + 100
+                            # an unknown-BUC piece we wear turned out cursed ('You can't.  It is cursed.' sets
+                            # bknown): no swap this time, the next inventory update marks it CURSED
+                            if not yielded:
+                                yield True
+                            return
                         break
                     assert best_armorset[slot] is not None
                     self.wear(best_armorset[slot])
