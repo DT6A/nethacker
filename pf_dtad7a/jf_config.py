@@ -321,9 +321,17 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
-HOSTILE_RECHECK = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting kitten/little dog (which ate nothing)
+# starves by ~T1500: dogmove.c dog_hunger confuses it ('<pet> is confused from hunger.'), mon.c mfndpos gives a
+# confused monster ALLOW_U, dog_move then mattacku()s us -- and fight2 never answers a pet (parent dev seed 421796,
+# both identities: 'killed by a kitten' at XL2, T1509, score ~0). Leaving floor corpses to the pet (unless we are
+# Weak) until we see it eat (dog_eat clears mconf) or PET_HUNGER_TURNS pass lets it feed and calm down.
+# sources: /refs/past_runs/20261004-221634/1.diff + /refs/past_runs/20261002-164932/17.diff (PET_HUNGER_FIX, kept as a
+#          proven fix there), /refs/top/008c6ff1b6ec (PET_HUNGER_FIX), https://nethackwiki.com/wiki/Pet,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A ("it begins to see you as potential lunch"),
+#          https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_PostRelease/src/dogmove.c (dog_hunger, dog_eat)
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

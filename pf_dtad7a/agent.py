@@ -66,6 +66,7 @@ class Agent:
         self.last_bfs_dis = None
         self.last_bfs_step = None
         self.last_prayer_turn = None
+        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
         self.prayer_hold_until = -1
         self._fainting_since = None   # turn Fainting was first seen (jf_config.STARVE_CLOCK)
         self._weak_since = None       # turn Weak was first seen (jf_config.THREAT_PRAYER_GAP)
@@ -430,6 +431,8 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        if jf_config.PET_HUNGER_FIX:
+            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -2236,10 +2239,29 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
+    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
+
+    def _note_pet_hunger(self):
+        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
+        it is 500 turns past its hungrytime; the pet eating something (dog_eat clears mconf) ends it."""
+        bl = getattr(self, 'blstats', None)
+        if bl is None:
+            return
+        msg = self.message or ''
+        if 'is confused from hunger' in msg:
+            if self._pet_starving_until < bl.time:
+                self.log('PET starving (confused from hunger): leaving the corpses to it')
+            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
+            self._pet_starving_until = -1
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
+        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
+                self.blstats.hunger_state < Hunger.WEAK:
+            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
