@@ -198,7 +198,21 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-LOWHP_EXACT = False
+# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
+# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
+# prayer failed and starts an XL-1 rescue dive (dev s421795: prayed at 10/14, dead on Dlvl 3 at T1664); with the
+# timeout at 0 it only resets the timeout to rnz(350), so the real critical-HP prayer soon after fails (s1: prayed
+# at 11/12 at T526, the 3/14 prayer at T787 failed, dead). Praying only at critically_low_hp -- and for that
+# first HP prayer from turn 100, when the starting timeout of 300 is already <= 200, pray.c's major-trouble
+# limit -- keeps the prayer for the moment it heals, so fewer early losses on Dlvl 1-3.
+# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
+#          p_type == 0 branch), https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
+#          /refs/top/84bfc1860a92 (Howuhh: Tourist grind deaths at critical HP after a stale prayer)
+#          /refs/history/2.diff (node #2, ported into the #3/#7 chain by node #24)
+LOWHP_EXACT = True
+# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
+# major trouble needs <= 200) instead of 300
+LOWHP_FIRST_TURN = 100
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -303,20 +317,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (monster_utils) makes things worse.
-# uhitm.c passive() deals (lvl+1)d6 cold (2d6 brown mold, 5d6 blue jelly) on 2/3 of the swings that don't kill,
-# heals the target by half of it and splits it once its max HP passes (lvl+1)*8; a Tourist's weak melee (-4
-# unskilled, no armour, 10-30 max HP in the grind) can't outpace that. This chain's seed 14 (fem and mal) dies 'of
-# starvation' on Dlvl 1 at XL3 after 9564 turns, the brown-mold box #6/#21 found (swing at full HP, 'multiplies from
-# your heat!', Elbereth rest -- held to 85% by REST_HOLD -- swing again, faint). Without cold resistance they are only
-# targets for thrown darts or squares to walk around. (Port of #6 into the BURST_DEFENSE + REST_HOLD chain; #6 gave
-# held-out +0.063 over its parent.)
-# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
-#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
-#          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%209/ (player killed meleeing a blue jelly),
-#          /refs/history/6.diff, /refs/history/21.diff, NetHack 3.6.6 src/uhitm.c passive()
-MOLD_NO_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
