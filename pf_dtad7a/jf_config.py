@@ -191,6 +191,23 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall
+# in the 500-turn window after a prayer when the low-HP prayer is unavailable; the dive-start losses (giant
+# bat, gargoyle, giant ant, jaguar, fire ants on Dlvl 2-8, ~T25k) come in the first few hundred turns of the
+# dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85% (at most DIVE_PRAYER_MAX_WAIT
+# turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives the dive start its backstop.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
+# with timeout <= 200); makemon.c/monmax_difficulty ((depth + XL) / 2); nethackwiki.com/wiki/Prayer and
+# /wiki/Prayer_timeout ("you can't pray for ~800 turns after praying"); nethackwiki.com/wiki/Tourist ("descend
+# slowly", extreme caution); en.wikibooks.org/wiki/NetHack/Staying_Alive (get away after praying, prayer is not
+# 100% reliable); gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying / right after);
+# /refs/history/46.diff (holding every descent on Dlvl <= 10 lost held-out -- this holds only the Dlvl-1 start)
+# (node #81: port of /refs/history/75.diff, kept on the {4,28,42} chain at held-out 0.2127 -> 0.2419, into the
+# {4,29,44} chain, whose XL8 dive-start losses (fem 2,7,12; mal 5,7,8,12 on Dlvl 3-10) are the same kind;
+# also nethackwiki.com/wiki/User:Furey/Furey's_NetHack_Tips (track the last prayer turn before taking risks),
+# steelypips.org/nethack/pray.txt (major trouble needs timeout < 200), nethackwiki.com/wiki/Tourist (slow descent))
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -345,10 +362,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
-HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
