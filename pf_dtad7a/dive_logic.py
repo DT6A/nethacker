@@ -254,22 +254,6 @@ EARLY_DIVE = False
 EARLY_DIVE_TURN = 1
 # planned early dive from this XL (0: off): see should_dive
 EARLY_DIVE_XL = 0
-# hypothesis: the Dlvl-1 grind waits for XL 8, but random monsters there are capped at difficulty (1 + XL) / 2,
-# so XL 6 -> 8 takes ~11,500 turns of hunger-prayer cycles (median), and on unseen dungeons that long grind is where
-# the games end: 8 of 15 extra dev seeds die on Dlvl 1-2 at XL 5-7 after 8k-26k turns (0.03-0.07 each; replays of
-# 480653/480660 died Weak/Fainting between prayers at XL 7, T21-26k). Once the grind has run GRIND_CAP_TURN turns
-# at XL >= GRIND_CAP_XL, start the dive anyway (still DIVE_FED-gated): REQUIRED_XL keeps it exploring Dlvl 2-5
-# fully (FULL_EXPLORE_TURNS each), where (depth + XL) / 2 gives more XP per kill and items/armour, so it keeps
-# levelling while it banks depth instead of fainting through more Dlvl-1 prayer cycles.
-# sources: https://nethackwiki.com/wiki/Monster_generation (difficulty <= (level difficulty + XL) / 2, 1/70 spawns),
-#          https://nethackwiki.com/wiki/Experience_level (higher XL only raises the cap; XP need doubles),
-#          https://nethackwiki.com/wiki/Standard_strategy ('head down slowly and explore the dungeon carefully'),
-#          https://nethackwiki.com/wiki/Tourist (explore each level for items; slower descent, not a Dlvl-1 grind),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY (r.g.r.n: grinding takes
-#          thousands of turns; descend at a steady pace), https://nethackwiki.com/wiki/Forum:Choosing_between_Dlvl_and_XPlvl_increases
-GRIND_CAP = True
-GRIND_CAP_TURN = 12000
-GRIND_CAP_XL = 6
 # Ditch the pet for the Dlvl 1 grind (off: experiment). On 15 unseen grinds the pet ate ~40% of the
 # corpses (497 meals vs our 732) and made ~10% of the kills (no XP for us); food is what the grind runs
 # out of (hunger prayers, their failures, starvation). Take it down to Dlvl 2 and come back up alone
@@ -908,9 +892,6 @@ class DiveLogic:
         planned = bool(EARLY_DIVE_XL) and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and xl >= EARLY_DIVE_XL \
             and not agent.prayer_failed
         xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
-        if GRIND_CAP and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and xl >= GRIND_CAP_XL and \
-                agent.blstats.time >= GRIND_CAP_TURN:
-            xl_trigger = True   # GRIND_CAP: the Dlvl-1 grind has run long enough, level on Dlvl 2+
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
