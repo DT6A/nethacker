@@ -346,21 +346,9 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
-# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
-# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
-# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
-# so an XL 1-2 Tourist can be bitten to death by its own kitten (T1504-1625 / XL 1-2 signature). A meal ends the
-# confusion (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating,
-# we eat no corpse off the floor ourselves unless Weak (PET_HUNGER_FIX, port of /refs/history/68.diff into the
-# #4/#29/#44 chain; kept in three other chains: held-out #68 0.2105->0.2191, #72 0.2070->0.2226, #73 0.2127->0.2283).
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku),
-#          src/mon.c mfndpos (mconf -> ALLOW_ALL), https://nethackwiki.com/wiki/Pet ('avoid attacking the hero
-#          themselves ... unless they are confused'), https://nethack.fandom.com/wiki/Pet,
-#          https://steamcommunity.com/app/341390/discussions/0/610573751148849294/, /refs/history/68.diff,
-#          /refs/history/72.diff, /refs/history/73.diff, /refs/past_runs/20261004-221634/1.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
+HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
