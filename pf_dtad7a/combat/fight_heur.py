@@ -87,6 +87,8 @@ def missiles_risk_the_watch(agent):
 # old handling (darts break 1 in 4 on a hit, dothrow.c; lichens and newts are punched).
 # sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
 #          https://nethackwiki.com/wiki/Ranged_attack (thrown attacks skip passives at melee range),
+#          https://nethackwiki.com/wiki/Projectile , https://nethack.fandom.com/wiki/Throw (node #34: port of #10 onto
+#          the #1/#11 chain), /refs/history/10.diff,
 #          rec.games.roguelike.nethack "it took me 4 years to understand" (Expert dart/dagger: throw them at melee
 #          range), nhbot/combat/fight_heur.py ranger_point_blank (this repo), NetHack 3.6.6 src/dothrow.c thitmonst
 POINT_BLANK_THROW = True

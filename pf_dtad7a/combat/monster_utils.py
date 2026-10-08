@@ -64,18 +64,7 @@ def consider_melee_only_ranged_if_hp_full(agent, monster):
     if name == 'gelatinous cube':
         return _adjacent_turns(agent, monster) >= 6 and bl.hitpoints >= 0.4 * bl.max_hitpoints
     # their passive cold does nothing to a cold-resistant Valkyrie
-    # hypothesis: the 'HP full' melee permission makes things worse, most of all for this chain's bare-handed
-    # Tourist (#1/#10: darts no longer wielded, d2 punches). uhitm.c passive() AD_COLD deals (lvl+1)d6 cold
-    # (2d6 for a brown mold, 5d6 for a blue jelly) on 2/3 of the swings that don't kill it, heals it by half the
-    # damage and splits it once its max HP passes (lvl+1)*8 ('multiplies from your heat'), so a full-HP XL1-3
-    # Tourist (10-25 HP) punching one takes ~5 HP a swing and can breed a mold box (#6: Dlvl-1 starvation).
-    # Without the permission an adjacent mold scores melee -84 against a point-blank dart throw's 0, so it is
-    # killed with thrown darts (no passive on a thrown hit) or walked around once the darts are gone.
-    # sources: https://nethackwiki.com/wiki/Brown_mold , https://nethackwiki.com/wiki/Blue_jelly ,
-    #          https://nethackwiki.com/wiki/Passive_attack , https://nethackwiki.com/wiki/Tourist (darts on anything
-    #          dangerous), NetHack 3.6.6 src/uhitm.c passive() case AD_COLD, /refs/history/6.diff (#6, MOLD_PASSIVE)
     if name in ('brown mold', 'blue jelly') and \
-            ((bl.hitpoints == bl.max_hitpoints and not jf_config.MOLD_PASSIVE) or
-             agent.character.role == agent.character.VALKYRIE):
+            (bl.hitpoints == bl.max_hitpoints or agent.character.role == agent.character.VALKYRIE):
         return True
     return False
