@@ -199,6 +199,21 @@ TOUR_FAINT_PRAYER_GAP = 0
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
 LOWHP_EXACT = False
+# hypothesis: the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
+# surround it in an open room, and fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
+# about, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal through a
+# door) and hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Ported from #5 (kept there, held-out +0.060) into the BURST_DEFENSE / GRIND_PILES chain, which has no
+# positioning fix: its own evals still lose to rothes (packs of 2-4: s5, s7, s421796), a hill orc (s421794).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Corridor,
+#          https://www.melankolia.net/nethack/nethack.guide.html (rothes; retreat into a corridor),
+#          https://forum.rpg.net/threads/lets-play-nethack-spoiled-to-the-bone.368365/page-9 (lead them into a corridor),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/history/5.diff, AutoAscend's commented-out get_corridors_priority_map TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0

@@ -76,21 +76,6 @@ ELBERETH_REST_UNTIL = 0.85
 # while HP is falling that fast, hide behind Elbereth from it as from any other monster (BURST_DEFENSE)
 # sources: /refs/past_runs/20261004-221634/2.diff, https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy
 BURST_DEFENSE = True
-# hypothesis: the Elbereth rest keys on a fixed 40% HP and exempts any lone 'weak' (mlevel <= 2) monster, which takes in
-# the grind's worst killers -- rothes (2-4 per group, three attacks, up to 14 a turn: 4 of the parent's 15 early losses),
-# giant bats (speed 22), hill orcs/hobbits with weapons, weres in animal form -- so an unarmoured AC-10 Tourist trades
-# blows until one turn from death. THREAT_ELBERETH judges the near monsters by their real melee instead (nhbot's
-# nhmodel.prayer.monster_turn_damage: mhitu.c to-hit vs our AC, their attacks and speed): when they could kill us
-# within THREAT_TURNS turns with P >= THREAT_PDIE, rest on Elbereth already below ELBERETH_REST_UNTIL HP, and never
-# take the lone-weak exemption for such a monster (a jackal or newt stays an exempt kill)
-# sources: /refs/top/2e8711968a25 + 74cf6b61c783 + bb0a41daf499 (GROUP_THREAT_ELB), nhbot/dive_logic.py _lone_weak_deadly
-#          (LONE_WEAK_THREAT), https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Elbereth ('it is
-#          generally not possible to engrave Elbereth too early ... you must not wait until you are one turn from
-#          death'), https://nethackwiki.com/wiki/Tourist, https://www.steelypips.org/nethack/elbereth_faq.html (r.g.r.n),
-#          https://forum.rpg.net/threads/lets-play-nethack-3-6-1.841385/page-4 (rothes: 'max 14 a round ... watch your HP')
-THREAT_ELBERETH = True
-THREAT_TURNS = 3
-THREAT_PDIE = 0.1
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1273,29 +1258,6 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
-    def _threat_deadly(self, near):
-        """THREAT_ELBERETH: P(the near monsters' melee deals >= our HP within THREAT_TURNS turns) >= THREAT_PDIE
-        (independent hits, normal approximation; False when the model is unavailable)."""
-        if not THREAT_ELBERETH or not near:
-            return False
-        try:
-            import math
-            from nhbot.nhmodel.prayer import _phi, monster_turn_damage
-            bl = self.agent.blstats
-            mean = var = 0.0
-            for m in near:
-                name = getattr(m[3], 'mname', 'unknown')
-                m1, v1, spd = monster_turn_damage(name, int(bl.armor_class), int(bl.depth),
-                                                  int(bl.experience_level))
-                mean += m1 * spd * THREAT_TURNS
-                var += v1 * spd * THREAT_TURNS
-            if mean <= 0:
-                return False
-            p_die = 1.0 - _phi((bl.hitpoints - 0.5 - mean) / math.sqrt(max(var, 1.0)))
-            return p_die >= THREAT_PDIE
-        except Exception:
-            return False
-
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1306,9 +1268,7 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        threat = bl.hitpoints < ELBERETH_REST_UNTIL * bl.max_hitpoints and \
-            self._threat_deadly(self._near_hostiles())
-        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling and not threat) or \
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False
@@ -1320,7 +1280,7 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (BURST_DEFENSE and falling) and not threat:
+                not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
