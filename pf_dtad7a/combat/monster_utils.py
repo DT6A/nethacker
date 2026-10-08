@@ -1,5 +1,6 @@
 # heuristic monster types lists
 from .. import jf_config
+from ..glyph import MON
 
 # the Oracle: passive magic missiles on every melee hit (a hallucinating XL9 angered, hit and died to her)
 ONLY_RANGED_SLOW_MONSTERS = ['floating eye', 'blue jelly', 'brown mold', 'gas spore', 'acid blob', 'Oracle']
@@ -13,6 +14,14 @@ EXPLODING_MONSTERS = ['yellow light', 'gas spore', 'flaming sphere', 'freezing s
 INSECTS = ['giant ant', 'killer bee', 'soldier ant', 'fire ant', 'giant beetle', 'queen bee']
 WEAK_MONSTERS = ['lichen', 'newt', 'shrieker', 'grid bug']
 WEIRD_MONSTERS = ['leprechaun', 'nymph']
+
+
+def infectious_were(agent, mon):
+    """A were in animal form (werejackal/wererat/werewolf as d/r) while we can still catch lycanthropy from its
+    bite (not already a lycanthrope, not polymorphed, seeing true monsters) -- WERE_KEEP_AWAY."""
+    return jf_config.WERE_KEEP_AWAY and 'were' in mon.mname and ord(mon.mlet) != MON.S_HUMAN \
+        and not agent.character.is_lycanthrope and not agent.character.prop.polymorph \
+        and not agent.character.prop.hallu
 
 
 def is_monster_faster(agent, monster):

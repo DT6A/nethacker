@@ -859,8 +859,6 @@ class GlobalLogic:
                 .preempt(self.agent, [
                     self.agent.exploration.explore_stairs(go_to_strategy, all=True).condition(explore_stairs_condition),
                 ])
-                # TOUR_IDLE_REST: rest on Elbereth when hurt and alone (see dive_logic); above the exploration
-                .preempt(self.agent, [self.dive.tour_idle_rest()])
                 .until(self.agent, lambda: condition() or restart())
             ).run()
 

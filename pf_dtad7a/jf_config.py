@@ -212,15 +212,13 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# hypothesis: (node #62, port of #5 into the #2/#6/#14 chain; #5 alone held-out 0.2114 vs 0.1517) this chain's
-# public early losses are rothe x3 and coyote x2 on Dlvl 1-3 -- packs; #14's idle rest heals between fights, this
-# fights the pack itself one or two at a time.
-# sources: https://nethackwiki.com/wiki/Jackal (hallway so you are not surrounded), /refs/history/5.diff,
-#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: in a hallway only 1-2 attack)
-# hypothesis (#5): the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
+# hypothesis: the unarmoured Tourist's Dlvl 1-4 losses are mostly packs (hill orcs, jackals/coyotes, rothes) that
 # surround it in an open room, and fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak hostiles
 # about, prefer corridor squares and open doors (at most 2 squares to be attacked from, no diagonal through a
 # door) and hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# (node #65: port of #5 -- held-out 0.2114 vs 0.1517 alone -- into the LOWHP_EXACT / mold / WERE_KEEP_AWAY chain,
+# whose Dlvl-1 losses still include coyote (s2, 421793) and rothe (s12) packs; on a chokepoint a were pack's
+# summoned jackals/rats also come one at a time to the Elbereth square WERE_KEEP_AWAY engraves)
 # sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
 #          https://nethackwiki.com/wiki/Corridor, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
 #          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
@@ -291,6 +289,22 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
+# engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
+# hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
+# only while u.ulycn == NON_PM), and the bot fights it bare-handed like any jackal (melee priority +1 for weres): the
+# parent's seed 13 was bitten at T6871, cured by prayer at T6898, re-bitten at T6901 while meleeing the same
+# werejackal, then turned into a jackal under its load and died at T7639 when the next (too early) prayer failed;
+# seed 8 the same with a wererat (cured T13929, re-bitten T14095, fainted as a rat). The animal form respects
+# Elbereth and a scared monster neither melees nor summons (monmove.c distfleeck/dochug: no mattacku while scared;
+# were_summon is only called from mattacku), and a monster that stepped adjacent this turn has not attacked yet, so
+# engraving at once costs no bite. The @ form ignores Elbereth but does not infect, and is still meleed as before.
+# sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Elbereth,
+#          NetHack 3.6.6 src/mhitu.c (AD_WERE, mattacku were_summon), src/monmove.c (onscary, distfleeck, dochug),
+#          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
+#          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
+WERE_KEEP_AWAY = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
