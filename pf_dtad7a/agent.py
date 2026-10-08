@@ -1005,7 +1005,7 @@ class Agent:
             self.stats_logger.log_event('container_untrap_fail')
             return self.message
 
-    def is_safe_to_pray(self, limit=500, certain_death=False, first_turn=None):
+    def is_safe_to_pray(self, limit=500, certain_death=False):
         # pray.c: 'Since you are in Gehennom, Tyr can't help you' -- nothing is fixed, and unless the alignment
         # record is high the god gets angry (angrygods) -- so no prayer at all there, not even for certain death
         if jf_config.GEHENNOM_DIVE and self.current_level().dungeon_number == 1:
@@ -1023,8 +1023,7 @@ class Agent:
                 self.blstats.time - self.last_prayer_turn < self.PRAYER_FAILURE_WAIT:
             return False
         return (
-                (self.last_prayer_turn is None and self.blstats.time > (
-                    first_turn if first_turn is not None else 100 if jf_config.EXACT_PRAYER else 300)) or
+                (self.last_prayer_turn is None and self.blstats.time > (100 if jf_config.EXACT_PRAYER else 300)) or
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
@@ -2384,9 +2383,19 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+        # hypothesis: the absolute 'HP < 8' trigger makes the XL1 Tourist (max HP 10-12) drink both starting
+        # potions of extra healing at 6-7 HP against newts/jackals, so later XL4-7 grind fights that drop to
+        # 2-5 HP with the prayer spent on hunger (or on timeout) have no heal left (replays: seeds 13, 11,
+        # 421792, 421793 died on Dlvl 1-3 that way); never quaffing at half HP or more keeps the 6d8 heal
+        # (+max HP) for a real emergency.  Identical to before for max HP >= 16.
+        # sources: https://nethackwiki.com/wiki/Tourist (starting 2 potions of extra healing, low HP/AC),
+        # https://nethackwiki.com/wiki/Potion_of_extra_healing, https://nethackwiki.com/wiki/Prayer (timeout),
+        # https://nethackwiki.com/wiki/Elbereth (dust erodes when scaring), diagnostic replays of parent #3
         if (
                 (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
-                 or self.blstats.hitpoints < 8) and items and not poly_buffer
+                 or (self.blstats.hitpoints < 8
+                     and 2 * self.blstats.hitpoints < self.blstats.max_hitpoints))
+                and items and not poly_buffer
         ):
             yield True
             self.inventory.quaff(items[0])
@@ -2415,8 +2424,7 @@ class Agent:
         if poly_buffer:
             low_hp = False
         if (
-                (self.is_safe_to_pray(500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)
-                 and low_hp)
+                (self.is_safe_to_pray(500) and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and

@@ -76,18 +76,6 @@ ELBERETH_REST_UNTIL = 0.85
 # while HP is falling that fast, hide behind Elbereth from it as from any other monster (BURST_DEFENSE)
 # sources: /refs/past_runs/20261004-221634/2.diff, https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy
 BURST_DEFENSE = True
-# hypothesis: the Elbereth rest ends one turn after it starts: the scared monster flees out of radius 2 ('not near')
-# or only one weak monster is left (the lone-weak exemption), so the Tourist gets up at 2-7 HP, walks off or attacks
-# from the square (which erases a dust engraving: uhitm.c u_wipe_engr, mon.c setmangry) and the monster comes back
-# for the kill (parent logs: 421793 fox XL1 7/14 -> dead, 421792 giant bat XL5 2/46, 13 coyote XL4 fought from an
-# intact Elbereth at 13/38 -> 3/38). Once resting on (or standing on) an intact Elbereth, there is no engraving turn
-# to pay for, and a scared monster can't melee (monmove.c dochug: no mattacku while scared): stay and rest until
-# ELBERETH_REST_UNTIL, so the grind's fights restart at high HP (REST_HOLD)
-# sources: NetHack 3.6.6 src/monmove.c distfleeck()/dochug()/onscary(), src/uhitm.c, src/mon.c setmangry(),
-#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Standard_strategy (rest to full HP
-#          before fighting on), https://nethackwiki.com/wiki/Tourist
-REST_HOLD = True
-REST_HOLD_RADIUS = 7
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -573,10 +561,6 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
-        # REST_HOLD: last turn HP fell on an Elbereth that was already intact under us the turn before (so not the
-        # free hit of the engraving turn): a blinded (camera) monster, a ranged attack -- the hold is off then
-        self._hurt_on_held_elbereth = -1
-        self._elb_sample = None            # (turn, position) of the last HP sample taken on an intact Elbereth
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -596,10 +580,6 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
-                if self._elb_sample == (self._hp_history[-1][0], (agent.blstats.y, agent.blstats.x)):
-                    self._hurt_on_held_elbereth = turn
-            if (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-                self._elb_sample = (turn, (agent.blstats.y, agent.blstats.x))
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1287,21 +1267,16 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
-        engraving = (agent.inventory.engraving_below_me or '').lower()
-        # REST_HOLD: on an intact Elbereth (or mid-rest) the monsters that fled from it still count, as far as
-        # REST_HOLD_RADIUS -- an @ or a ranged attacker in that range still ends the rest below
-        hold = REST_HOLD and (resting or engraving == 'elbereth') and bl.time - self._hurt_on_held_elbereth > 3
-        if hold:
-            near = self._near_hostiles(REST_HOLD_RADIUS)
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (BURST_DEFENSE and falling) and not (hold and engraving == 'elbereth'):
+                not (BURST_DEFENSE and falling):
             self._elbereth_resting = False
             yield False
-        if (not near and not (hold and resting)) or any(self._ignores_elbereth(m[3]) for m in near) or \
+        if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
             self._elbereth_resting = False
             yield False
+        engraving = (agent.inventory.engraving_below_me or '').lower()
         if engraving != 'elbereth' and not agent.can_engrave():
             self._elbereth_resting = False
             yield False
