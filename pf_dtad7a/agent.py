@@ -73,7 +73,6 @@ class Agent:
         self._pray_reason = None      # which rule asked for the next prayer (logged)
         self._no_kick_until = -1      # wounded legs: no kicking until this turn
         self._last_resort_stairs_turn = -10 ** 9
-        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which corpses on the floor are left to the pet
         self._last_resort_dig_turn = -1   # LAST_RESORT_DIG: at most one zap per turn
         self._last_resort_zapped = set()  # LR_WAND_ONCE: glyphs of unknown wands the last resort already zapped
         self.prayer_failed = False
@@ -431,8 +430,6 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
-        if jf_config.PET_HUNGER_FIX:
-            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -1235,8 +1232,36 @@ class Agent:
             self.inventory.carried_nutrition() >= jf_config.FOOD_FIRST_MIN and \
             not self.is_safe_to_pray(jf_config.FOOD_FIRST_GAP)
 
+    def _reserve_meal(self):
+        """PRAYER_RESERVE_XL: below that XL in the tour, the biggest safe carried meal (BUY_FOOD_NUTRITION: rations,
+        lembas, cram, fruit -- no tripe, eggs, tins or corpses) to eat at Weak instead of a hunger prayer."""
+        # hypothesis: every grind's first prayer is a hunger prayer at Weak around T850-1050 (900 starting
+        # nutrition) at XL 1-2, and pray.c then resets the timeout to rnz(350) (only ~22% below 201), so through the
+        # next ~500 turns there is no critical-HP prayer -- exactly where this chain's XL 1-3 Tourist (10-25 max HP,
+        # AC 10, bare hands) dies: kobold T977 (421793, score 0), hobbit T1274 (s13), kitten T1509 (421796). A
+        # Tourist starts with 10-20 comestibles, so below XL PRAYER_RESERVE_XL eat the best safe carried meal at
+        # Weak and keep the prayer for HP; from that XL the hoard-and-pray grind resumes (unlike #20's
+        # TOUR_FOOD_FIRST, which ate at Hungry through the whole 25k-turn grind: this is ~1-3 meals).
+        # sources: https://nethackwiki.com/wiki/Game_Stages ('eat the permafood and conserve their ability to
+        #          pray'), https://nethackwiki.com/wiki/Prayer_timeout (~22% of resets < 201),
+        #          https://nethackwiki.com/wiki/Tourist (10-20 random comestibles), https://nethackwiki.com/wiki/Prayer,
+        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/-IVxxKmRUBQ (prayed for food at ~900
+        #          turns: 'is satisfied', nothing fixed), https://groups.google.com/g/rec.games.roguelike.nethack/c/184ocw1iBkc,
+        #          http://crpgaddict.blogspot.com/2024/02/game-504-nethack-31-series-1993.html (comments: praying
+        #          for food leaves no prayer for low HP), NetHack 3.6.6 src/pray.c (prayer_done: u.ublesscnt = rnz(350)),
+        #          /refs/history/69.diff (PRAYER_RESERVE on the #40 chain)
+        if not jf_config.PRAYER_RESERVE_XL or self.blstats.experience_level >= jf_config.PRAYER_RESERVE_XL or \
+                self.global_logic.dive.diving:
+            return None
+        nutrition = self.inventory.BUY_FOOD_NUTRITION
+        meals = [item for item in self.edible_carried_food()
+                 if item.is_unambiguous() and item.object.name in nutrition and item.status != Item.CURSED]
+        return max(meals, key=lambda item: nutrition[item.object.name], default=None)
+
     def _eat_before_praying(self):
         if self._food_first():
+            return True
+        if self._reserve_meal() is not None:
             return True
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
@@ -2239,30 +2264,10 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
-    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) "
-                           r"(?:eats|devours) ")
-
-    def _note_pet_hunger(self):
-        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
-        it is 500 turns past its hungrytime; the pet eating something (dog_eat) ends it."""
-        bl = getattr(self, 'blstats', None)
-        if bl is None:
-            return
-        msg = getattr(self, 'message', None) or ''
-        if 'is confused from hunger' in msg:
-            if getattr(self, '_pet_starving_until', -1) < bl.time:
-                self.log('PET starving (confused from hunger): leaving the corpses to it')
-            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
-        elif getattr(self, '_pet_starving_until', -1) >= bl.time and self._PET_EATS.search(msg):
-            self._pet_starving_until = -1
-
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
-        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
-                self.blstats.hunger_state < Hunger.WEAK:
-            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
@@ -2601,7 +2606,8 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        for item in self.edible_carried_food():
+        meal = self._reserve_meal() if self.blstats.hunger_state >= Hunger.WEAK else None
+        for item in [meal] if meal is not None else self.edible_carried_food():
             yield True
             self.inventory.eat(item)
             return
