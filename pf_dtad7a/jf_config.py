@@ -191,19 +191,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall
-# in the 500-turn window after a prayer when the low-HP prayer is unavailable; the dive-start losses (giant
-# bat, gargoyle, giant ant, jaguar, fire ants on Dlvl 2-8, ~T25k) come in the first few hundred turns of the
-# dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85% (at most DIVE_PRAYER_MAX_WAIT
-# turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives the dive start its backstop.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c/monmax_difficulty ((depth + XL) / 2); nethackwiki.com/wiki/Prayer and
-# /wiki/Prayer_timeout ("you can't pray for ~800 turns after praying"); nethackwiki.com/wiki/Tourist ("descend
-# slowly", extreme caution); en.wikibooks.org/wiki/NetHack/Staying_Alive (get away after praying, prayer is not
-# 100% reliable); gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying / right after);
-# /refs/history/46.diff (holding every descent on Dlvl <= 10 lost held-out -- this holds only the Dlvl-1 start)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -225,6 +212,18 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
+# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (monster_utils) makes things worse.
+# uhitm.c passive() deals (lvl+1)d6 cold (2d6 brown mold, 5d6 blue jelly) on 2/3 of the swings that don't kill,
+# heals the target by half of it and splits it once its max HP passes (lvl+1)*8; a Tourist's weak melee (-4
+# unskilled, no armour, 10-30 max HP in the grind) can't outpace that. This chain's seed 8 (fem and mal) dies 'of
+# starvation' on Dlvl 1 at XL3 after 10277 turns -- the brown-mold box #6 found (swing at full HP, 'multiplies from
+# your heat!', Elbereth rest, swing again, faint). Without cold resistance they are only targets for thrown darts or
+# squares to walk around. (Port of #6 into the LOWHP_EXACT + PRAYERLESS_GUARD chain; #6 gave held-out +0.063.)
+# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
+#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
+#          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%202/ (player: molds only from range),
+#          https://nethack.fandom.com/wiki/Mold, /refs/history/6.diff, NetHack 3.6.6 src/uhitm.c passive()
+MOLD_NO_MELEE = True
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -330,9 +329,25 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
+# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
+# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist is bitten to death by its own kitten -- dev seed 421796, both identities: 'killed by a
+# kitten' at XL2, T1509, the T1504-1625 / XL 1-2 signature nhbot's fix was made for. A meal ends the confusion
+# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
+# no corpse off the floor ourselves unless Weak (PET_HUNGER_FIX, port of nhbot's fix into this engine).
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku),
+#          src/mon.c mfndpos (mconf -> ALLOW_ALL), https://nethackwiki.com/wiki/Pet ('avoid attacking the hero
+#          themselves ... unless they are confused'), https://steamcommunity.com/app/341390/discussions/0/610573751148849294/
+#          ('tame but so hungry it attacked from confusion'), /workspace/nhbot/agent.py _note_pet_hunger (PET_HUNGER_FIX),
+#          /refs/past_runs/20261004-221634/1.diff (kept proven fix on these Tourist identities)
+# (port into the #4/#29/#43 chain, as #68 in the #28/#40 chain: held-out 0.2191 vs 0.2105; a confused pet also picks
+#  us as a target in dogmove.c score_targ 2/3 of the time -> mattacku. Sources added for this port:
+#  https://nethack.fandom.com/wiki/Pet ('starving pets may attack you if confused from hunger'),
+#  https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/dogmove.c, /refs/history/68.diff)
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
