@@ -308,6 +308,10 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers): peacefuls never melee, fight2 ignored it
+HOSTILE_RECHECK = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
