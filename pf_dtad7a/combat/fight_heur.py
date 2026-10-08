@@ -77,6 +77,56 @@ def missiles_risk_the_watch(agent):
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
 
+# hypothesis: with its darts no longer wielded (MISSILES_NOT_MELEE), the Tourist punches every monster that reaches
+# melee (bare hands, unskilled: to-hit +1, d2+1), because ranged_priority gives an adjacent target -11 against
+# melee's 16. A +2 dart thrown point blank is far better (dothrow.c thitmonst: +2 for a throwing weapon, +(3 - distance)
+# = +2 at distance 1, +2 enchantment; d3+2 damage) and trains the dart skill toward Skilled/Expert multishot -- so the
+# Dlvl 1-4 grind fights (jackals, coyotes, bats, rats, hill orcs, were-creatures) end in fewer rounds, i.e. less HP
+# lost. A thrown missile also avoids the target's passive attack. As nhbot's Ranger point-blank archery: one above
+# what melee would get (so the HP <= 8 retreat ordering is kept); weak / ranged-only / exploding kinds keep their
+# old handling (darts break 1 in 4 on a hit, dothrow.c; lichens and newts are punched).
+# (node #37: stacked on GRIND_CAMERA -- the camera (priority >= 25) still wins at low HP; above it the darts end the
+# fight sooner, so fewer fights get down to the camera/Elbereth threshold at all.)
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
+#          https://nethackwiki.com/wiki/Ranged_attack (thrown attacks skip passives at melee range),
+#          rec.games.roguelike.nethack "it took me 4 years to understand" (Expert dart/dagger: throw them at melee
+#          range), nhbot/combat/fight_heur.py ranger_point_blank (this repo), NetHack 3.6.6 src/dothrow.c thitmonst
+POINT_BLANK_THROW = True
+
+
+def point_blank_throw(agent, launcher, ammo):
+    """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
+    try:
+        ch = agent.character
+        if not POINT_BLANK_THROW or launcher is not None or ammo is None or ch.prop.polymorph or \
+                ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
+            return False
+        main = agent.inventory.items.main_hand
+        # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
+        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+            main.objs[0].name in ('dart', 'shuriken')
+    except Exception:
+        return False
+
+
+def point_blank_priority(agent, monster, default):
+    """One above melee_monster_priority for the same monster, bare-handed (16, or 1 at HP <= 8 against a
+    monster that isn't faster: the retreat keeps winning there)."""
+    try:
+        _, _, _, mon, _ = monster
+        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
+                mon.mname in EXPLODING_MONSTERS:
+            return default
+        ret = 2
+        if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
+            ret += 15
+        if 'were' in mon.mname:
+            ret += 1
+        return ret
+    except Exception:
+        return default
+
+
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -142,6 +192,8 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
+            if dis == 1 and point_blank_throw(agent, launcher, ammo):
+                ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
 
@@ -352,7 +404,7 @@ def camera_actions(agent, monsters):
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
     if not agent.global_logic.dive.diving:
-        return []
+        return grind_camera_actions(agent, monsters, camera, ratio)
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
@@ -396,6 +448,42 @@ def camera_actions(agent, monsters):
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
         if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
+            continue
+        if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
+            continue
+        if agent.blstats.time - flashed.get((y, x), -100) < 8:
+            continue
+        actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+    return actions
+
+
+def grind_camera_actions(agent, monsters, camera, ratio):
+    # hypothesis: nearly every game of this Tourist ends in the Dlvl 1-4 levelling grind at XL 3-8, trading blows at
+    # a few HP with a jackal, bat, grid bug, homunculus, rothe or were-creature -- and the camera, the role's best
+    # escape, was kept for the dive ('a fleeing monster is lost XP'). By the time fight2 runs below the Elbereth-rest
+    # threshold, that rest has declined (the lone-weak-monster exemption, an Elbereth-ignoring @ were form, blind,
+    # no engraving possible), so nothing else stops the next hit. Flash the adjacent attacker there: it is blinded for
+    # good and flees 3 times in 4 (apply.c use_camera -> uhitm.c flash_hits_mon: monflee for rnd(100) turns or
+    # indefinitely), which buys the turns to rest. An Elbereth we stand on is left to do its job (a blinded monster
+    # no longer respects it), and above the threshold the grind keeps fighting for XP as before.
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Talk:Expensive_camera,
+    #          https://nethackwiki.com/wiki/Tourist ('one of the most useful starting items'),
+    #          https://dataswamp.org/~solene/2020-11-15-nethack-Tou-Hum-Fem-Neu.html (player: a panicked flash made a
+    #          giant rat run), NetHack 3.6.6 src/uhitm.c flash_hits_mon, /refs/past_runs/20260929-112307/23.diff
+    from ..dive_logic import ELBERETH_REST_BELOW
+    if not jf_config.GRIND_CAMERA:
+        return []
+    if ratio >= ELBERETH_REST_BELOW and not agent._critically_low_hp():
+        return []
+    dive = agent.global_logic.dive
+    on_elbereth = (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and not in_gehennom(agent)
+    flashed = getattr(agent, '_camera_flashed', {})
+    actions = []
+    for monster in monsters:
+        _, y, x, mon, _ = monster
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
             continue
@@ -501,27 +589,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -542,26 +609,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
