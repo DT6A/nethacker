@@ -224,6 +224,18 @@ LOWHP_FIRST_TURN = 100
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
+# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (monster_utils) makes things worse.
+# uhitm.c passive() deals (lvl+1)d6 cold (2d6 brown mold, 5d6 blue jelly) on 2/3 of the swings that don't kill,
+# heals the target by half of it and splits it once its max HP passes (lvl+1)*8; a Tourist's weak melee can't
+# outpace that. This chain's seed 8 dies 'of starvation' on Dlvl 1 at XL3 after 10277 turns -- the brown-mold box
+# #6 found (swing at full HP, 'multiplies from your heat!', Elbereth rest, swing again, faint). Without cold
+# resistance they are only targets for thrown darts or squares to walk around. (Port of #6, held-out +0.063.)
+# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
+#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
+#          http://crpgaddict.blogspot.com/2024/03/nethack-31-quest-for-glory.html (player: backed off, darts),
+#          https://lparchive.org/Nethack-(by-Lobster-Maneuver)/Update%209/ (player killed meleeing a blue jelly),
+#          /refs/history/6.diff, NetHack 3.6.6 src/uhitm.c passive()
+MOLD_NO_MELEE = True
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -328,10 +340,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

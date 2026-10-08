@@ -64,7 +64,9 @@ def consider_melee_only_ranged_if_hp_full(agent, monster):
     if name == 'gelatinous cube':
         return _adjacent_turns(agent, monster) >= 6 and bl.hitpoints >= 0.4 * bl.max_hitpoints
     # their passive cold does nothing to a cold-resistant Valkyrie
+    # (jf_config.MOLD_NO_MELEE: no 'HP full' permission -- their passive cold outpaces a weak melee)
     if name in ('brown mold', 'blue jelly') and \
-            (bl.hitpoints == bl.max_hitpoints or agent.character.role == agent.character.VALKYRIE):
+            ((bl.hitpoints == bl.max_hitpoints and not jf_config.MOLD_NO_MELEE)
+             or agent.character.role == agent.character.VALKYRIE):
         return True
     return False
