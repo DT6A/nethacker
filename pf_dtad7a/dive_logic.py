@@ -82,27 +82,6 @@ ELBERETH_REST_UNTIL = 0.85
 #          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (killed while praying = failed prayer),
 #          /refs/top/008c6ff1b6ec (retreat keyed on prayer/Elbereth availability)
 PRAYERLESS_GUARD = True
-# hypothesis: the dive takes every way down as soon as it reaches it, whatever the prayer timeout -- after a
-# hunger prayer (the grind's Weak prayers every ~1200 turns, the dive's own) or an HP prayer, pray.c resets
-# u.ublesscnt to rnz(350) and the next HP prayer works only once it is <= 200 again, so the dive walks into
-# fresh levels with no HP backstop for the next ~500 turns. That is this chain's biggest loss group: the XL 8
-# dive dies at its start on Dlvl 2-8 (seeds 0, 1, 2, 6, 10, mal 9, 421794, 421796: Woodland-elf, frost and
-# striking wands, rabid rat, dingo, ape, bugbear, killer bee -- 13 of 40 dev games, all at ~0.07 progress).
-# Strong players don't go deeper while their prayer is on timeout; the bot's own readiness rule (rest to 95% HP
-# before a '>') gets the same treatment: on Dlvl <= PRAYER_READY_MAX_DEPTH the dive holds its voluntary
-# descents (stairs, trap doors, a dug hole, a digging zap) on the current, shallower level until the low-HP
-# prayer is safe again (is_safe_to_pray(500), emergency_strategy's own test), at most PRAYER_WAIT_MAX turns
-# per level. Escapes (dig_first/DIG_ESCAPE, retreats, LAST_RESORT) and rescue / starving / Weak dives are
-# not held.
-# sources: https://nethackwiki.com/wiki/Prayer_timeout (rnz(350) after a prayer; major trouble needs <= 200;
-#          ~1230 turns for 95% safety), https://nethackwiki.com/wiki/Prayer,
-#          https://www.steelypips.org/nethack/pray.html (player spoiler: the timeout after a prayer runs
-#          ~50-1000), https://nethackwiki.com/wiki/Tourist (descend slowly, play with extreme caution),
-#          https://nethackwiki.com/wiki/Why_do_I_keep_dying (don't go deeper without a way out),
-#          https://github.com/krajj7/BotHack src/bothack/bots/mainbot.clj (can-pray? gates its risky plans)
-PRAYER_READY_DESCENT = True
-PRAYER_READY_MAX_DEPTH = 10    # deeper, a long stay meets nastier spawns than the next level's arrival
-PRAYER_WAIT_MAX = 600          # turns per level at most (the HP prayer's gap is 500, a dwarf-kill hold 600)
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -594,7 +573,6 @@ class DiveLogic:
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
         self._fed_wait_logged = False
-        self._prayer_wait_since = {}    # PRAYER_READY_DESCENT: level key -> turn its hold began
 
     # ------------------------------------------------------------------ state
 
@@ -1867,12 +1845,7 @@ class DiveLogic:
         # monsters come (base-jf25 s13 rested 180 turns at a Dlvl 14 '>' and died there)
         threshold = DIG_REST_BELOW if digger else REST_BEFORE_DESCEND
         if agent.blstats.hitpoints >= threshold * agent.blstats.max_hitpoints:
-            if not self._prayer_wait():
-                return False
-            # PRAYER_READY_DESCENT: healthy, but no HP prayer yet -- wait here (no Elbereth on stairs)
-            self._task('wait for prayer before descending')
-            agent.search(1 if agent.get_visible_monsters() else 20)
-            return True
+            return False
         if digger and agent._hurt_recently(3):
             # something is hurting us right here (base-jf16 s7 rested on a '>' Elbereth while a rock troll's
             # partisan reached it from two squares away, 17 -> 10 HP): the stairs are the escape
@@ -1886,28 +1859,6 @@ class DiveLogic:
             return True
         agent.search(1 if agent.get_visible_monsters() else 20)
         return True
-
-    def _prayer_wait(self):
-        """PRAYER_READY_DESCENT: hold this voluntary descent while the low-HP prayer isn't available (see there)."""
-        if not PRAYER_READY_DESCENT or not self.diving or self.rescue:
-            return False
-        agent = self.agent
-        bl = agent.blstats
-        level = agent.current_level()
-        if level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES) or \
-                bl.depth > PRAYER_READY_MAX_DEPTH or self.in_valley():
-            return False
-        # a failed prayer keeps the god angry for PRAYER_FAILURE_WAIT turns, and hunger needs food that's deeper
-        if agent.prayer_failed or bl.hunger_state >= Hunger.WEAK or self.starving():
-            return False
-        if agent.is_safe_to_pray(500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None):
-            return False
-        key = level.key()
-        if key not in self._prayer_wait_since:
-            self._prayer_wait_since[key] = bl.time
-            agent.log(f'DIVE holding the descent on {key} until the HP prayer is back (last prayer '
-                      f'{None if agent.last_prayer_turn is None else bl.time - agent.last_prayer_turn} turns ago)')
-        return bl.time - self._prayer_wait_since[key] <= PRAYER_WAIT_MAX
 
     def _digger_here(self):
         """Diving with a usable digging tool on a level we can still dig through."""
@@ -3097,12 +3048,6 @@ class DiveLogic:
             if agent.blstats.hitpoints < rest_below * agent.blstats.max_hitpoints and \
                     not (DIVE_REST and self._in_own_pit()):
                 self._task('rest before digging')
-                if DIVE_REST and self._rest_elbereth():
-                    return True
-                agent.search(1 if agent.get_visible_monsters() else 20)
-                return True
-            if not self._in_own_pit() and self._prayer_wait():
-                self._task('wait for prayer before digging')
                 if DIVE_REST and self._rest_elbereth():
                     return True
                 agent.search(1 if agent.get_visible_monsters() else 20)

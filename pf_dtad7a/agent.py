@@ -2384,8 +2384,22 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+        # hypothesis: the grind's and the XL8 dive-start's losses come at critical HP while the HP prayer is spent
+        # (a Weak hunger prayer < 500 turns ago -- every ~1200 turns in the grind -- or a failed one), and the
+        # Tourist's 2 starting extra healings still unused: drunk only below 1/3, the potion comes when one more
+        # round of a rothe / dingo / ape / elf kills. Without a safe HP prayer (the very test the HP prayer and
+        # PRAYERLESS_GUARD use) drink one already below 1/2 max HP; with one, the prayer stays the first heal
+        # (pray.c fixes TROUBLE_HIT fully and may raise max HP) and the 1/3 rule is unchanged (PRAYERLESS_QUAFF)
+        # sources: /refs/past_runs/20261004-221634/6.diff (the same rule for these two Tourist identities: held-out
+        #          0.1814 -> 0.2127, kept), https://nethackwiki.com/wiki/Potion_of_extra_healing,
+        #          https://nethackwiki.com/wiki/Prayer_timeout (use potions when in danger right after a prayer),
+        #          https://nethackwiki.com/wiki/Potion_strategy, https://nethackwiki.com/wiki/Tourist
+        quaff_frac = 1 / 3
+        if jf_config.PRAYERLESS_QUAFF and items and not self.is_safe_to_pray(
+                500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None):
+            quaff_frac = 1 / 2
         if (
-                (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
+                (self.blstats.hitpoints < quaff_frac * self.blstats.max_hitpoints
                  or self.blstats.hitpoints < 8) and items and not poly_buffer
         ):
             yield True
