@@ -198,7 +198,21 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-LOWHP_EXACT = False
+# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
+# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
+# prayer failed and starts an XL-1 rescue dive; with the timeout at 0 it only resets the timeout to rnz(350), so the
+# real critical-HP prayer soon after fails. This chain (#3 BURST_DEFENSE, #8 potions kept for HP < half) still
+# prays that way; praying only at critically_low_hp -- and for the first HP prayer from turn 100, when the
+# starting timeout of 300 is already <= 200, pray.c's major-trouble limit -- keeps the prayer for the moment it
+# heals, while the kept extra-healing potions (#8) and Elbereth (#3) cover the HP band above it: fewer Dlvl 1-4
+# early losses (newts/rats at XL2 by T2000, XL7 grind deaths after a wasted prayer). Port of #2 into this chain.
+# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
+#          p_type == 0 branch), https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
+#          /refs/history/2.diff (#2, whose subtree is the best on held-out), /refs/top/84bfc1860a92
+LOWHP_EXACT = True
+# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
+# major trouble needs <= 200) instead of 300
+LOWHP_FIRST_TURN = 100
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -303,10 +317,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
