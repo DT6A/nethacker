@@ -2384,19 +2384,9 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
-        # hypothesis: the absolute 'HP < 8' trigger makes the XL1 Tourist (max HP 10-12) drink both starting
-        # potions of extra healing at 6-7 HP against newts/jackals, so later XL4-7 grind fights that drop to
-        # 2-5 HP with the prayer spent on hunger (or on timeout) have no heal left (replays: seeds 13, 11,
-        # 421792, 421793 died on Dlvl 1-3 that way); never quaffing at half HP or more keeps the 6d8 heal
-        # (+max HP) for a real emergency.  Identical to before for max HP >= 16.
-        # sources: https://nethackwiki.com/wiki/Tourist (starting 2 potions of extra healing, low HP/AC),
-        # https://nethackwiki.com/wiki/Potion_of_extra_healing, https://nethackwiki.com/wiki/Prayer (timeout),
-        # https://nethackwiki.com/wiki/Elbereth (dust erodes when scaring), diagnostic replays of parent #3
         if (
                 (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
-                 or (self.blstats.hitpoints < 8
-                     and 2 * self.blstats.hitpoints < self.blstats.max_hitpoints))
-                and items and not poly_buffer
+                 or self.blstats.hitpoints < 8) and items and not poly_buffer
         ):
             yield True
             self.inventory.quaff(items[0])
