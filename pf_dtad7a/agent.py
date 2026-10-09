@@ -1248,15 +1248,26 @@ class Agent:
                  f'gap={gap} reason={self._pray_reason}')
         self._pray_reason = None
         history_len = len(self._message_history)
-        self.step(A.Command.PRAY)
+        if not jf_config.PRAY_RECORD_FIX:
+            self.step(A.Command.PRAY)
+            self._record_prayer(history_len)
+        else:
+            # PRAY_RECORD_FIX: a preempt raised out of step() (AgentChangeStrategy) used to skip the bookkeeping,
+            # so the prayer (its timeout reset, or its failure) went unrecorded
+            try:
+                self.step(A.Command.PRAY)
+            finally:
+                self._record_prayer(history_len)
+        # TODO: return value
+        return True
+
+    def _record_prayer(self, history_len):
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
             self.prayer_failed = False  # pleased() only runs with the god appeased and Luck >= 0
-        # TODO: return value
-        return True
 
     def open_door(self, y, x):
         with self.panic_if_position_changes():
@@ -2044,6 +2055,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2413,8 +2429,15 @@ class Agent:
                        not self.character.prop.polymorph))
         if poly_buffer:
             low_hp = False
+        # LOWHP_SAFE_GAP: above critically_low_hp (and not Hungry, pray.c's minor TROUBLE_HUNGRY) the HP rule's
+        # prayer fixes no trouble, so pray.c wants a zero timeout: rnz(350) is still > 545 ~29% of the time
+        # (parent seed 14: 10/13 HP at gap 545, 'displeased', rescue dive at XL2, dead on Dlvl 4)
+        lowhp_gap = 500
+        if (jf_config.LOWHP_SAFE_GAP and low_hp and not self._critically_low_hp()
+                and self.blstats.hunger_state < Hunger.HUNGRY):
+            lowhp_gap = jf_config.LOWHP_SAFE_GAP_TURNS
         if (
-                (self.is_safe_to_pray(500) and low_hp)
+                (self.is_safe_to_pray(lowhp_gap) and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and
