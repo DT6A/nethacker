@@ -332,11 +332,24 @@ MISSILES_NOT_MELEE = True
 #          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
 MOLD_NO_MELEE = True
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-WEAK_FLOOR_BY_DAMAGE = True
+# hypothesis: combat/movement_priority.py drew melee squares around every hostile unicorn at HP >= 15 and never a
+# retreat ('unicorn': pass), and goto_action walks at any monster when the heatmap is flat, so the AC10 bare-handed
+# Tourist chased cross-aligned unicorns (base level 4, speed 24, AC 2, butt 1d12 + kick 1d6, several hits a turn).
+# A unicorn keeps out of line with a hero it sees and never steps into melee on its own (monmove.c m_move NOTONL);
+# closed in on, it strikes first and jumps clear -- the chaser takes free hits and rarely lands one. Dev XL8 dive
+# starts died that way on Dlvl 3-4 (480663 mal white unicorn, 480665 fem+mal black unicorn), as did earlier runs'
+# Tourists ('killed by a white/black unicorn', Xp:8). Until AC <= UNICORN_FIGHT_AC and XL >= UNICORN_FIGHT_XL a
+# hostile unicorn is fought only when adjacent (hit back: it out-runs us) or lined up for darts; otherwise fight2
+# lets it be and the move heatmap keeps us off its adjacent squares, so the dive goes on. Expect fewer dive-start
+# losses; unicorns respect Elbereth, so the low-HP rest still covers an adjacent one.
+# sources: https://nethackwiki.com/wiki/Unicorn ("won't deliberately step into melee range... usually attacks you
+#          first, then jumps or teleports clear"; early game: let a pet kill it), NetHack 3.6.6 src/monmove.c m_move
+#          (is_unicorn NOTONL avoidance), https://nethackwiki.com/wiki/Tourist (AC 10, weak melee),
+#          web search "nethack unicorn early game low level" (players: if low level with weak AC, don't chase one),
+#          /refs/past_runs.md (Tourist XL8 dives 'killed by a white/black unicorn' in several runs)
+UNICORN_NO_CHASE = True
+UNICORN_FIGHT_AC = 2
+UNICORN_FIGHT_XL = 10
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

@@ -1759,6 +1759,8 @@ class Agent:
         again once adjacent (unless passive), after FIGHT_IGNORE_TURNS, or when something hurts us (only those
         within 3 when any is: a sleeping zoo further off stays let go)."""
         monsters = self.get_visible_monsters()
+        if jf_config.UNICORN_NO_CHASE:
+            monsters = [m for m in monsters if not combat.monster_utils.unicorn_out_of_reach(self, m)]
         if self._fight_stall_turns() <= 0 or not self._fight_ignored:
             return monsters
         bl = self.blstats

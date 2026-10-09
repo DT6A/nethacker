@@ -1,7 +1,7 @@
 from ..utils import adjacent
 from . import utils
 from .monster_utils import WEAK_MONSTERS, ONLY_RANGED_SLOW_MONSTERS, consider_melee_only_ranged_if_hp_full, \
-    imminent_death_on_melee, EXPLODING_MONSTERS, WEIRD_MONSTERS
+    imminent_death_on_melee, EXPLODING_MONSTERS, WEIRD_MONSTERS, unicorn_keep_away
 
 
 def _draw_around(priority, y, x, value, radius=1, operation='add'):
@@ -59,6 +59,10 @@ def draw_monster_priority_positive(agent, monster, priority, walkable):
         if consider_melee_only_ranged_if_hp_full(agent, monster):
             _draw_around(priority, y, x, 2, radius=1, operation='max')
             _draw_around(priority, y, x, 1, radius=2, operation='max')
+        if len(agent.inventory.get_ranged_combinations()):
+            _draw_ranged(priority, y, x, 1, walkable, radius=7, operation='max')
+    elif unicorn_keep_away(agent, monster):
+        # see jf_config.UNICORN_NO_CHASE: no melee squares around it, only its throwing lines
         if len(agent.inventory.get_ranged_combinations()):
             _draw_ranged(priority, y, x, 1, walkable, radius=7, operation='max')
     elif 'unicorn' in mon.mname:
@@ -129,6 +133,9 @@ def draw_monster_priority_negative(agent, monster, priority, walkable):
     elif mon.mname in ONLY_RANGED_SLOW_MONSTERS:  # and agent.inventory.get_ranged_combinations():
         # ignore
         pass
+    elif unicorn_keep_away(agent, monster):
+        # stay out of its reach (it attacks first when closed in on, then jumps clear)
+        _draw_around(priority, y, x, -10, radius=1)
     elif 'unicorn' in mon.mname:
         pass
     else:
