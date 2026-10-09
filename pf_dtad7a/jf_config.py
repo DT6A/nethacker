@@ -367,10 +367,6 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# PACK_ROUND_FLOOR: elbereth_rest also starts below 70% HP when HP <= the summed max one-round damage of the 2+ hostiles
-# within 2 squares (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones)
-PACK_ROUND_FLOOR = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
