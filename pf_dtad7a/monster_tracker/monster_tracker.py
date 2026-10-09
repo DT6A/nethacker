@@ -5,17 +5,14 @@ import numpy as np
 from nle.nethack import actions as A
 
 from .kernels import figure_out_monster_movement
-from .. import jf_config, utils
+from .. import utils
 from ..exceptions import AgentPanic
-from ..glyph import C, G, MON
+from ..glyph import C, G
 
 
 class MonsterTracker:
     _UNSEEN_ATTACK = re.compile(r"\bIt (?:hits|bites|misses|just misses|stings|touches|butts|kicks|claws|"
                                 r"thrusts|swings|lashes|squeezes|gores|pummels|scratches|stabs|zaps|casts|spits)")
-    # mhitu.c hitmsg()/missmu(): 'The rothe bites!', 'The pony kicks!', 'The giant ant misses!'
-    _SEEN_ATTACK = re.compile(r"\bThe ([a-z][a-z -]*?) (?:bites|hits|kicks|butts|stings|touches you|misses|"
-                              r"just misses)!")
 
     def __init__(self, agent):
         self.agent = agent
@@ -112,43 +109,5 @@ class MonsterTracker:
                     near = np.s_[max(sy - 1, 0):sy + 2, max(sx - 1, 0):sx + 2]
                     self.peaceful_monster_mask[near] |= unseen[near] & self.monster_mask[near]
 
-        if jf_config.HOSTILE_RECHECK and self.peaceful_monster_mask.any() and not self.agent.character.prop.hallu:
-            self._recheck_attackers()
-
         assert (~self.peaceful_monster_mask | self.monster_mask).all()
         self._last_glyphs = self.agent.glyphs.copy()
-
-    def _recheck_attackers(self):
-        # hypothesis: the peaceful mask is carried from turn to turn by glyph movement (figure_out_monster_movement)
-        # and never re-asked, so a monster marked peaceful -- a hostile look-alike that stepped where a peaceful one
-        # was, or a peaceful one that turned hostile -- is skipped by fight2 / the Elbereth rest while it bites the
-        # unarmoured (AC 10) Tourist in the Dlvl 1-4 grind. A peaceful monster never melees us (outside Conflict), so
-        # 'The <name> bites!' with exactly one adjacent peaceful-marked <name> makes that one hostile (never an @:
-        # shopkeepers, priests and the watch are not fought on a guess). Fewer early losses to an ignored attacker.
-        # Port of past run 20261008-132537 #11/#70/#78 (same pf_dtad7a engine; kept 3 of 4 times on held-out seeds:
-        # 0.1337->0.1370, 0.2070->0.2185, 0.1628->0.1922; the 4th equal).
-        # sources: NetHack 3.6.6 src/monmove.c dochug() (attacks only if !mpeaceful || Conflict), src/makemon.c
-        #          peace_minded() (a neutral Tourist meets many peaceful neutrals), src/mhitu.c hitmsg()/missmu();
-        #          https://nethackwiki.com/wiki/Peaceful, https://nethackwiki.com/wiki/Tourist,
-        #          /refs/past_runs/20261008-132537/78.diff (and 11/70.diff)
-        # node #28: same port stacked on #1 (PET_HUNGER_FIX) + #9 (GRIND_CAP): the grind cap sends the XL 6-7
-        # Tourist to Dlvl 2-5 earlier, where more look-alikes of peaceful neutrals (gnomes, dwarves, hill orcs from
-        # the Mines' entrance levels) can bite it unanswered. Only squares already in the peaceful mask are un-marked,
-        # so a hunger-confused pet's bites (PET_HUNGER_FIX) change nothing here.
-        names = set(self._SEEN_ATTACK.findall(self.agent.message or ''))
-        if not names:
-            return
-        y0, x0 = self.agent.blstats.y, self.agent.blstats.x
-        seen = {}
-        for y in range(max(y0 - 1, 0), min(y0 + 2, C.SIZE_Y)):
-            for x in range(max(x0 - 1, 0), min(x0 + 2, C.SIZE_X)):
-                g = self.agent.glyphs[y, x]
-                if (y, x) == (y0, x0) or not self.monster_mask[y, x] or not MON.is_monster(g):
-                    continue
-                mon = MON.permonst(g)
-                if mon.mname in names and ord(mon.mlet) != MON.S_HUMAN:
-                    seen.setdefault(mon.mname, []).append((y, x))
-        for name, squares in seen.items():
-            if len(squares) == 1 and self.peaceful_monster_mask[squares[0]]:
-                self.peaceful_monster_mask[squares[0]] = False
-                self.agent.log(f'HOSTILE_RECHECK: the {name} at {squares[0]} attacked us: not peaceful')
