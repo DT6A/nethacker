@@ -351,13 +351,6 @@ WEAR_UNKNOWN_MUNDANE = True
 # (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
 WEAK_FLOOR_BY_DAMAGE = True
 
-# SLEEP_BITER_REST: the lone-weak-monster exemption above skips sleep biters (dive_logic.SLEEP_BITERS: the
-# homunculus): each bite may put a sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we
-# hide from it on Elbereth (it respects Elbereth) instead of fighting on. See dive_logic.elbereth_rest.
-# hypothesis: removes the Dlvl-1 grind deaths to a lone homunculus (s12) and saves the HP prayer they burn
-# sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; /refs/history/60.diff (held-out +0.024)
-SLEEP_BITER_REST = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

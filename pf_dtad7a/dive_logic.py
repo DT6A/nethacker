@@ -65,6 +65,9 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
+# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
+PICK_DETOUR = True
+PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
@@ -89,13 +92,6 @@ WEAK_ROUND_DAMAGE = {
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
     'dwarf zombie': 7,
 }
-# hypothesis: a homunculus's sleep bite (1 in 5 hits: asleep 1-10 turns, no sleep resistance) chains helpless turns,
-# so it is no 'lone weak monster' to fight on down to the weak floor: below 40% HP hide on Elbereth from it instead
-# (fem/mal s12 die on Dlvl 1 at XL5 to a lone homunculus; the port lifted held-out +0.024 on #16 and on #59)
-# sources: NetHack 3.6.6 src/mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ('best to take them out with
-#          ranged attacks or avoid them'); https://nethackwiki.com/wiki/Sleep ; https://nethackwiki.com/wiki/Elbereth ;
-#          /refs/history/60.diff, /board/claims/node-71.md (same port on #59)
-SLEEP_BITERS = frozenset(('homunculus',))
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1295,9 +1291,7 @@ class DiveLogic:
         weak_floor = 6
         if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
-        # SLEEP_BITER_REST: not a sleep biter (s12: a lone homunculus slept an XL5 Tourist three times, 32 -> 0 HP)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1623,9 +1617,42 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        return MINES_ROUTE and not self.mines_done and \
-            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-            (not self.diving or self.digging_tool() is None)
+        if MINES_ROUTE and not self.mines_done and \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+                (not self.diving or self.digging_tool() is None):
+            return True
+        return self._pick_detour()
+
+    def _pick_detour(self):
+        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
+        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
+        # hypothesis: the Tourist's XL-8 dive without a digging tool walks the main-dungeon stairs and dies on
+        # Dlvl 3-8 soon after the grind (parent dev seeds: owlbear, iguana, large kobold, giant ant, elf zombie,
+        # rope golem, black unicorn; ~0.075 each), while a dig dive banks Dlvl 18-28 (0.35-0.6). The Mines were
+        # only ever routed for dwarves and gnomes; to a human their dwarves are hostile and ~3/8 carry a pick-axe
+        # or mattock, so walk Mines levels 1-2 (with the parent's dwarf hunt and MINES_CAMP) for one first.
+        # sources: /refs/top/87db8cf4544f autoascend/dive_logic.py (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
+        #          /refs/past_runs/20261002-164932/19.diff (kept, held-out +0.033 on both Tourists),
+        #          https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Dwarf_(monster),
+        #          https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tourist,
+        #          https://forums.civfanatics.com/threads/nethack.256120/page-5 (players: the Mines give the pick-axe or
+        #          mattock you need to dig), https://www.tomsarazac.com/tom/Fun/arch.html ("go to the mines first")
+        # On this chain (node #96: + WEAR_UNKNOWN_MUNDANE armour, + WEAK_FLOOR_BY_DAMAGE with dwarf = 14) the
+        # detour also feeds the armour change (a dwarf's iron helm / mithril-coat is plain armour it now wears) and
+        # the dwarf's mattock round sends the Tourist to Elbereth before it can kill: a short raid, as players do.
+        # sources (#96): https://nethackwiki.com/wiki/Gnomish_Mines (short raid on Mines level 1 for a mithril-coat
+        #          or pick-axe, then back to the main dungeon), https://nethack.fandom.com/wiki/Dwarf_(monster)
+        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
+                self.digging_tool() is not None or self.digging_wand() is not None:
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
+            # the last detour level: its dwarf search (should_camp / the hunt) runs first, then back up
+            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
+            self.mines_done = True
+            return False
+        return True
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
