@@ -74,6 +74,7 @@ PICK_DETOUR_LEVELS = 2
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
+CROWD_ELBERETH_BELOW = 0.6
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
@@ -1256,6 +1257,13 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
+        # hypothesis: with 2+ hostiles within 2 squares all their damage lands during the engraving turn, so a crowd must start the Elbereth hide below 60% HP, not 40% (a dive-start Tourist engraved at 13/72 HP among 5 monsters and died)
+        # sources: https://nethackwiki.com/wiki/Elbereth (engraving takes a move, dust succeeds ~73%, 'not a last resort'), https://nethackwiki.com/wiki/Tourist, gamefaqs/civfanatics newbie threads (engrave when a group appears), engrave.c, monmove.c onscary()
+        if jf_config.CROWD_ELBERETH and not resting and not falling and \
+                threshold * bl.max_hitpoints <= bl.hitpoints < CROWD_ELBERETH_BELOW * bl.max_hitpoints:
+            crowd = [m for m in self._near_hostiles() if not self._ignores_elbereth(m[3])]
+            if len(crowd) >= 2:
+                threshold = CROWD_ELBERETH_BELOW
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
