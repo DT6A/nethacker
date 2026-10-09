@@ -348,9 +348,17 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting kitten/little dog (which ate nothing)
+# starves by ~T1500: dogmove.c dog_hunger confuses it ('<pet> is confused from hunger.'), mon.c mfndpos gives a
+# confused monster ALLOW_U, dog_move then mattacku()s us -- and fight2 never answers a pet (past dev seed 421796,
+# both identities: 'killed by a kitten' at XL2, T1509, score ~0). Leaving floor corpses to the pet (unless we are
+# Weak) until we see it eat (dog_eat clears mconf) or PET_HUNGER_TURNS pass lets it feed and calm down.
+# sources: /refs/past_runs/20261008-132537/72.diff (PET_HUNGER_FIX, kept in 3 chains), https://nethackwiki.com/wiki/Pet,
+#          https://nethackwiki.com/wiki/Talk:Pet, https://nethackwiki.com/wiki/Tourist,
+#          https://steamcommunity.com/app/341390/discussions/0/610573751148849294/ (players: hungry pet attacks "from confusion"),
+#          https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_PostRelease/src/dogmove.c (dog_hunger)
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
