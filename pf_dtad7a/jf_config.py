@@ -325,6 +325,16 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: on the dive-prayer chain a homunculus met in the Dlvl-1 grind can sleep the AC10 Tourist through
+# several free-bite turns while it fights down to 6 HP (public s12 dies so at XL5); it respects Elbereth, so hiding
+# at < 40% HP turns those sleeps into a rest; nothing else is fought differently. Port of #60 (held-out +0.024).
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
+SLEEP_BITER_REST = True
+
 # a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
 # and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
 # ignored it
