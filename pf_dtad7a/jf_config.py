@@ -364,19 +364,10 @@ MISSILES_NOT_MELEE = True
 # NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8
 SHRIEKER_RANGED = True
 
-# the late Dlvl-1 grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of
-# carried food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long
-# as a prayer is >= 500 turns away (the hunger prayer / faint clock covers it), HP >= half, nothing threatening is
-# near and starvation isn't close -- i.e. it does then what every empty-pack grind already does (0: off)
-# hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the long grind, so the XL8 dive
-# often starts with an empty pack and is Weak a few hundred turns later on Dlvl 2-6, where faints kill; pray.c's
-# in_trouble() ranks TROUBLE_STARVING above TROUBLE_HIT, so an HP prayer while Weak may fix only the hunger.
-# One more guarded faint cycle on Dlvl 1 buys ~800 turns of food where faints kill.
-# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased() / can_pray(); src/eat.c newuhs();
-# https://nethackwiki.com/wiki/Nutrition ; https://nethackwiki.com/wiki/Prayer ;
-# /refs/past_runs/20261008-213012/74.diff (tree node #57: public 0.1350 -> 0.1931 on its chain)
-DIVE_FOOD_RESERVE = 800
-DIVE_FOOD_RESERVE_XL = 6
+# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
+# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
+GRIND_CAMERA = True
+GRIND_CAMERA_RATIO = 0.4
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
