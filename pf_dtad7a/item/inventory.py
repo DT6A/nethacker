@@ -920,7 +920,8 @@ class Inventory:
             return best_launcher, best_ammo, best_dps
         return best_launcher, best_ammo
 
-    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False):
+    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False,
+                          allow_unknown_mundane=False):
         if items is None:
             items = self.items
         items = flatten_items(items)
@@ -937,7 +938,10 @@ class Inventory:
             is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
 
             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
-            if item.status not in allowed_statuses and not is_dragonscale_armor:
+            # WEAR_UNKNOWN_MUNDANE: unknown-BUC plain armour that gives AC (see jf_config)
+            mundane_unknown = allow_unknown_mundane and item.status == Item.UNKNOWN and not item.object.mgc and \
+                item.object.ac < 0 and item.object.sub != O.ARM_SHIELD and item.shop_status != Item.UNPAID
+            if item.status not in allowed_statuses and not is_dragonscale_armor and not mundane_unknown:
                 continue
 
             slot = item.object.sub
@@ -946,7 +950,10 @@ class Inventory:
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
                 continue
 
-            if best_ac[slot] is None or best_ac[slot] > ac:
+            # (a known-BUC piece wins a tie over an unknown one: no swap into a possible curse for nothing)
+            if best_ac[slot] is None or best_ac[slot] > ac or \
+                    (allow_unknown_mundane and best_ac[slot] == ac and not mundane_unknown and
+                     best_items[slot].status == Item.UNKNOWN):
                 best_ac[slot] = ac
                 best_items[slot] = item
 
@@ -1354,7 +1361,7 @@ class Inventory:
             return
         yielded = False
         while 1:
-            best_armorset = self.get_best_armorset()
+            best_armorset = self.get_best_armorset(allow_unknown_mundane=jf_config.WEAR_UNKNOWN_MUNDANE)
 
             # TODO: twoweapon
             for slot, name in [(O.ARM_SHIELD, 'off_hand'), (O.ARM_HELM, 'helm'), (O.ARM_GLOVES, 'gloves'),
