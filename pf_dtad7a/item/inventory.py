@@ -843,17 +843,6 @@ class Inventory:
         best_item = None
         best_dps = utils.calc_dps(*self.agent.character.get_melee_bonus(None, large_monster=False))
         for item in flatten_items(items):
-            # hypothesis: the Tourist wields its whole stack of +2 darts as its 'best melee weapon' (the +2 to-hit
-            # beats bare hands in get_melee_bonus), and get_ranged_combinations never throws the best/wielded melee
-            # weapon -- so the class's only real attack (a thrown dart: d3+2, trained toward Skilled multishot) is
-            # never used in the Dlvl 1 grind where the early losses happen (jackal, bat, wererat, gnome zombie).
-            # A missile or ammo in melee does only rnd(2) (uhitm.c hmon_hitmon), no better than unskilled bare hands
-            # (d2 +1 skill damage, weapon.c weapon_dam_bonus), so keep them out of the melee choice and throw them.
-            # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart,
-            #          NetHack 3.6.6 src/uhitm.c hmon_hitmon (is_missile/is_ammo -> rnd(2)), src/weapon.c
-            if jf_config.MISSILES_NOT_MELEE and item.is_weapon() and \
-                    (item.is_fired_projectile() or item.objs[0].name in ('dart', 'shuriken')):
-                continue
             if item.is_weapon() and \
                     (item.status in [Item.UNCURSED, Item.BLESSED] or
                      (allow_unknown_status and item.status == Item.UNKNOWN)):
@@ -925,7 +914,8 @@ class Inventory:
             return best_launcher, best_ammo, best_dps
         return best_launcher, best_ammo
 
-    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False):
+    def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False,
+                          allow_unknown_mundane=False):
         if items is None:
             items = self.items
         items = flatten_items(items)
@@ -942,7 +932,10 @@ class Inventory:
             is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
 
             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
-            if item.status not in allowed_statuses and not is_dragonscale_armor:
+            # see jf_config.WEAR_UNKNOWN_MUNDANE (unknown-BUC plain armour that gives AC)
+            mundane_unknown = allow_unknown_mundane and item.status == Item.UNKNOWN and not item.object.mgc and \
+                item.object.ac < 0 and item.object.sub != O.ARM_SHIELD and item.shop_status != Item.UNPAID
+            if item.status not in allowed_statuses and not is_dragonscale_armor and not mundane_unknown:
                 continue
 
             slot = item.object.sub
@@ -951,7 +944,10 @@ class Inventory:
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
                 continue
 
-            if best_ac[slot] is None or best_ac[slot] > ac:
+            # (a known-BUC piece wins a tie over an unknown one: no swap into a possible curse for nothing)
+            if best_ac[slot] is None or best_ac[slot] > ac or \
+                    (allow_unknown_mundane and best_ac[slot] == ac and not mundane_unknown and
+                     best_items[slot].status == Item.UNKNOWN):
                 best_ac[slot] = ac
                 best_items[slot] = item
 
@@ -1359,7 +1355,7 @@ class Inventory:
             return
         yielded = False
         while 1:
-            best_armorset = self.get_best_armorset()
+            best_armorset = self.get_best_armorset(allow_unknown_mundane=jf_config.WEAR_UNKNOWN_MUNDANE)
 
             # TODO: twoweapon
             for slot, name in [(O.ARM_SHIELD, 'off_hand'), (O.ARM_HELM, 'helm'), (O.ARM_GLOVES, 'gloves'),
