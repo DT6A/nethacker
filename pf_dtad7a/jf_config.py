@@ -97,7 +97,18 @@ GRIND_DEEP_LEVEL = 3
 NO_DIP_WITH_TOOL = False
 # the grind's main-dungeon level by XL, {min XL: Dlvl} (empty: Dlvl 1 throughout; overrides GRIND_DEEP_*):
 # e.g. {5: 3, 7: 2} keeps the random-monster cap (depth + XL) / 2 at 4 from XL 5 (global_logic._grind_level)
-GRIND_LEVELS = {}
+# hypothesis: ~70% of this chain's games are lost in the 12-25k-turn Dlvl-1 grind at XL 5-7 (werejackal, dwarf, wand, rabid
+# rat, hill orc): random spawns are capped at difficulty (depth + XL) / 2 (makemon.c), which is 3 on Dlvl 1 at XL 5-6, so
+# XP per spawn is low, the grind drags on through ~12 hunger prayers and every extra thousand turns is more exposure.
+# Grinding on Dlvl 3 at XL 5-6 and Dlvl 2 at XL 7 keeps that cap at 4 (global_logic._grind_level) -- more XP per kill,
+# fewer turns and prayers -- without reaching the difficulty 5-6 monsters (soldier ants, killer bees) of a deeper grind.
+# Never tried on this Tourist chain; measured on the same engine's other classes: prayers 12.2 -> 7.2 per game and grind
+# losses 10 -> 5 ("train 3, early-game A027" in the top programs' jf_config).
+# sources: /refs/top/ac6a6251af7b/nhbot_v2/jf_config.py and /refs/top/0f95a4e16b4c/pf_v35/jf_config.py (GRIND_LEVELS),
+#          https://nethackwiki.com/wiki/Monster_generation (maxmlev = (level difficulty + XL) / 2),
+#          https://nethackwiki.com/wiki/Level_difficulty, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Tourist
+GRIND_LEVELS = {5: 3, 7: 2}
 # the tour skips to its next milestone after this many turns within 8 squares of one spot on one level
 # (0: never). Stalls held 12 of 90 games for 1500-14000 turns, fainting through hunger prayers.
 TOUR_STALL_TURNS = 1500
@@ -367,19 +378,6 @@ MISSILES_NOT_MELEE = True
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
-
-# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
-# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
-# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
-# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
-# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
-IGNORER_FLASH = True
-IGNORER_FLASH_RATIO = 0.7
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
