@@ -2044,11 +2044,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')

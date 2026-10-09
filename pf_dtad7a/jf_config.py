@@ -204,8 +204,8 @@ DIVE_FED_MAX_WAIT = 2000
 # https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
 # https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
 # (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-# node #16: stacked on #6 (darts + KEEP_WANDS_FIRST) as a port of tree node #4 (held-out 0.1792 -> 0.2112 on the
-# dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
+# node #61: ported onto darts+wands+hostile-recheck from /refs/history/4.diff (#4: held-out 0.1792 -> 0.2112;
+# #16 on darts+wands: 0.1873 -> 0.2200)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -325,37 +325,10 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: diag replays of #16 met homunculi in 6/7 grinds and slept in 4/7; one lone homunculus took an XL5
-# Tourist 32 -> 0 HP through three sleeps (fem s12), another 51 -> 5 HP and the HP prayer (s8). A homunculus
-# respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently.
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16
-SLEEP_BITER_REST = True
-
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind and dive-start losses include packs -- hill orcs,
-# rothes, large kobolds, giant/rabid rats, jackals, giant ants, a were's summoned jackals/rats (parent public seeds
-# 1 rothe, 2 hill orc, 4 rabid rat, 7 large kobold, 8 giant rat, 9 giant ant) -- that surround it in an open room,
-# while fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and hold
-# one there for a few turns, so the pack arrives one or two at a time -- and down a corridor in a line, into the
-# thrown darts' line of fire (combat/fight_heur.py). Complements SLEEP_BITER_REST / DIVE_PRAYER_READY: fewer
-# simultaneous attackers means fewer drops below the Elbereth-rest / prayer thresholds.
-# Port of #8/#26/#33 (kept all three times on held-out: +0.0235, +0.0008, +0.0019) onto the #60 chain.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Standard_strategy,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          https://nethack.fandom.com/wiki/Canine (jackal packs: fight from a hallway, use missiles),
-#          /refs/history/33.diff, /refs/history/8.diff, /refs/past_runs/20261008-132537/65.diff,
-#          https://nethackwiki.com/wiki/Corridor (single file: not overwhelmed by numbers; foes line up for missiles),
-#          https://stuff.mit.edu/afs/sipb/project/nethackserver/src/slashem-0.0.7E7F2/doc/strategy.txt (retreat into a hallway),
-#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway),
-#          AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
+# ignored it
+HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
