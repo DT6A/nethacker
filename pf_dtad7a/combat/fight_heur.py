@@ -370,8 +370,19 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    grind_ignorers_only = False
     if not agent.global_logic.dive.diving:
-        return []
+        # hypothesis: in the Dlvl 1-4 grind a wererat in @ form (flail 2d4 + d6+1: 11-15 a hit, then its summoned
+        # rats) takes a 50-HP XL6 Tourist to 0 in 4 turns (public s8 and two more grind deaths); an @ ignores
+        # Elbereth (onscary), so the Elbereth rest has no answer, and the camera (87 charges, only ever used
+        # while diving) blinds it and scares it 3 times in 4 -- flash such an Elbereth-ignorer below 70% HP
+        # and leave everything Elbereth respects to the rest
+        # sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera,
+        #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist,
+        #          NetHack 3.6.6 src/apply.c use_camera -> uhitm.c flash_hits_mon, src/monmove.c onscary()
+        if not jf_config.IGNORER_FLASH or in_gehennom(agent):
+            return []
+        grind_ignorers_only = True
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
@@ -411,6 +422,9 @@ def camera_actions(agent, monsters):
     for monster in monsters:
         _, y, x, mon, _ = monster
         if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if grind_ignorers_only and (not dive._melee_ignores_elbereth(mon) or
+                                    ratio >= jf_config.IGNORER_FLASH_RATIO):
             continue
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
