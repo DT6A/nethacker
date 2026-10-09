@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -367,11 +369,6 @@ WAND_STAIRS_FIX = True
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
 # sources: /refs/past_runs/20261008-213012/102.diff; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c
 WEAK_FLOOR_BY_DAMAGE = True
-
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
