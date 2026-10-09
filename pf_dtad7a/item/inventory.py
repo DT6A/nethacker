@@ -854,6 +854,10 @@ class Inventory:
             if jf_config.MISSILES_NOT_MELEE and item.is_weapon() and \
                     (item.is_fired_projectile() or item.objs[0].name in ('dart', 'shuriken')):
                 continue
+            if jf_config.NO_BLIND_WIELD and item.is_weapon() and not getattr(item, 'buc_seen', True) and \
+                    self.agent.character.role == Character.TOURIST and \
+                    self.agent.blstats.experience_level < jf_config.NO_BLIND_WIELD_XL:
+                continue
             if item.is_weapon() and \
                     (item.status in [Item.UNCURSED, Item.BLESSED] or
                      (allow_unknown_status and item.status == Item.UNKNOWN)):

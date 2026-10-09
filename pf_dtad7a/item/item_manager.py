@@ -208,6 +208,9 @@ class ItemManager:
                     self._is_not_bag_of_tricks.add(item.glyphs[0])
                     self.update_possible_objects(item)
 
+        # NO_BLIND_WIELD: remember whether the text really named a BUC (get_best_melee_weapon needs it)
+        item.buc_seen = bool(text) and re.search(r'\b(cursed|uncursed|blessed)\b', text) is not None
+
         # FIXME: it gives a better score. Implement it in item equipping
         if item.status == Item.UNKNOWN:
             item.status = Item.UNCURSED

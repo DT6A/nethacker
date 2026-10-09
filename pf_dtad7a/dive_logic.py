@@ -77,8 +77,6 @@ ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
-RANGED_SEEN_TURNS = 400   # how long a monster kind that threw/zapped at us stays 'ranged'
-RANGED_SEEN_RE = re.compile(r"\bThe ([A-Za-z][A-Za-z -]*?) (?:zaps|throws|shoots|fires|hurls|spits|thrusts a wand)\b[^.!]*")
 RANGED_MONSTERS = frozenset((
     'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound', 'red naga', 'black naga',
     'golden naga', 'guardian naga', 'cobra', 'lich', 'demilich', 'master lich', 'arch-lich',
@@ -562,7 +560,6 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
-        self._ranged_seen = {}             # monster name -> last turn it was seen throwing/zapping at us
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -586,18 +583,6 @@ class DiveLogic:
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
             self._pit_at = None
-        # hypothesis: a monster that throws or zaps at us from range (a gnome lord with a wand of striking, a hill orc
-        # with daggers, a gnome lord throwing back our own darts) is not stopped by Elbereth: onscary() only scares
-        # an ADJACENT monster (dochug: scared = nearby && onscary), and a monster that is scared flees but keeps
-        # firing. Resting on Elbereth against it just feeds it free shots -- 3 of 30 parent grind games died
-        # 'killed by a wand' / 'a dart' sitting on Elbereth at XL4-7 against a 1-3 HD gnome lord or hill orc.
-        # Remember the name from the message and treat it like the static RANGED_MONSTERS: fight it instead.
-        # sources: https://nethackwiki.com/wiki/Elbereth (scared monsters still use ranged attacks),
-        #          https://nethackwiki.com/wiki/Wand_of_striking (2d12, monsters zap it from a distance),
-        #          monmove.c dochug/onscary, muse.c find_offensive (monsters use offensive wands when lined up)
-        for m in RANGED_SEEN_RE.finditer(agent.message or ''):
-            if 'self' not in m.group(0) and 'digging' not in m.group(0):
-                self._ranged_seen[m.group(1).lower()] = turn
         if self.medusa_level is None and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
                 agent.blstats.depth >= MEDUSA_MIN_DEPTH and key not in self.undiggable and \
                 utils.isin(level.objects, WET).sum() >= MEDUSA_WET_SQUARES:
@@ -1201,8 +1186,7 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
-        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS or \
-            self.agent.blstats.time - self._ranged_seen.get(str(name).lower(), -10 ** 9) <= RANGED_SEEN_TURNS
+        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs

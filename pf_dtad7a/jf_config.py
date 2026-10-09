@@ -369,6 +369,19 @@ SHRIEKER_RANGED = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# hypothesis: the Tourist's Dlvl 1-4 early losses are bare-hand/dagger melee at XL1-5 with 14-35 +2 darts unused: item_manager
+# turns every UNKNOWN BUC into UNCURSED, so get_best_melee_weapon wields any found dagger -- debug logs of 9 early-loss games
+# show "The crude dagger welds itself to your hand!" (seeds 7, 733402) and, with that Unskilled (-4 to hit, d4) dagger in hand,
+# point_blank_throw is False so the bot stabs at ~35% to hit instead of throwing a +2 dart (+2 enchant, +2 point blank, Basic
+# skill, multishot) at ~80%. Below XL 5 (the wiki's "start melee training at about XL 5") wield only a weapon whose text names
+# its BUC; otherwise keep the hands free and throw.
+# sources: https://nethackwiki.com/wiki/Tourist (darts first, melee weapon ~XL5, Unskilled -4 to hit),
+# https://nethackwiki.com/wiki/Forum:Enhancing_dart_and_dagger_skills (wield a dagger only once it is known not cursed),
+# https://nethackwiki.com/wiki/Dart, rec.games.roguelike.nethack "it took me 4 years to understand" (Tourist: darts),
+# NetHack 3.6.6 src/wield.c ready_weapon/welded (cursed wielded weapon welds)
+NO_BLIND_WIELD = True
+NO_BLIND_WIELD_XL = 5
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
