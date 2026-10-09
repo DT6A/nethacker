@@ -98,6 +98,8 @@ def missiles_risk_the_watch(agent):
 #          ("ineffective in melee, and must be used by throwing"), https://nethackwiki.com/wiki/Standard_strategy,
 #          http://crpgaddict.blogspot.com/2012/06/nethack-from-beginning.html (players: "USE YOUR DARTS"),
 #          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
+# node #52: same change stacked on the pick detour + wands-first + unknown-mundane-armour chain (its sibling #16 has it
+# without the armour; #1/#16/#45: kept, held-out gains).
 POINT_BLANK_THROW = True
 
 
@@ -434,7 +436,7 @@ def camera_actions(agent, monsters):
     # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
     # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
+    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, /refs/history/51.diff
     if not agent.global_logic.dive.diving:
         if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
