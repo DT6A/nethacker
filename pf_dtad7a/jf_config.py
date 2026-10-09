@@ -359,6 +359,12 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
+# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
+# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
+# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
+WEAK_FLOOR_BY_DAMAGE = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -372,12 +378,3 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
-
-# the late grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of carried
-# food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long as a
-# prayer is >= 500 turns away, HP >= half, nothing threatening is near and starvation isn't close (0: off)
-# hypothesis: the XL8 dive starts with food instead of an empty pack (see Agent._keep_dive_food)
-# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased(); src/eat.c newuhs(); https://nethackwiki.com/wiki/Nutrition ;
-# /refs/past_runs/20261008-213012/74.diff
-DIVE_FOOD_RESERVE = 800
-DIVE_FOOD_RESERVE_XL = 6
