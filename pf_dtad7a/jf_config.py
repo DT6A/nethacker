@@ -350,30 +350,19 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
-# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then
-# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
-# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
-# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so
-# no AC-0 cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is
-# not unpaid. Known items keep priority on ties; lower AC -> fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
-WEAR_UNKNOWN_MUNDANE = True
+# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
+# could not be thrown, so the Tourist never used its starting ranged attack
+MISSILES_NOT_MELEE = True
 
-
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
-WEAK_FLOOR_BY_DAMAGE = True
+# hypothesis: a shrieker is no free "weak monster" to punch to death: while we (or something fighting us) stand next to it
+# it shrieks (monmove.c dochug -> m_respond), each shriek aggravates and has a 1 in 10 chance to makemon() an extra monster,
+# sometimes a purple worm (level 15, engulfs, digests ~10 HP a turn): seeds 5 and 8 died on Dlvl 1/4 at XL5-7 right after
+# "The shrieker shrieks." (4 of 30 parent games) in a 6-20 turn bare-handed melee (unskilled punches miss ~60%). So fight it
+# with the +2 darts: line up 2+ squares away (it has no attack and speed 1, so no shriek at range) and, if it is adjacent,
+# throw point blank (priority 17 > the punch's 16) -- a few turns next to it instead of a dozen.
+# sources: https://nethackwiki.com/wiki/Shrieker (shrieks only when adjacent; 'ranged attacks stop it before it can shriek'),
+# NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8
+SHRIEKER_RANGED = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
