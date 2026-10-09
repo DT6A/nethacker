@@ -66,15 +66,11 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
-# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
-PICK_DETOUR = True
-PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
-CROWD_ELBERETH_BELOW = 0.6
 ELBERETH_REST_UNTIL = 0.85
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
@@ -1257,13 +1253,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        # hypothesis: with 2+ hostiles within 2 squares all their damage lands during the engraving turn, so a crowd must start the Elbereth hide below 60% HP, not 40% (a dive-start Tourist engraved at 13/72 HP among 5 monsters and died)
-        # sources: https://nethackwiki.com/wiki/Elbereth (engraving takes a move, dust succeeds ~73%, 'not a last resort'), https://nethackwiki.com/wiki/Tourist, gamefaqs/civfanatics newbie threads (engrave when a group appears), engrave.c, monmove.c onscary()
-        if jf_config.CROWD_ELBERETH and not resting and not falling and \
-                threshold * bl.max_hitpoints <= bl.hitpoints < CROWD_ELBERETH_BELOW * bl.max_hitpoints:
-            crowd = [m for m in self._near_hostiles() if not self._ignores_elbereth(m[3])]
-            if len(crowd) >= 2:
-                threshold = CROWD_ELBERETH_BELOW
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1603,37 +1592,9 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        if MINES_ROUTE and not self.mines_done and \
-                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-                (not self.diving or self.digging_tool() is None):
-            return True
-        return self._pick_detour()
-
-    def _pick_detour(self):
-        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
-        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
-        # hypothesis: the Tourist's XL-8 dive without a digging tool walks the main-dungeon stairs and dies on
-        # Dlvl 3-8 soon after the grind (parent dev seeds: owlbear, iguana, large kobold, giant ant, elf zombie,
-        # rope golem, black unicorn; ~0.075 each), while a dig dive banks Dlvl 18-28 (0.35-0.6). The Mines were
-        # only ever routed for dwarves and gnomes; to a human their dwarves are hostile and ~3/8 carry a pick-axe
-        # or mattock, so walk Mines levels 1-2 (with the parent's dwarf hunt and MINES_CAMP) for one first.
-        # sources: /refs/top/87db8cf4544f autoascend/dive_logic.py (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
-        #          /refs/past_runs/20261002-164932/19.diff (kept, held-out +0.033 on both Tourists),
-        #          https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Dwarf_(monster),
-        #          https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tourist,
-        #          https://forums.civfanatics.com/threads/nethack.256120/page-5 (players: the Mines give the pick-axe or
-        #          mattock you need to dig), https://www.tomsarazac.com/tom/Fun/arch.html ("go to the mines first")
-        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
-                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
-                self.digging_tool() is not None or self.digging_wand() is not None:
-            return False
-        level = self.agent.current_level()
-        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
-            # the last detour level: its dwarf search (should_camp / the hunt) runs first, then back up
-            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
-            self.mines_done = True
-            return False
-        return True
+        return MINES_ROUTE and not self.mines_done and \
+            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+            (not self.diving or self.digging_tool() is None)
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
