@@ -2083,6 +2083,11 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
+                    if _m:
+                        if not hasattr(self, '_flash_blinded'):
+                            self._flash_blinded = {}
+                        self._flash_blinded[_m.group(1)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
@@ -2381,30 +2386,6 @@ class Agent:
         # fixing hunger, and both starved before the next safe prayer; jf25 s10 zapped its wands and drank
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
-
-        # hypothesis: the healing-potion branch below drank first at any HP < 1/3 (or < 8), even in pray.c's
-        # TROUBLE_HIT window (critically_low_hp) with a long-cooled-down HP prayer at hand -- where the prayer heals
-        # fully for nothing and adds rnd(5) max HP while max HP < 5 * XL + 11 (an XL 1-6 Tourist's 10-40), and
-        # the Tourist's 2 starting extra healings were gone before the grind's (and the dive start's) critical-HP
-        # moments that fall inside a prayer timeout (the grind prays for hunger every ~1200 turns). Pray first only
-        # when the prayer is near-certain: no prayer yet (past LOWHP_FIRST_TURN) or the last one >= PRAY_FIRST_GAP
-        # turns ago, never after a failed one -- between 500 and PRAY_FIRST_GAP the sure potion still comes first
-        # and the HP prayer below stays the backstop.
-        # sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble TROUBLE_HIT, can_pray needs
-        #          u.ublesscnt <= 200, fix_worst_trouble TROUBLE_HIT: uhpmax += rnd(5)), src/rnd.c rnz,
-        #          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-        #          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-213012/54.diff (kept there, +0.016),
-        #          /refs/history/99.diff (#99 kept: held-out 0.1563 -> 0.1833)
-        if jf_config.PRAY_FIRST_SURE and not poly_buffer and not self.prayer_failed and \
-                self._critically_low_hp() and self.blstats.hitpoints < self.blstats.max_hitpoints and \
-                self.is_safe_to_pray(jf_config.PRAY_FIRST_GAP, first_turn=jf_config.LOWHP_FIRST_TURN) and \
-                any(item.is_unambiguous() and item.category == nh.POTION_CLASS and
-                    item.object.name in ['healing', 'extra healing', 'full healing']
-                    for item in flatten_items(self.inventory.items)):
-            yield True
-            self.log(f'PRAY_FIRST at {self.blstats.hitpoints}/{self.blstats.max_hitpoints} HP, potion kept')
-            self.pray()
-            return
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
