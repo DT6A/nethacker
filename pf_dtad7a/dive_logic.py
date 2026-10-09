@@ -84,7 +84,7 @@ ELBERETH_REST_UNTIL = 0.85
 # sources: https://nethackwiki.com/wiki/Rothe ('can hit quite hard', 'respect Elbereth'),
 #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Giant_ant,
 #          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku;
-#          /refs/history/95.diff (= /refs/history/71.diff, kept on ~11 chains, held-out mostly +0.01..+0.045)
+#          /refs/history/18.diff (= /refs/past_runs/20261008-213012/102.diff, kept on 6 chains, held-out +0.009..+0.045)
 WEAK_ROUND_DAMAGE = {
     'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
