@@ -321,10 +321,42 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses are mostly packs -- hill orcs, rothes, large
+# kobolds, hobgoblins, rats and jackals (parent seeds 1 rothe, 2 hill orc, 4 rabid rat, 7 large kobold, 8 hobgoblin)
+# -- that surround it in an open room while fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile
+# hostiles within 7 squares, prefer corridor squares and open doors (at most 2 squares to be attacked from; nothing
+# passes a door diagonally) and hold one there for a few turns, so the pack arrives one or two at a time and the
+# dart volley (MISSILES_NOT_MELEE) hits them in a line (combat/fight_heur.py). Complements DIVE_PRAYER_READY: it
+# protects the grind itself, which still ends most dev/held-out games.
+# Port of tree node #8 (held-out 0.1157 -> 0.1392 on its parent) / past run 20261008-132537 #5/#65 (kept both).
+# sources: /refs/history/8.diff, /refs/past_runs/20261008-132537/65.diff,
+#          https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway)
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
+
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' ('You feel worried about <pet>.' out
+# of sight) 500 turns past its hungrytime (it starves 250 turns later); mon.c mfndpos gives a confused monster
+# ALLOW_ALL (ALLOW_U included), and dog_move then mattacku()s us. fight2 never answers a pet, so the AC10 Tourist
+# can be bitten to death by its own kitten in the Dlvl 1-4 grind (parent: 'killed by a kitten' on seeds 4 and 14,
+# both identities), and the pet -- a Tourist's main early fighter, and on this chain the ally that holds the
+# chokepoint with us against packs -- starves. A meal ends the confusion (dog_eat: mconf = 0), so for
+# PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat no corpse off the floor
+# ourselves unless Weak. Port of this run's #1/#22 and past run 20261008-132537 #68/#72/#73/#79 (held-out
+# +0.009..+0.021 there) onto the darts+dive-prayer+chokepoint chain.
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger / dog_move / dog_eat, src/mon.c mfndpos,
+#          https://nethackwiki.com/wiki/Pet ('avoid attacking the hero ... unless they are confused'; feed carnivores
+#          fresh corpses), https://nethackwiki.com/wiki/Tourist (rely on the pet early),
+#          https://nethack.fandom.com/wiki/Pet (hungry pets may attack you if confused from hunger),
+#          rec.games.roguelike.nethack 'why does my pet attack me?' (groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A),
+#          http://crpgaddict.blogspot.com/2012/06/nethack-from-beginning.html (comments: let the pet kill, use darts),
+#          /refs/history/1.diff, /refs/past_runs/20261008-132537/79.diff
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
