@@ -71,18 +71,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the lone-weak-monster exemption in elbereth_rest fights on down to 6 HP, counting on the low-HP
-# prayer (emergency_strategy: is_safe_to_pray(500) and low_hp). Within 500 turns of the last prayer (the grind's
-# Weak hunger prayers come every ~1150-1300 turns) or after a failed one there is no such prayer, and the AC 10
-# Tourist trades blows at 6-15 HP with a rabid rat / iguana / newt / kobold / wererat until a desperate too-soon
-# prayer fails. Without a safe HP prayer, hide on Elbereth below 40% HP from a lone weak monster too
-# (PRAYERLESS_GUARD): fewer Dlvl 1-4 grind deaths at XL 5-8 (parent: rabid rat, iguana, newt, large kobold,
-# hobgoblin, wererat, homunculus on Dlvl 1-4). Complements DIVE_PRAYER_READY (#4): both keep the HP prayer in hand.
-# sources: /refs/past_runs/20261008-132537/4.diff and 39.diff (kept twice on this engine, held-out
-#          0.1517->0.2196 and 0.0887->0.0940), /refs/history/10.diff, https://nethackwiki.com/wiki/Prayer,
-#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Elbereth,
-#          https://nethackwiki.com/wiki/Tourist
-PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -252,22 +240,6 @@ TOOL_RUN_XL = None
 # hunting dwarves on the way, digging in the main dungeon if it gets a pick-axe. Fires only in games
 # that are otherwise lost.
 RESCUE_DIVE = True
-# hypothesis: an early failed prayer (a too-soon HP prayer at XL 1-4, T~1500-2500) starts the rescue dive at once,
-# and the XL 3-4 Tourist (AC 10, ~20 max HP, no prayer for 2000 turns, Luck -3) dies within a few hundred turns on
-# Dlvl 2-5 (parent: s0 orc zombie Dlvl 5 T2314, s14 iguana Dlvl 4 T2231, s1 bat Dlvl 2 T2391, 480662 arrow Dlvl 3
-# T1814; each 0.021-0.026). The rescue exists for starvation -- an angry god ends the hunger prayers -- but a
-# Tourist with its starting food is not starving yet: eat_from_inventory eats carried food at Hungry once
-# prayer_failed, and corpses nearby are walked to. Random monsters are capped at difficulty (depth + XL) / 2
-# (makemon.c), so Dlvl 1 is the safest place to regain XP while Luck recovers (+1 per 300 turns with the god
-# angry) and PRAYER_FAILURE_WAIT runs out; dive only when Weak with nothing edible carried (the case the rescue
-# was built for, as LATE_RESCUE) or at DIVE_XL. A grind death at XL 5-7 also outscores a Dlvl 3-5 death
-# (0.029-0.051 vs 0.021-0.026). Complements PRAYERLESS_GUARD (#19): Elbereth covers the prayerless grind.
-# sources: https://nethackwiki.com/wiki/Prayer (p_type 0: Luck -3, god anger), https://nethackwiki.com/wiki/Luck
-#          (timeout), https://nethackwiki.com/wiki/Tourist ('descend slowly'), https://nethackwiki.com/wiki/Standard_strategy,
-#          https://nethackwiki.com/wiki/Monster_difficulty, NetHack 3.6.6 src/pray.c, src/makemon.c,
-#          https://nethackwiki.com/wiki/Anger and https://nethackwiki.com/wiki/Forum:Help!My_angered_me (anger never
-#          times out; don't pray, find food and sacrifices instead -- no help from diving at low XL)
-RESCUE_DEFER = True
 # The same later in the tour: a prayer failed (the god is angry or Luck < 0, so no more hunger prayers)
 # and the character is Weak with nothing to eat. The tour would starve on the spot (a clock-jf6 XL8
 # starved in the Mines 1700 turns after an unlucky prayer); the dive at least banks depth on the way.
@@ -911,11 +883,6 @@ class DiveLogic:
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
-        if rescue and RESCUE_DEFER:
-            # RESCUE_DEFER: dive only once the angry god leaves the grind starving (Weak, nothing edible carried)
-            # or the grind is done (DIVE_XL); before that Dlvl 1 keeps the XL 1-7 Tourist among weak monsters
-            rescue = xl >= DIVE_XL or \
-                (agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food())
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
         rescue = rescue or (EARLY_DIVE and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and
@@ -1300,9 +1267,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(500)):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
