@@ -1248,26 +1248,15 @@ class Agent:
                  f'gap={gap} reason={self._pray_reason}')
         self._pray_reason = None
         history_len = len(self._message_history)
-        if not jf_config.PRAY_RECORD_FIX:
-            self.step(A.Command.PRAY)
-            self._record_prayer(history_len)
-        else:
-            # PRAY_RECORD_FIX: a preempt raised out of step() (AgentChangeStrategy) used to skip the bookkeeping,
-            # so the prayer (its timeout reset, or its failure) went unrecorded
-            try:
-                self.step(A.Command.PRAY)
-            finally:
-                self._record_prayer(history_len)
-        # TODO: return value
-        return True
-
-    def _record_prayer(self, history_len):
+        self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
             self.prayer_failed = False  # pleased() only runs with the god appeased and Luck >= 0
+        # TODO: return value
+        return True
 
     def open_door(self, y, x):
         with self.panic_if_position_changes():
@@ -2055,11 +2044,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2397,6 +2381,31 @@ class Agent:
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
 
+        # hypothesis: a healing potion was drunk first at any HP < 1/3 (or < 8), even in pray.c's TROUBLE_HIT window
+        # (critically_low_hp) with a safe HP prayer due -- where the prayer heals fully for nothing (and adds rnd(5)
+        # max HP while max HP < 5 * XL + 11: an XL 1-6 Tourist's 10-40), and the potion only heals 6d8. So the
+        # Tourist's 2 extra-healing potions (its only heals) were spent while the prayer was ready, and the grind's
+        # XL 5-7 Dlvl 1 losses and the dive-start losses come in the ~500 turns after a hunger prayer, when the HP
+        # prayer is gone and the potions are too. At critically low HP with the prayer safe (the same
+        # is_safe_to_pray(500) the HP prayer below uses; never after a failed prayer, never polymorphed or in
+        # Gehennom), pray first and keep the potions for the windows with no prayer. As the top programs'
+        # DEEP_PRAY_FIRST, but in the grind and the whole dive, where this chain's early losses are.
+        # sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble TROUBLE_HIT, can_pray: major trouble
+        #          answered while ublesscnt <= 200, fix_worst_trouble TROUBLE_HIT), https://nethackwiki.com/wiki/Prayer
+        #          (pray before quaffing healing potions), https://nethackwiki.com/wiki/Potion_of_extra_healing,
+        #          https://nethackwiki.com/wiki/Tourist ('rely a lot on their extra healing potions'),
+        #          https://nethackwiki.com/wiki/Healer (fight to critical HP, pray, keep the potions),
+        #          https://nethackwiki.com/wiki/Prayer_timeout, /refs/top/4379e93177c0 + ac6a6251af7b (DEEP_PRAY_FIRST)
+        if jf_config.PRAY_FIRST and not poly_buffer and not self.character.prop.polymorph and \
+                not self.prayer_failed and self._critically_low_hp() and self.is_safe_to_pray(500) and \
+                any(item.is_unambiguous() and item.category == nh.POTION_CLASS and
+                    item.object.name in ['healing', 'extra healing', 'full healing']
+                    for item in flatten_items(self.inventory.items)):
+            yield True
+            self.log(f'PRAY_FIRST: HP {self.blstats.hitpoints}/{self.blstats.max_hitpoints}, keeping the potions')
+            self.pray()
+            return
+
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
         if (
@@ -2429,15 +2438,8 @@ class Agent:
                        not self.character.prop.polymorph))
         if poly_buffer:
             low_hp = False
-        # LOWHP_SAFE_GAP: above critically_low_hp (and not Hungry, pray.c's minor TROUBLE_HUNGRY) the HP rule's
-        # prayer fixes no trouble, so pray.c wants a zero timeout: rnz(350) is still > 545 ~29% of the time
-        # (parent seed 14: 10/13 HP at gap 545, 'displeased', rescue dive at XL2, dead on Dlvl 4)
-        lowhp_gap = 500
-        if (jf_config.LOWHP_SAFE_GAP and low_hp and not self._critically_low_hp()
-                and self.blstats.hunger_state < Hunger.HUNGRY):
-            lowhp_gap = jf_config.LOWHP_SAFE_GAP_TURNS
         if (
-                (self.is_safe_to_pray(lowhp_gap) and low_hp)
+                (self.is_safe_to_pray(500) and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and

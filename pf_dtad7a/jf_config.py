@@ -321,50 +321,9 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses are mostly packs -- hill orcs, rothes, large
-# kobolds, hobgoblins, rats and jackals (parent seeds 1 rothe, 2 hill orc, 4 rabid rat, 7 large kobold, 8 hobgoblin)
-# -- that surround it in an open room while fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile
-# hostiles within 7 squares, prefer corridor squares and open doors (at most 2 squares to be attacked from; nothing
-# passes a door diagonally) and hold one there for a few turns, so the pack arrives one or two at a time and the
-# dart volley (MISSILES_NOT_MELEE) hits them in a line (combat/fight_heur.py). Complements DIVE_PRAYER_READY: it
-# protects the grind itself, which still ends most dev/held-out games.
-# Port of tree node #8 (held-out 0.1157 -> 0.1392 on its parent) / past run 20261008-132537 #5/#65 (kept both).
-# sources: /refs/history/8.diff, /refs/past_runs/20261008-132537/65.diff,
-#          https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway)
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
-
-# hypothesis: DT6A's 'HP < 12' low-HP prayer mostly fires above pray.c's critically_low_hp at XL 1-5 (e.g. 10/13 HP),
-# where it fixes no trouble, so pray.c (can_pray) wants prayer timeout 0 -- but the 500-turn gap only covers a
-# major trouble (timeout < 200): a successful prayer sets the timeout to rnz(350), still > 545 ~29% of the time and
-# > 1000 ~8%. A too-soon prayer is 'You feel that Tyr is displeased' (p_type 0: timeout += rnz(250), Luck -3, god
-# anger), which marks prayer_failed and starts the XL 1-4 rescue dive: parent seed 14 fem prayed at 10/13 HP at
-# gap 545, failed, dived at XL2 and died on Dlvl 4 at T1996 (seeds 0 / 480662 die the same way on Dlvl 5-6). So the
-# non-critical HP prayer waits LOWHP_SAFE_GAP_TURNS after the last prayer (unless Hungry -- pray.c's minor
-# TROUBLE_HUNGRY, timeout < 100); the first prayer and the critical-HP prayer (500 gap) are unchanged, and the
-# long-gap non-critical one keeps its pat_on_head full heal. Fewer failed prayers -> fewer early rescue dives
-# and Luck -3 windows -> fewer XL 2-5 deaths on Dlvl 2-6.
-# sources: NetHack 3.6.6 src/pray.c (can_pray p_type, critically_low_hp, in_trouble TROUBLE_HUNGRY, prayer_done,
-#          pleased: ublesscnt = rnz(350)) https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_PostRelease/src/pray.c,
-#          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-#          https://nethackwiki.com/wiki/Tourist, https://www.steelypips.org/nethack/pray.txt ('displeased' = timeout
-#          too high), https://nethackwiki.com/wiki/Forum:Piously_Aligned_but_god_displeased_when_praying%3F (players:
-#          displeased while pious = prayed too soon), https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
-#          (players: harmed during a prayer = it failed), parent diagnostic /tmp/diag14/bot_372.log (seed 14)
-LOWHP_SAFE_GAP = True
-LOWHP_SAFE_GAP_TURNS = 1000
-# hypothesis: pray() set last_prayer_turn / prayer_failed after step(PRAY) returned, but a preempt (AgentChangeStrategy
-# from update_state, e.g. during the cure_disease lycanthropy prayer or the castle prayer) can raise out of step(),
-# leaving a done prayer unrecorded: the next prayer is then judged by the old gap and made too soon (pray.c resets
-# the timeout to rnz(350) on every prayer). Recording in try/finally changes nothing when step() returns normally.
-# sources: NetHack 3.6.6 src/pray.c (dopray -> prayer_done/pleased: ublesscnt = rnz(350)),
-#          pf_dtad7a/strategy.py + agent.preempt (AgentChangeStrategy raised in update_state),
-#          https://nethackwiki.com/wiki/Prayer_timeout
-PRAY_RECORD_FIX = True
+# at critically low HP with a safe HP prayer, pray before quaffing a healing potion (agent.emergency_strategy): the
+# prayer heals fully, and the potions are kept for the windows after a hunger prayer
+PRAY_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
