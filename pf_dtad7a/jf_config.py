@@ -88,8 +88,6 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
-# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
-KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -237,6 +235,10 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
+# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
+# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
+PRAY_FIRST_SURE = True
+PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
