@@ -77,6 +77,65 @@ def missiles_risk_the_watch(agent):
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
 
+# hypothesis: with its darts no longer wielded (MISSILES_NOT_MELEE), the Tourist punches every monster that reaches
+# melee (bare hands, unskilled: to-hit +1, d2+1), because ranged_priority gives an adjacent target -11 against
+# melee's 16. A +2 dart thrown point blank is far better (dothrow.c thitmonst: +2 for a throwing weapon, +(3 - distance)
+# = +2 at distance 1, +2 enchantment; d3+2 damage) and trains the dart skill toward Skilled/Expert multishot -- so the
+# Dlvl 1-4 grind fights (jackals, coyotes, bats, rats, hill orcs, were-creatures) end in fewer rounds, i.e. less HP
+# lost. A thrown missile also avoids the target's passive attack. As nhbot's Ranger point-blank archery: one above
+# what melee would get (so the HP <= 8 retreat ordering is kept); weak / ranged-only / exploding kinds keep their
+# old handling (darts break 1 in 4 on a hit, dothrow.c; lichens and newts are punched).
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
+#          https://nethackwiki.com/wiki/Ranged_attack (thrown attacks skip passives at melee range),
+#          rec.games.roguelike.nethack "it took me 4 years to understand" (Expert dart/dagger: throw them at melee
+#          range), nhbot/combat/fight_heur.py ranger_point_blank (this repo), NetHack 3.6.6 src/dothrow.c thitmonst
+# node #2 (tree round 1): port of past run 20261008-132537 #22 (MISSILES_NOT_MELEE + POINT_BLANK_THROW, kept there
+# on several chains with held-out gains of +0.04..+0.09) onto this root, whose Tourists still wield the dart stack.
+# Aimed at the Dlvl 1-4 grind deaths that dominate the dev/held-out seeds (jackal, kobold, sewer rat, wererat, rothe,
+# hill orc, imp at XL 1-8).
+# sources (#2): /refs/past_runs/20261008-132537/22.diff (+ 26/34/63.diff), https://nethackwiki.com/wiki/Tourist
+#          ("usually better to kill things by throwing your darts in the early stages"), https://nethackwiki.com/wiki/Dart
+#          ("ineffective in melee, and must be used by throwing"), https://nethackwiki.com/wiki/Standard_strategy,
+#          http://crpgaddict.blogspot.com/2012/06/nethack-from-beginning.html (players: "USE YOUR DARTS"),
+#          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
+# node #52: same change stacked on the pick detour + wands-first + unknown-mundane-armour chain (its sibling #16 has it
+# without the armour; #1/#16/#45: kept, held-out gains).
+POINT_BLANK_THROW = True
+
+
+def point_blank_throw(agent, launcher, ammo):
+    """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
+    try:
+        ch = agent.character
+        if not POINT_BLANK_THROW or launcher is not None or ammo is None or ch.prop.polymorph or \
+                ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
+            return False
+        main = agent.inventory.items.main_hand
+        # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
+        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+            main.objs[0].name in ('dart', 'shuriken')
+    except Exception:
+        return False
+
+
+def point_blank_priority(agent, monster, default):
+    """One above melee_monster_priority for the same monster, bare-handed (16, or 1 at HP <= 8 against a
+    monster that isn't faster: the retreat keeps winning there)."""
+    try:
+        _, _, _, mon, _ = monster
+        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
+                mon.mname in EXPLODING_MONSTERS:
+            return default
+        ret = 2
+        if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
+            ret += 15
+        if 'were' in mon.mname:
+            ret += 1
+        return ret
+    except Exception:
+        return default
+
+
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -142,6 +201,8 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
+            if dis == 1 and point_blank_throw(agent, launcher, ammo):
+                ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
 
@@ -370,26 +431,8 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
-    # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
-    # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
-    # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
-    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
     if not agent.global_logic.dive.diving:
-        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
-                (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-            return []
-        actions = []
-        for monster in monsters:
-            _, y, x, mon, _ = monster
-            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
-                continue
-            actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
-            agent._grind_flash_turn = agent.blstats.time
-            break
-        return actions
+        return []
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
