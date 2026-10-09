@@ -436,7 +436,18 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
     #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, /refs/history/51.diff
     if not agent.global_logic.dive.diving:
-        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
+        # hypothesis: a wererat/werejackal in @ form (flail 2d4+d6: 11-15 a hit, then its summoned rats) or an elf
+        # takes a 50-HP XL6 Tourist to 0 in 4 turns, and an @ ignores Elbereth (monmove.c onscary: S_HUMAN), so the
+        # Elbereth rest has no answer and 40% HP is too late to flash; flash such an Elbereth-ignorer below
+        # IGNORER_FLASH_RATIO instead (it blinds the monster and scares it 3 times in 4). Everything that respects
+        # Elbereth keeps the 40% rule and the rest.
+        # sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera,
+        #          https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/monmove.c onscary(), src/apply.c use_camera,
+        #          /refs/history/42.diff
+        limit = jf_config.GRIND_CAMERA_RATIO
+        if jf_config.IGNORER_FLASH:
+            limit = max(limit, jf_config.IGNORER_FLASH_RATIO)
+        if not jf_config.GRIND_CAMERA or ratio >= limit or in_gehennom(agent) or \
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
                 (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
             return []
@@ -444,6 +455,8 @@ def camera_actions(agent, monsters):
         for monster in monsters:
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
+                continue
+            if ratio >= jf_config.GRIND_CAMERA_RATIO and not agent.global_logic.dive._melee_ignores_elbereth(mon):
                 continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time

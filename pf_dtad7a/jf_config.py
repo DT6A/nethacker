@@ -354,11 +354,6 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
-
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
 # fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
@@ -373,22 +368,18 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
-# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then
-# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
-# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
-# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so
-# no AC-0 cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is
-# not unpaid. Known items keep priority on ties; lower AC -> fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
-#          /refs/past_runs/20261008-132537/71.diff
-WEAR_UNKNOWN_MUNDANE = True
+# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
+# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
+GRIND_CAMERA = True
+GRIND_CAMERA_RATIO = 0.4
+
+# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
+# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
+# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
+# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
+# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
+IGNORER_FLASH = True
+IGNORER_FLASH_RATIO = 0.7
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
