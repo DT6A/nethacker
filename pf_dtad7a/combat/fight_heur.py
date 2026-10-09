@@ -98,8 +98,6 @@ def missiles_risk_the_watch(agent):
 #          ("ineffective in melee, and must be used by throwing"), https://nethackwiki.com/wiki/Standard_strategy,
 #          http://crpgaddict.blogspot.com/2012/06/nethack-from-beginning.html (players: "USE YOUR DARTS"),
 #          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
-# node #52: same change stacked on the pick detour + wands-first + unknown-mundane-armour chain (its sibling #16 has it
-# without the armour; #1/#16/#45: kept, held-out gains).
 POINT_BLANK_THROW = True
 
 

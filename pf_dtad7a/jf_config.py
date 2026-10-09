@@ -102,13 +102,6 @@ GRIND_LEVELS = {}
 # (0: never). Stalls held 12 of 90 games for 1500-14000 turns, fainting through hunger prayers.
 TOUR_STALL_TURNS = 1500
 FAINT_PRAYER_GAP_LONG = 1400
-# hypothesis: in the Dlvl-1 grind a Fainting spell this many turns old prays from TOUR_FAINT_LONG_GAP instead of
-# waiting for FAINT_PRAYER_GAP_LONG: deep in a spell the faints last 20-30 turns and the dust Elbereth wears off
-# (0: off)
-# sources: /refs/top/02fc617ecac7/nhbot/jf_config.py (TOUR_FAINT_LONG_TURNS, validated: tour fainting deaths 7 -> 2 per
-# 270 games, 1 of 99 such prayers failed), eat.c newuhs() (faint lasts 10 - uhunger/10 turns), pray.c (rnz(350) timeout)
-TOUR_FAINT_LONG_TURNS = 350
-TOUR_FAINT_LONG_GAP = 1200
 STARVE_MARGIN = 60
 # Weak hunger prayers wait for this gap (DT6A/s13: 1200). Measured over ~2600 prayers, 900-1399-turn
 # gaps failed 3.5-5.4% of the time, 1400-1799 only 1.1% and 1800+ 0.6% -- but 1400 lost more games
@@ -373,6 +366,14 @@ WAND_STAIRS_FIX = True
 #          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
 WEAR_UNKNOWN_MUNDANE = True
 
+
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
+# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
+WEAK_FLOOR_BY_DAMAGE = True
 
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack

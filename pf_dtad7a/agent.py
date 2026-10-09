@@ -1148,11 +1148,6 @@ class Agent:
         if self.is_safe_to_pray(jf_config.FAINT_PRAYER_GAP_LONG):
             self._pray_reason = 'faint-gap'
             return True
-        # hypothesis: a tour Fainting spell 350+ turns old prays from a 1200 gap (deep faints are 20-30 turns long and
-        # wear the dust Elbereth); see jf_config.TOUR_FAINT_LONG_TURNS
-        # sources: /refs/top/02fc617ecac7/nhbot/agent.py (_long_faint_prayer_due), eat.c newuhs()
-        if self._long_faint_prayer_due():
-            return True
         # waiting out the clock is for quiet moments: a Fainting character wakes up to free hits (a jf8
         # grind fainted on a worn Elbereth next to a pony and a rothe at a 1021-turn gap and died 25
         # turns before its deadline prayer). When actually hurt, or with a monster that Elbereth doesn't
@@ -1192,17 +1187,6 @@ class Agent:
             # prayed at gaps of 534, 4, 22, 2 turns and was 'killed by the wrath of Tyr')
             return self.is_safe_to_pray(100, certain_death=True)
         return False
-
-    def _long_faint_prayer_due(self):
-        if not jf_config.TOUR_FAINT_LONG_TURNS or self.prayer_failed or self.global_logic.dive.diving:
-            return False
-        since = self._fainting_since
-        if since is None or self.blstats.time - since < jf_config.TOUR_FAINT_LONG_TURNS:
-            return False
-        if not self.is_safe_to_pray(jf_config.TOUR_FAINT_LONG_GAP):
-            return False
-        self._pray_reason = f'faint-long spell={self.blstats.time - since}'
-        return True
 
     def _starvation_near(self):
         """The uhunger estimate from the last faint's length (or 1/turn since Fainting began, if no faint was
