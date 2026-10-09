@@ -371,10 +371,16 @@ WEAR_UNKNOWN_MUNDANE = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
+# hypothesis: a shrieker is no free "weak monster" to punch to death: while we (or something fighting us) stand next to it
+# it shrieks (monmove.c dochug -> m_respond), each shriek aggravates and has a 1 in 10 chance to makemon() an extra monster,
+# sometimes a purple worm (level 15, engulfs, digests ~10 HP a turn): seeds 5 and 8 died on Dlvl 1/4 at XL5-7 right after
+# "The shrieker shrieks." (4 of 30 parent games) in a 6-20 turn bare-handed melee (unskilled punches miss ~60%). So fight it
+# with the +2 darts: line up 2+ squares away (it has no attack and speed 1, so no shriek at range) and, if it is adjacent,
+# throw point blank (priority 17 > the punch's 16) -- a few turns next to it instead of a dozen.
+# sources: https://nethackwiki.com/wiki/Shrieker (shrieks only when adjacent; 'ranged attacks stop it before it can shriek'),
+# NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8,
+# /refs/history/50.diff (node #50, same change on the pick+wands+darts chain without the armour node)
+SHRIEKER_RANGED = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
