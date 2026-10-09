@@ -325,29 +325,10 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
-# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' 500 turns past its hungrytime (it
-# starves 250 turns later); mon.c mfndpos gives a confused monster ALLOW_ALL (ALLOW_U included), and dog_move then
-# mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
-# so an XL 1-2 Tourist can be bitten to death by its own kitten in the Dlvl 1-2 grind where most unseen-seed games
-# are lost, and the pet -- a Tourist's main early fighter (wiki: Tourist) -- starves. A meal ends the confusion
-# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
-# no corpse off the floor ourselves unless Weak. Port of past run 20261008-132537 #68/#72/#73/#79 (held-out
-# 0.2105->0.2191, 0.2070->0.2226, 0.2127->0.2283, 0.1883->0.2096; never below its parent).
-# Node #50 (on #13's darts + LOWHP_EXACT + PRAYERLESS_GUARD chain): LOWHP_EXACT holds the HP prayer back until
-# critically_low_hp, so a pet's bite at low HP is lethal more often, and a living pet fights the Dlvl-1 grind's
-# rothes / hill orcs beside the Tourist that PRAYERLESS_GUARD sends to hide on Elbereth more often (wiki: Tourists
-# depend on their pet more than most roles). Steam/Vulture discussion: a still-tame pet 'so hungry it attacked you
-# from confusion' (steamcommunity.com/app/341390/discussions/0/610573751148849294).
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku)
-#          + dog_eat (mconf = 0), src/mon.c mfndpos (mconf -> ALLOW_ALL), include/mfndpos.h (ALLOW_ALL has ALLOW_U),
-#          https://nethackwiki.com/wiki/Pet ('avoid attacking the hero ... unless they are confused'),
-#          https://nethackwiki.com/wiki/Tourist (rely on the pet early), https://nethack.fandom.com/wiki/Pet,
-#          rec.games.roguelike.nethack 'why does my pet attack me?' (groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A),
-#          /refs/past_runs/20261008-132537/79.diff, /refs/history/1.diff, /refs/history/42.diff,
-#          https://steamcommunity.com/app/341390/discussions/0/610573751148849294 (player discussion)
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
+# ignored it
+HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
