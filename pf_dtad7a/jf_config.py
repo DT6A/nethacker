@@ -204,8 +204,8 @@ DIVE_FED_MAX_WAIT = 2000
 # https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
 # https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
 # (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-# node #61: ported onto darts+wands+hostile-recheck from /refs/history/4.diff (#4: held-out 0.1792 -> 0.2112;
-# #16 on darts+wands: 0.1873 -> 0.2200)
+# node #16: stacked on #6 (darts + KEEP_WANDS_FIRST) as a port of tree node #4 (held-out 0.1792 -> 0.2112 on the
+# dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -325,20 +325,31 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: on the dive-prayer chain a homunculus met in the Dlvl-1 grind can sleep the AC10 Tourist through
-# several free-bite turns while it fights down to 6 HP (public s12 dies so at XL5); it respects Elbereth, so hiding
-# at < 40% HP turns those sleeps into a rest; nothing else is fought differently. Port of #60 (held-out +0.024).
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
-SLEEP_BITER_REST = True
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. The parent's early losses (rothe, hill orc,
+# large kobold, hobgoblin, rabid rat, iguana, giant ant, owlbear; extra seeds: yeti, pony, rope golem, wererat) are
+# all melee losses at AC 10. Random armour is cursed 12.3% of the time and then mostly +0/-1 (Armor wiki): a cursed
+# plain piece only sticks and still gives about its base AC, and takeoff() already handles 'It is cursed.' (do_wear.c
+# cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous (no random-appearance helm/boots/gloves:
+# those hide the autocursing / levitation / fumbling items), NON-magical (oc_magic 0), gives AC (base >= 1, so no AC-0
+# piece locks a slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid.
+# Known-BUC items keep priority on ties; lower AC -> fewer hits taken in every early fight.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... better armor"; mithril/orcish helm/iron shoes kit),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm (only random-appearance helms autocurse),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY ("other classes can get away with
+#          wearing that cursed dwarvish mithril"), https://www.chiark.greenend.org.uk/~damerell/games/nhid.html,
+#          /refs/past_runs/20261008-132537/71.diff (kept there: held-out 0.2070 -> 0.2105),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
+WEAR_UNKNOWN_MUNDANE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast pony/dog/kitten.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
