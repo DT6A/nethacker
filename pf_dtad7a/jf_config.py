@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -191,19 +193,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses on Dlvl 2-8 at XL 7-8
-# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
-# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1) gives the dive start its backstop -- a readiness
-# check before leaving the early game. Node #55: port onto the darts + LOWHP_EXACT + THREAT_REST chain (#2/#5/#15):
-# THREAT_REST rests on Elbereth earlier but still relies on the critically_low_hp prayer as the last backstop,
-# which LOWHP_EXACT only makes count when the timeout allows it -- so the dive should start with it ready.
-# sources: NetHack 3.6.6 src/pray.c (rnz(350) timeout; critically_low_hp; can_pray needs u.ublesscnt <= 200 for
-# major trouble); https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-# https://nethackwiki.com/wiki/Tourist ("descend slowly"); /refs/history/4.diff, 14.diff, 16.diff (held-out
-# +0.032, +0.022, +0.033 on their parents); /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0

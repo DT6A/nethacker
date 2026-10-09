@@ -121,6 +121,27 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
+        # hypothesis: wands come only after darts, food and the unknown bulk in this split, so a Tourist whose
+        # pack is near its (low) capacity drops them in the Dlvl 1-4 grind or never picks them up. Gnomes, gnome
+        # lords, hobbits, kobolds and orcs of the grind pick floor wands up and zap them at the AC 10 Tourist
+        # (muse.c find_offensive/use_offensive: striking, magic missile, sleep, fire, cold, lightning, death) --
+        # parent dev seed 480652 'killed by a wand' (Dlvl 4, XL 8), seeds 9 and 480654 'killed by a magic
+        # missile' (Dlvl 1-3, XL 6-8), all in the grind. A wand weighs 7: during the tour keep every wand before
+        # the bulk, so none is left lying about for them (the dive keeps its own food/passage order).
+        # Fewer early grind losses to monster-zapped wands; on top of LOWHP_EXACT/THREAT_REST (melee-damage
+        # based, so they cannot see a ray coming) this removes a damage source those rules do not cover.
+        # sources: https://nethackwiki.com/wiki/Gnome_With_the_Wand_of_Death ("pick up any unknown wands you find
+        #          on the floor"; hobbits, goblins, kobolds zap them), https://nethackwiki.com/wiki/Wand,
+        #          https://nethackwiki.com/wiki/Wand_strategy, https://nethackwiki.com/wiki/Tourist,
+        #          https://nethackwiki.com/wiki/Forum:What's_your_unluckiest_death%3F (players killed on Dlvl 1-2 by a
+        #          gnome/goblin with a picked-up wand), NetHack 3.6.6 src/muse.c find_offensive,
+        #          /refs/history/6.diff (#6 KEEP_WANDS_FIRST: held-out 0.1792 -> 0.1873),
+        #          /refs/past_runs/20261008-132537/13.diff and 38.diff (kept twice on held-out seeds)
+        if jf_config.KEEP_WANDS_FIRST and not (dive is not None and dive.diving):
+            for item in sorted(filter(lambda i: i.category == nh.WAND_CLASS, items),
+                               key=lambda i: i.unit_weight(with_content=False)):
+                add_item(item)
+
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):
