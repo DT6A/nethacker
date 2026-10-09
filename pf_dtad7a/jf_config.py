@@ -193,19 +193,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
-# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
-# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
-# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
-# makemon.c monmax_difficulty; https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist
-# ("descend slowly"); https://nethackwiki.com/wiki/Standard_strategy; /refs/history/4.diff and /refs/history/16.diff
-# (tree nodes #4: held-out 0.1792 -> 0.2112, #16: 0.1873 -> 0.2200); node #65 stacks it on #18 (darts+wands+mold)
-# node #92 stacks it on #66 (darts+wands+mold+WEAR_UNKNOWN_MUNDANE): #79 got 0.1873 -> 0.2200 on the armour chain #62,
-# #65 0.1875 -> 0.2158 on #18 -- worn armour makes the waiting turns on Dlvl 1 cheaper still
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -371,10 +358,13 @@ WAND_STAIRS_FIX = True
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
+# the Elbereth rest's lone-weak-monster exemption skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each
+# bite may put a sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide instead
+# hypothesis: a lone homunculus chains sleeps on the AC10 Tourist (dev seed 733403: killed by a homunculus at XL6);
+# it respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; /refs/past_runs/20261008-213012/60.diff
+SLEEP_BITER_REST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -389,3 +379,12 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# the late grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of carried
+# food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long as a
+# prayer is >= 500 turns away, HP >= half, nothing threatening is near and starvation isn't close (0: off)
+# hypothesis: the XL8 dive starts with food instead of an empty pack (see Agent._keep_dive_food)
+# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased(); src/eat.c newuhs(); https://nethackwiki.com/wiki/Nutrition ;
+# /refs/past_runs/20261008-213012/74.diff
+DIVE_FOOD_RESERVE = 800
+DIVE_FOOD_RESERVE_XL = 6
