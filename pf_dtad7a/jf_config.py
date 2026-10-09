@@ -358,9 +358,10 @@ WAND_STAIRS_FIX = True
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
+# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
+GRIND_CAMERA = True
+GRIND_CAMERA_RATIO = 0.4
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
