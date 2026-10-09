@@ -74,6 +74,11 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: a homunculus's sleep bite chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP;
+# on the pick-detour chain the Mines/dive levels add more of them, so hiding on Elbereth below 40% HP keeps the run alive
+# sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ;
+# /refs/history/60.diff (#60: held-out 0.2200 -> 0.2442 on #16) ; jf_config.SLEEP_BITER_REST
+SLEEP_BITERS = frozenset(('homunculus',))
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -565,6 +570,8 @@ class DiveLogic:
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
         self._fed_wait_logged = False
+        self._pray_wait_start = None    # DIVE_PRAYER_READY: turn the grind first reached its end XL
+        self._pray_wait_logged = False
 
     # ------------------------------------------------------------------ state
 
@@ -897,6 +904,8 @@ class DiveLogic:
         xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
+        if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.prayer_ready_for_dive():
+            xl_trigger = False   # DIVE_PRAYER_READY: start the dive with the HP prayer available
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
                 rescue or late_rescue or planned:
             tag = ', rescue' if rescue else ', late rescue' if late_rescue else ', early' if planned else ''
@@ -1266,7 +1275,9 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # SLEEP_BITER_REST: not a sleep biter (a lone homunculus can sleep an XL5 Tourist three times, 32 -> 0 HP)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1602,18 +1613,16 @@ class DiveLogic:
         """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
         (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
         # hypothesis: the Tourist's XL-8 dive without a digging tool walks the main-dungeon stairs and dies on
-        # Dlvl 3-8 soon after the grind (parent public/dev seeds at Xp:8: owlbear Dlvl 7, soldier ant Dlvl 4, giant
-        # beetle Dlvl 3, winter wolf cub Dlvl 6, yeti Dlvl 3, unicorns Dlvl 3-4, crossbow bolt Dlvl 10; ~0.075 each),
-        # while a dig dive banks Dlvl 21-29 (0.39-0.65). The Mines were only ever routed for dwarves and gnomes; to
-        # a neutral human the (lawful) dwarves there are hostile and ~3/8 carry a pick-axe or mattock, so walk
-        # Mines levels 1-2 (with the parent's dwarf hunt and MINES_CAMP sweep) for one before the main dive.
-        # sources: /refs/history/59.diff (same port on #16), /refs/top/87db8cf4544f (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
-        #          /refs/past_runs/20261002-164932/19.diff (kept, held-out +0.033 on both Tourists; also kept in runs
-        #          20261001-183129 held-out 0.1467 -> 0.1946 and 20261004-221634),
-        #          https://nethackwiki.com/wiki/Gnomish_Mines ("players often head to the Mines to get a pick-axe"),
-        #          https://nethackwiki.com/wiki/Dwarf_(monster) (3/8 carry a digging tool, speed 6),
+        # Dlvl 3-8 soon after the grind (parent dev seeds: owlbear, iguana, large kobold, giant ant, elf zombie,
+        # rope golem, black unicorn; ~0.075 each), while a dig dive banks Dlvl 18-28 (0.35-0.6). The Mines were
+        # only ever routed for dwarves and gnomes; to a human their dwarves are hostile and ~3/8 carry a pick-axe
+        # or mattock, so walk Mines levels 1-2 (with the parent's dwarf hunt and MINES_CAMP) for one first.
+        # sources: /refs/top/87db8cf4544f autoascend/dive_logic.py (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
+        #          /refs/past_runs/20261002-164932/19.diff (kept, held-out +0.033 on both Tourists),
+        #          https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Dwarf_(monster),
         #          https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tourist,
-        #          https://www.tomsarazac.com/tom/Fun/arch.html (player write-up: go to the Mines first)
+        #          https://forums.civfanatics.com/threads/nethack.256120/page-5 (players: the Mines give the pick-axe or
+        #          mattock you need to dig), https://www.tomsarazac.com/tom/Fun/arch.html ("go to the mines first")
         if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
                 self.agent.character.race in (Character.DWARF, Character.GNOME) or \
                 self.digging_tool() is not None or self.digging_wand() is not None:
@@ -2432,7 +2441,29 @@ class DiveLogic:
     def first_level_done(self):
         """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive() and \
+            self.prayer_ready_for_dive()
+
+    def prayer_ready_for_dive(self):
+        """jf_config.DIVE_PRAYER_READY: the grind ends with the low-HP prayer available (the HP prayer's own
+        is_safe_to_pray(500) test) and HP >= ELBERETH_REST_UNTIL; else it goes on on Dlvl 1, at most
+        DIVE_PRAYER_MAX_WAIT turns. A failed prayer doesn't wait (the rescue dive handles that)."""
+        # hypothesis: dive-start losses on Dlvl 2-8 come right after a hunger prayer, with no HP prayer left
+        # sources: NetHack 3.6.6 pray.c (rnz(350) timeout); nethackwiki.com/wiki/Prayer_timeout; see jf_config
+        if not jf_config.DIVE_PRAYER_READY:
+            return True
+        agent = self.agent
+        bl = agent.blstats
+        if self._pray_wait_start is None:
+            self._pray_wait_start = bl.time
+        if bl.time - self._pray_wait_start > jf_config.DIVE_PRAYER_MAX_WAIT or agent.prayer_failed:
+            return True
+        ready = agent.is_safe_to_pray(500) and bl.hitpoints >= ELBERETH_REST_UNTIL * bl.max_hitpoints
+        if not ready and not self._pray_wait_logged:
+            self._pray_wait_logged = True
+            agent.log(f'DIVE_PRAYER_READY waiting: gap={None if agent.last_prayer_turn is None else bl.time - agent.last_prayer_turn} '
+                      f'hp={bl.hitpoints}/{bl.max_hitpoints}')
+        return ready
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
