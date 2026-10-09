@@ -354,24 +354,20 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
+# hypothesis: a shrieker is no free "weak monster" to punch to death: while we (or something fighting us) stand next to it
+# it shrieks (monmove.c dochug -> m_respond), each shriek aggravates and has a 1 in 10 chance to makemon() an extra monster,
+# sometimes a purple worm (level 15, engulfs, digests ~10 HP a turn): seeds 5 and 8 died on Dlvl 1/4 at XL5-7 right after
+# "The shrieker shrieks." (4 of 30 parent games) in a 6-20 turn bare-handed melee (unskilled punches miss ~60%). So fight it
+# with the +2 darts: line up 2+ squares away (it has no attack and speed 1, so no shriek at range) and, if it is adjacent,
+# throw point blank (priority 17 > the punch's 16) -- a few turns next to it instead of a dozen.
+# sources: https://nethackwiki.com/wiki/Shrieker (shrieks only when adjacent; 'ranged attacks stop it before it can shriek'),
+# NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8
+SHRIEKER_RANGED = True
+
 # GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
 # GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
-
-# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
-# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
-# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
-# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
-# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
-IGNORER_FLASH = True
-IGNORER_FLASH_RATIO = 0.7
-
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
-# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
-WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

@@ -121,8 +121,8 @@ def point_blank_priority(agent, monster, default):
     monster that isn't faster: the retreat keeps winning there)."""
     try:
         _, _, _, mon, _ = monster
-        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
-                mon.mname in EXPLODING_MONSTERS:
+        if (mon.mname in WEAK_MONSTERS and not (jf_config.SHRIEKER_RANGED and mon.mname == 'shrieker')) or \
+                mon.mname in ONLY_RANGED_SLOW_MONSTERS or mon.mname in EXPLODING_MONSTERS:
             return default
         ret = 2
         if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
@@ -199,7 +199,9 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
-            if dis == 1 and point_blank_throw(agent, launcher, ammo):
+            if dis == 1 and (point_blank_throw(agent, launcher, ammo) or
+                             (jf_config.SHRIEKER_RANGED and mon.mname == 'shrieker' and launcher is None and
+                              not agent.character.prop.polymorph and ammo.is_thrown_projectile())):
                 ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
@@ -417,7 +419,7 @@ def camera_actions(agent, monsters):
     """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
     it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
     blows at 3/14 HP, which is how most Dlvl 1-3 Tourist games end (sewer rats, hobbits, ants). Only while
-    diving: in the levelling grind a fleeing monster is lost XP."""
+    diving, and in the grind only below GRIND_CAMERA_RATIO of max HP."""
     if agent.character.prop.blind or agent.character.prop.polymorph or agent.blstats.max_hitpoints <= 0:
         return []
     camera = None
@@ -436,18 +438,7 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
     #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
     if not agent.global_logic.dive.diving:
-        # hypothesis: a wererat/werejackal in @ form (flail 2d4+d6: 11-15 a hit, then its summoned rats) or an elf
-        # takes a 50-HP XL6 Tourist to 0 in 4 turns, and an @ ignores Elbereth (monmove.c onscary: S_HUMAN), so the
-        # Elbereth rest has no answer and 40% HP is too late to flash; flash such an Elbereth-ignorer below
-        # IGNORER_FLASH_RATIO instead (it blinds the monster and scares it 3 times in 4). Everything that respects
-        # Elbereth keeps the 40% rule.
-        # sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera,
-        #          https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/monmove.c onscary(), src/apply.c use_camera,
-        #          /refs/history/92.diff
-        limit = jf_config.GRIND_CAMERA_RATIO
-        if jf_config.IGNORER_FLASH:
-            limit = max(limit, jf_config.IGNORER_FLASH_RATIO)
-        if not jf_config.GRIND_CAMERA or ratio >= limit or in_gehennom(agent) or \
+        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
                 (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
             return []
@@ -455,8 +446,6 @@ def camera_actions(agent, monsters):
         for monster in monsters:
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
-                continue
-            if ratio >= jf_config.GRIND_CAMERA_RATIO and not agent.global_logic.dive._melee_ignores_elbereth(mon):
                 continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
