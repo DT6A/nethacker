@@ -1,6 +1,5 @@
 from ..utils import adjacent
 from . import utils
-from .. import jf_config
 from .monster_utils import WEAK_MONSTERS, ONLY_RANGED_SLOW_MONSTERS, consider_melee_only_ranged_if_hp_full, \
     imminent_death_on_melee, EXPLODING_MONSTERS, WEIRD_MONSTERS
 
@@ -20,7 +19,7 @@ def _draw_around(priority, y, x, value, radius=1, operation='add'):
                     assert 0, operation
 
 
-def _draw_ranged(priority, y, x, value, walkable, radius=1, operation='add', start=1):
+def _draw_ranged(priority, y, x, value, walkable, radius=1, operation='add'):
     # TODO: optimize
     for direction_y in (-1, 0, 1):
         for direction_x in (-1, 0, 1):
@@ -31,8 +30,6 @@ def _draw_ranged(priority, y, x, value, walkable, radius=1, operation='add', sta
                     if 0 <= y1 < priority.shape[0] and 0 <= x1 < priority.shape[1]:
                         if not walkable[y1, x1]:
                             break
-                        if i < start:
-                            continue
                         if operation == 'add':
                             priority[y1, x1] += value
                         elif operation == 'max':
@@ -47,10 +44,7 @@ def draw_monster_priority_positive(agent, monster, priority, walkable):
     # don't move into the monster
     priority[y, x] = float('nan')
 
-    if jf_config.SHRIEKER_RANGED and mon.mname == 'shrieker' and len(agent.inventory.get_ranged_combinations()):
-        # it shrieks only while we stand next to it: line up at 2+ squares (a throw from there beats any move)
-        _draw_ranged(priority, y, x, 2, walkable, radius=7, operation='max', start=2)
-    elif mon.mname in WEAK_MONSTERS:
+    if mon.mname in WEAK_MONSTERS:
         # weak monster - freely engage in melee
         _draw_around(priority, y, x, 2, radius=1, operation='max')
         _draw_around(priority, y, x, 1, radius=2, operation='max')
