@@ -358,13 +358,9 @@ WAND_STAIRS_FIX = True
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# the Elbereth rest's lone-weak-monster exemption skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each
-# bite may put a sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide instead
-# hypothesis: a lone homunculus chains sleeps on the AC10 Tourist (dev seed 733403: killed by a homunculus at XL6);
-# it respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; /refs/past_runs/20261008-213012/60.diff
-SLEEP_BITER_REST = True
+# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
+# could not be thrown, so the Tourist never used its starting ranged attack
+MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

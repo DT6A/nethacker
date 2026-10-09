@@ -75,11 +75,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: a homunculus's sleep bite chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP;
-# below 40% HP the Tourist hides on Elbereth (homunculi respect it) instead
-# sources: NetHack 3.6.6 src/mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ;
-# /refs/past_runs/20261008-213012/60.diff, 71.diff, 103.diff (kept on three chains) ; jf_config.SLEEP_BITER_REST
-SLEEP_BITERS = frozenset(('homunculus',))
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
 # held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
 # a dwarf's mattock, speed-18+ kittens, little dogs, giant ants and giant bats hitting twice, weapon-using kobolds,
@@ -1294,8 +1289,7 @@ class DiveLogic:
         if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
-                not infectious_were(agent, near[0][3]) and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+                not infectious_were(agent, near[0][3]):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
