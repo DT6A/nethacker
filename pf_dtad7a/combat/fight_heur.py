@@ -100,32 +100,6 @@ def missiles_risk_the_watch(agent):
 #          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
 POINT_BLANK_THROW = True
 
-# hypothesis: the grind wields whatever unknown-BUC dagger it picks up, and that turns point_blank_throw off: the XL1-5
-# Tourist then stabs adjacent jackals, bats and rats Unskilled (-4 to hit, -2 damage) with 14+ +2 darts unused in the
-# pack, and a cursed one is welded to the hand for good (seed 733396 fem, XL3: cursed crude dagger wielded, 'You miss
-# the jackal' seven turns running, 15 -> 8 HP, dead soon after). A +2 dart thrown at distance 1 hits at +2 (throwing
-# weapon) +2 (3 - distance) +2 enchantment at Basic dart skill and does d3+2: keep throwing whenever its expected
-# damage per swing beats the wielded weapon's (utils.calc_dps, the same formulas that pick the weapon); a skilled or
-# enchanted weapon still wins and is used in melee. Early-game losses addressed: the XL1-3 jackal-pack / giant-bat /
-# rat HP spirals (about 24 of 30 parent games end at Dlvl 1-4 or at the dive start).
-# sources: https://nethackwiki.com/wiki/Tourist ("kill things by throwing your darts in the early stages"),
-#          https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Multishot,
-#          https://nethackwiki.com/wiki/Talk:Tourist, https://nethackwiki.com/wiki/Cursed (a cursed wielded weapon welds),
-#          NetHack 3.6.6 src/dothrow.c thitmonst, src/uhitm.c find_roll_to_hit; /refs/history/22.diff (node #22, +0.024)
-POINT_BLANK_WIELDED = True
-
-
-def thrown_beats_wielded(agent, main, ammo):
-    ch = agent.character
-    melee_hit, melee_dmg = ch.get_melee_bonus(main)
-    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
-    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
-    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
-    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
-    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
-    dart_dmg = max(0, ammo_dmg + skill_dmg)
-    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
-
 
 def point_blank_throw(agent, launcher, ammo):
     """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
@@ -136,10 +110,8 @@ def point_blank_throw(agent, launcher, ammo):
             return False
         main = agent.inventory.items.main_hand
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-                main.objs[0].name in ('dart', 'shuriken'):
-            return True
-        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
+        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+            main.objs[0].name in ('dart', 'shuriken')
     except Exception:
         return False
 
