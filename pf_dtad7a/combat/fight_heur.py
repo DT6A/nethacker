@@ -121,8 +121,8 @@ def point_blank_priority(agent, monster, default):
     monster that isn't faster: the retreat keeps winning there)."""
     try:
         _, _, _, mon, _ = monster
-        if (mon.mname in WEAK_MONSTERS and not (jf_config.SHRIEKER_RANGED and mon.mname == 'shrieker')) or \
-                mon.mname in ONLY_RANGED_SLOW_MONSTERS or mon.mname in EXPLODING_MONSTERS:
+        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
+                mon.mname in EXPLODING_MONSTERS:
             return default
         ret = 2
         if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
@@ -199,9 +199,7 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
-            if dis == 1 and (point_blank_throw(agent, launcher, ammo) or
-                             (jf_config.SHRIEKER_RANGED and mon.mname == 'shrieker' and launcher is None and
-                              not agent.character.prop.polymorph and ammo.is_thrown_projectile())):
+            if dis == 1 and point_blank_throw(agent, launcher, ammo):
                 ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
@@ -419,7 +417,7 @@ def camera_actions(agent, monsters):
     """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
     it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
     blows at 3/14 HP, which is how most Dlvl 1-3 Tourist games end (sewer rats, hobbits, ants). Only while
-    diving, and in the grind only below GRIND_CAMERA_RATIO of max HP."""
+    diving: in the levelling grind a fleeing monster is lost XP."""
     if agent.character.prop.blind or agent.character.prop.polymorph or agent.blstats.max_hitpoints <= 0:
         return []
     camera = None
