@@ -410,8 +410,36 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    # hypothesis: most games end in the Dlvl 1-4 levelling grind at XL 5-8, in a fight the bot chose not to hide
+    # from: below the Elbereth rest's 40% the lone weak monster (mlevel <= 2: hill orc, large kobold, giant/rabid
+    # rat, newt) is fought on down to 6 HP 'for the HP prayer' -- but that prayer is often spent on hunger, and
+    # one made while Weak fixes only the hunger half the time (pray.c pleased: action 1d(Luck+2) off an altar,
+    # TROUBLE_STARVING before TROUBLE_HIT): parent fem s2 (hill orc, 69 max HP: prayed at 9 HP, 'Your stomach
+    # feels content', killed), s8 (giant rat at 2/81 the same way), 480652 (large kobold, prayer too soon),
+    # s4/480660 (rabid rat / hill orc while fainting). The camera that never fired before the dive blinds an
+    # adjacent attacker for good and makes it flee 3 times in 4, and the darts then hit its back. Flash in
+    # exactly the spots where the grind fights on below 40% HP -- the lone-weak-monster exemption, or nowhere
+    # to engrave -- and never at a monster an Elbereth (held or still possible) would scare: a blinded
+    # monster ignores Elbereth. Some charges stay for the dive's Elbereth-ignorers.
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+    #          https://nethack.fandom.com/wiki/Tourist ('contributes greatly to early survival'),
+    #          https://dataswamp.org/~solene/2020-11-15-nethack-Tou-Hum-Fem-Neu.html (a flashed giant rat came
+    #          back: use the flight, don't count on it), https://nethackwiki.com/wiki/Prayer (fix table),
+    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, src/pray.c pleased/in_trouble,
+    #          /tmp/diag replays of the parent (fem s1 s2 s4 s8 s12 480652 480660 480661)
+    grind_flash = False
     if not agent.global_logic.dive.diving:
-        return []
+        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_BELOW:
+            return []
+        uses = camera.uses or ''
+        if ':' in uses and uses.split(':')[1].isdigit() and \
+                int(uses.split(':')[1]) <= jf_config.GRIND_CAMERA_RESERVE:
+            return []
+        # one flash per lone fight: an adjacent flash blinds for good, and a blinded monster can't be flashed again
+        flashed_at = getattr(agent, '_camera_flashed', {})
+        if flashed_at and agent.blstats.time - max(flashed_at.values()) < jf_config.GRIND_CAMERA_GAP:
+            return []
+        grind_flash = True
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
@@ -444,6 +472,15 @@ def camera_actions(agent, monsters):
     if agent.blstats.experience_level >= 8 and not on_elbereth and not in_gehennom(agent) and \
             dive._elbereth_possible():
         on_elbereth = True
+    if grind_flash and not on_elbereth and not in_gehennom(agent):
+        # GRIND_CAMERA: the Elbereth rest's own exemption (dive_logic.elbereth_rest) is where the grind fights on;
+        # anywhere else an Elbereth that can still be had is the answer, so leave its respecters unflashed
+        from ..dive_logic import SLEEP_BITERS
+        near = dive._near_hostiles()
+        exempt = len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and agent.blstats.hitpoints >= 6 and \
+            not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS)
+        if not exempt and dive._elbereth_possible():
+            on_elbereth = True
     actions = []
     for dy, dx in distant_flash_directions(agent, monsters):
         actions.append((60, ('camera', dy, dx, camera)))

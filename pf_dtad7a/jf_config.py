@@ -325,6 +325,29 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: diag replays of #16 met homunculi in 6/7 grinds and slept in 4/7; one lone homunculus took an XL5
+# Tourist 32 -> 0 HP through three sleeps (fem s12), another 51 -> 5 HP and the HP prayer (s8). A homunculus
+# respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently.
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16
+SLEEP_BITER_REST = True
+
+# GRIND_CAMERA (combat/fight_heur.camera_actions): the levelling grind also flashes the Tourist's expensive camera at
+# an adjacent attacker, below GRIND_CAMERA_BELOW of max HP, only where the grind fights on instead of hiding (the
+# Elbereth rest's lone-weak-monster exemption, or no Elbereth to be had), at most once per GRIND_CAMERA_GAP turns,
+# and never below GRIND_CAMERA_RESERVE known charges (kept for the dive's Elbereth-ignorers)
+# hypothesis: the grind's last fights at < 40% HP (hill orc, large kobold, giant/rabid rat, newt) end the game when
+# the HP prayer is spent or only fixes hunger; a blinded attacker flees 3 times in 4 instead of finishing us
+# sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/pray.c pleased
+GRIND_CAMERA = True
+GRIND_CAMERA_BELOW = 0.4
+GRIND_CAMERA_GAP = 20
+GRIND_CAMERA_RESERVE = 15
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
