@@ -191,21 +191,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (rope golem Dlvl 7,
-# newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8) come in the first few hundred turns of the
-# dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns
-# more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives the dive start its backstop -- a
-# readiness check before leaving the early game. With THREAT_REST (#7) the bot hides on Elbereth earlier, so the
-# HP prayer is kept for the dive rather than spent in the grind; this makes sure the dive starts with it.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
-# (killed while praying / right after); port of /refs/history/4.diff (held-out 0.1792 -> 0.2112, best node of
-# this tree) and /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -336,6 +321,25 @@ WAND_STAIRS_FIX = True
 #          /refs/past_runs/20261008-132537/79.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats (parent dev seeds 480659 hill orc, 480660 rothe,
+# 480661 Uruk-hai, 480657 sewer rat, 480658/480665 wererat, s1 jackal) -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-132537 #5/#65 (kept both times on this pf_dtad7a engine; #5 held-out 0.2114 vs 0.1517).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway),
+#          /refs/past_runs/20261008-132537/65.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities,
+#          /refs/history/8.diff (tree node #8: held-out 0.1157 -> 0.1392 on the pet-hunger parent),
+#          https://nethackwiki.com/wiki/Door (open doors: no diagonal moves, a bottleneck), https://nethackwiki.com/wiki/Rothe
+# Node #26: stacked on THREAT_REST (dive_logic.py) -- the threat rest decides *when* to hide on Elbereth, this decides
+# *where* the fight happens, so fewer pack members are adjacent when the threat rest's damage estimate counts them.
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
