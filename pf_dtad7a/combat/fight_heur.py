@@ -370,15 +370,12 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, manes, wererat, kitten, dwarf zombie at XL 5-7) are melee
-    # losses at low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
+    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
+    # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
     # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
-    # GRIND_CAMERA_RATIO only, 10-turn cooldown (an already-blind monster resists), never from an Elbereth square (a
-    # blinded monster ignores the engraving). elbereth_rest runs before fight2, so this only fires where it declines
-    # (a lone weak monster, or one that ignores Elbereth).
+    # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-    #          https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon,
-    #          /refs/history/27.diff (best node of another chain: public 0.2451)
+    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon; /refs/history/27.diff
     if not agent.global_logic.dive.diving:
         if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
