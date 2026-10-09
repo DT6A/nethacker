@@ -359,12 +359,6 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# ADAPTIVE_ROUND_FLOOR: the Elbereth rest starts when HP <= twice the biggest one-turn HP loss of the last 12 turns
-# (capped at 60% of max HP, Dlvl <= 10), and the lone-weak-monster exemption ends there (see dive_logic.elbereth_rest)
-# hypothesis: fewer Dlvl 1-8 deaths to weapon wielders and packs that hit harder than the fixed 40% / 6-HP floors assume
-# sources: https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/mhitu.c mattacku, /refs/history/95.diff
-ADAPTIVE_ROUND_FLOOR = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -387,3 +381,6 @@ if LATE_FIXES:
 # /refs/past_runs/20261008-213012/74.diff
 DIVE_FOOD_RESERVE = 800
 DIVE_FOOD_RESERVE_XL = 6
+
+# were_unload keeps only the food a were form can carry (weight_cap() of the tiny form), not every edible item
+WERE_UNLOAD_BUDGET = True
