@@ -429,26 +429,8 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
-    # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
-    # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
-    # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
-    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
     if not agent.global_logic.dive.diving:
-        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
-                (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-            return []
-        actions = []
-        for monster in monsters:
-            _, y, x, mon, _ = monster
-            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
-                continue
-            actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
-            agent._grind_flash_turn = agent.blstats.time
-            break
-        return actions
+        return []
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
