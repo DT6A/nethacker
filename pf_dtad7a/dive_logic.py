@@ -75,9 +75,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: a homunculus's sleep bite (1 in 5 hits: asleep 1-10 turns, no sleep resistance) chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP; below 40% HP hide on Elbereth from it instead
-# sources: NetHack 3.6.6 mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/past_runs/20261008-213012/60.diff
-SLEEP_BITERS = frozenset(('homunculus',))
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1276,8 +1273,7 @@ class DiveLogic:
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not infectious_were(agent, near[0][3]) and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+                not infectious_were(agent, near[0][3]):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
