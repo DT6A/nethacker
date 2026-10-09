@@ -368,11 +368,6 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

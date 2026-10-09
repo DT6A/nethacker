@@ -101,6 +101,34 @@ def missiles_risk_the_watch(agent):
 POINT_BLANK_THROW = True
 
 
+# hypothesis: the Tourist grind wields whatever unknown-BUC dagger/axe it picks up (get_best_melee_weapon allows unknown
+# status), and that turned point_blank_throw off: the XL1-5 Tourist then stabs adjacent jackals, bats and rats with an
+# Unskilled weapon (-4 to hit, -2 damage; to-hit ~ 3 + XL, d4-2) while 16+ +2 darts sit in its pack, and dies in
+# melee (seed 14 fem: giant bat, 'You miss the giant bat' with a welded cursed runed dagger, 21 HP -> dead in 4 turns).
+# A thrown +2 dart at distance 1 hits at base +1 +2 (throwing weapon) +2 (3 - distance) +2 enchantment at Basic dart
+# skill and does d3+2: keep throwing whenever the expected damage per swing beats the wielded weapon's (calc_dps on the
+# same formulas the bot already uses to pick weapons). A skilled/enchanted weapon still wins and is used in melee.
+# sources: https://nethackwiki.com/wiki/Tourist ("Unless you find something enchanted or high-damage ... lean on
+#          darts early"; Unskilled weapons carry a -4 to-hit penalty), https://nethackwiki.com/wiki/Multishot,
+#          https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Giant_bat (speed 22, d6 bite),
+#          rec.games.roguelike.nethack "it took me 4 years to understand" (throw darts/daggers at melee range),
+#          https://nethackwiki.com/wiki/Talk:Tourist (a Tourist who kept missing with a wielded dagger),
+#          NetHack 3.6.6 src/dothrow.c thitmonst, src/uhitm.c find_roll_to_hit
+POINT_BLANK_WIELDED = True
+
+
+def thrown_beats_wielded(agent, main, ammo):
+    ch = agent.character
+    melee_hit, melee_dmg = ch.get_melee_bonus(main)
+    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
+    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
+    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
+    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
+    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
+    dart_dmg = max(0, ammo_dmg + skill_dmg)
+    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
+
+
 def point_blank_throw(agent, launcher, ammo):
     """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
     try:
@@ -110,8 +138,10 @@ def point_blank_throw(agent, launcher, ammo):
             return False
         main = agent.inventory.items.main_hand
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-            main.objs[0].name in ('dart', 'shuriken')
+        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+                main.objs[0].name in ('dart', 'shuriken'):
+            return True
+        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
     except Exception:
         return False
 
@@ -429,26 +459,8 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
-    # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
-    # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
-    # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
-    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, /refs/history/51.diff
     if not agent.global_logic.dive.diving:
-        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
-                (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-            return []
-        actions = []
-        for monster in monsters:
-            _, y, x, mon, _ = monster
-            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
-                continue
-            actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
-            agent._grind_flash_turn = agent.blstats.time
-            break
-        return actions
+        return []
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
