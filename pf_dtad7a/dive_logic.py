@@ -65,30 +65,15 @@ MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' 
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
 # XL < MINES_REQUIRED_XL[k] (hostile orcs/ants there are the XP). Empty = no gate.
 MINES_REQUIRED_XL = {}
+# a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
+PICK_DETOUR = True
+PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
-# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
-# a dwarf's mattock d12, speed-18+ kittens, little dogs, giant ants and bats hitting twice -- and they are the AC10
-# Tourist's grind and dive-start killers (rothe s1, hill orc s2, rabid rat s4, large kobold s7/480651, hobgoblin s8,
-# giant ant s9). Keep the exemption only while HP exceeds the monster's max one-round damage (weapon users ~8, fast
-# monsters doubled), so a single max round can't kill; below that, hide on Elbereth (all of these respect it) like
-# against any other monster. Unlisted weak monsters (newt, jackal, sewer rat, ...) keep the old 6.
-# sources: https://nethackwiki.com/wiki/Rothe ('hit quite hard', 'respect Elbereth, so engraving it is a good
-#          fallback when your HP drops'), https://nethackwiki.com/wiki/Elbereth,
-#          https://www.melankolia.net/nethack/nethack.guide.html ('rothes are dangerous to beginning characters ...
-#          they attack many times in a round'), web search of player threads: 'it is generally not possible to
-#          engrave Elbereth too early, but it is certainly possible to engrave it too late',
-#          NetHack 3.6.6 src/monst.c (attack dice), src/mhitu.c mattacku
-WEAK_ROUND_DAMAGE = {
-    'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
-    'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
-    'dwarf zombie': 7,
-}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -258,6 +243,19 @@ TOOL_RUN_XL = None
 # hunting dwarves on the way, digging in the main dungeon if it gets a pick-axe. Fires only in games
 # that are otherwise lost.
 RESCUE_DIVE = True
+# hypothesis: an early failed prayer (a too-soon HP prayer at XL 1-4, T~1500-2500) starts the rescue dive at once,
+# and the XL 2-4 Tourist (AC 10, ~20 max HP, no prayer for 2000 turns, Luck -3) dies within a few hundred turns on
+# Dlvl 3-6 (public s0, s14, extra 480662: 0.021-0.035 each, the lowest scores of the parent). The rescue exists for
+# starvation -- an angry god ends the hunger prayers -- but a Tourist with its starting food is not starving yet:
+# eat_from_inventory eats carried food at Hungry once prayer_failed. Random monsters are capped at difficulty
+# (depth + XL) / 2 (makemon.c), so Dlvl 1 is the safest place to regain XP while Luck recovers and
+# PRAYER_FAILURE_WAIT runs out; dive only when Weak with nothing edible carried (the LATE_RESCUE case) or at DIVE_XL.
+# A grind death at XL 5-7 also outscores a Dlvl 3-5 death (0.029-0.051 vs 0.021-0.026). Port of #40 (kept) onto
+# #59 (PICK_DETOUR): the deferred rescue still dives through the same pick-detour/dig path once it fires.
+# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Luck, https://nethackwiki.com/wiki/Tourist,
+#          https://nethackwiki.com/wiki/Standard_strategy, https://nethackwiki.com/wiki/Monster_difficulty,
+#          https://nethackwiki.com/wiki/Anger, NetHack 3.6.6 src/pray.c, src/makemon.c, /refs/history/40.diff
+RESCUE_DEFER = True
 # The same later in the tour: a prayer failed (the god is angry or Luck < 0, so no more hunger prayers)
 # and the character is Weak with nothing to eat. The tour would starve on the spot (a clock-jf6 XL8
 # starved in the Mines 1700 turns after an unlucky prayer); the dive at least banks depth on the way.
@@ -901,6 +899,11 @@ class DiveLogic:
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
+        if rescue and RESCUE_DEFER:
+            # RESCUE_DEFER: dive only once the angry god leaves the grind starving (Weak, nothing edible carried)
+            # or the grind is done (DIVE_XL); before that Dlvl 1 keeps the XL 1-7 Tourist among weak monsters
+            rescue = xl >= DIVE_XL or \
+                (agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food())
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
         rescue = rescue or (EARLY_DIVE and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and
@@ -1285,10 +1288,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        weak_floor = 6
-        if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
-            weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor:
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1614,9 +1614,37 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        return MINES_ROUTE and not self.mines_done and \
-            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
-            (not self.diving or self.digging_tool() is None)
+        if MINES_ROUTE and not self.mines_done and \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+                (not self.diving or self.digging_tool() is None):
+            return True
+        return self._pick_detour()
+
+    def _pick_detour(self):
+        """PICK_DETOUR: a tool-less stairs dive of any other race walks the first PICK_DETOUR_LEVELS Mines levels
+        (Dlvl 3-6) for a hostile dwarf's pick-axe or mattock, then climbs back to the main dungeon (dig there)."""
+        # hypothesis: the Tourist's XL-8 dive without a digging tool walks the main-dungeon stairs and dies on
+        # Dlvl 3-8 soon after the grind (parent dev seeds: owlbear, iguana, large kobold, giant ant, elf zombie,
+        # rope golem, black unicorn; ~0.075 each), while a dig dive banks Dlvl 18-28 (0.35-0.6). The Mines were
+        # only ever routed for dwarves and gnomes; to a human their dwarves are hostile and ~3/8 carry a pick-axe
+        # or mattock, so walk Mines levels 1-2 (with the parent's dwarf hunt and MINES_CAMP) for one first.
+        # sources: /refs/top/87db8cf4544f autoascend/dive_logic.py (PICK_DETOUR, PICK_DETOUR_LEVELS=2),
+        #          /refs/past_runs/20261002-164932/19.diff (kept, held-out +0.033 on both Tourists),
+        #          https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Dwarf_(monster),
+        #          https://nethackwiki.com/wiki/Pick-axe, https://nethackwiki.com/wiki/Tourist,
+        #          https://forums.civfanatics.com/threads/nethack.256120/page-5 (players: the Mines give the pick-axe or
+        #          mattock you need to dig), https://www.tomsarazac.com/tom/Fun/arch.html ("go to the mines first")
+        if not PICK_DETOUR or self.mines_done or not self.diving or self.rescue or \
+                self.agent.character.race in (Character.DWARF, Character.GNOME) or \
+                self.digging_tool() is not None or self.digging_wand() is not None:
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= PICK_DETOUR_LEVELS:
+            # the last detour level: its dwarf search (should_camp / the hunt) runs first, then back up
+            self.agent.log(f'DIVE pick detour: Mines level {level.level_number} reached, back to the main dungeon')
+            self.mines_done = True
+            return False
+        return True
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
