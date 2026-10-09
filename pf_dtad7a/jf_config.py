@@ -191,6 +191,33 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
+# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8, ~T24-26k on dev seeds) come in
+# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
+# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
+# the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
+# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
+# (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
+# node #14 (tree round 1): port of node #4's DIVE_PRAYER_READY (held-out 0.1792 -> 0.2112 on the dart chain) onto
+# #5's LOWHP_EXACT chain. LOWHP_EXACT saves the HP prayer for pray.c's critically_low_hp, the one HP level where it
+# heals fully -- but only if the timeout allows it; starting the dive with that prayer ready (HP >= 85%) is what
+# makes the saved prayer count at the dive start, where the grind's XL 7-8 losses on Dlvl 2-8 happen.
+# sources (#14): /refs/history/4.diff, /refs/past_runs/20261008-132537/75.diff, NetHack 3.6.6 src/pray.c
+#          (critically_low_hp, can_pray: p_trouble > 0 needs u.ublesscnt <= 200), https://nethackwiki.com/wiki/Prayer
+# node #51 (tree round 2): DIVE_PRAYER_READY on #13's darts+LOWHP+PRAYERLESS_GUARD chain. PRAYERLESS_GUARD makes the
+# lone-weak-monster exemption depend on the same HP prayer; starting the XL8 dive with it ready keeps both the
+# exemption and the critically_low_hp backstop for the dive start. Parent seeds 0, 9-12 (both identities) die at XL8
+# on Dlvl 2-8 at T~24.7-26.7k -- right at the dive start. Readiness uses the HP prayer's own is_safe_to_pray test.
+# sources (#51): /refs/history/4.diff, /refs/history/14.diff, https://nethackwiki.com/wiki/Prayer_timeout (95% safe
+#          only after ~1229 turns), https://nethackwiki.com/wiki/Tourist ('go down slowly'),
+#          https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F (power curves; plan for the worst),
+#          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (dying right after praying)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -324,11 +351,6 @@ WAND_STAIRS_FIX = True
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
-
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
