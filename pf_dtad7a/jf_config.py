@@ -204,27 +204,10 @@ DIVE_FED_MAX_WAIT = 2000
 # https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
 # https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
 # (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-# node #16: stacked on #6 (darts + KEEP_WANDS_FIRST) as a port of tree node #4 (held-out 0.1792 -> 0.2112 on the
-# dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
+# node #61: ported onto darts+wands+hostile-recheck from /refs/history/4.diff (#4: held-out 0.1792 -> 0.2112;
+# #16 on darts+wands: 0.1873 -> 0.2200)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
-# the late Dlvl-1 grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of
-# carried food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long
-# as a prayer is >= 500 turns away (the hunger prayer / faint clock covers it), HP >= half, nothing threatening is
-# near and starvation isn't close -- i.e. it does then what every empty-pack grind already does (0: off)
-# hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the 14-34k-turn grind, so the
-# XL8 dive often starts with an empty pack; it begins ~500 turns after a hunger prayer (DIVE_PRAYER_READY), so it
-# is Weak a few hundred turns later on Dlvl 2-6, where there is no faint guard and pray.c's in_trouble() ranks
-# TROUBLE_STARVING above TROUBLE_HIT -- an HP prayer while Weak/Fainting may fix only the hunger (pleased() case 1).
-# Diag replays of #60: s8 began the dive Weak with 180 nutrition and died praying at 2 HP while Fainting; s7
-# fainted on Dlvl 4 with no food left ~600 turns after its HP prayer and died. Spending one more quiet, guarded
-# faint cycle on Dlvl 1 buys ~800 turns of food where faints kill.
-# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased() / can_pray(); src/eat.c newuhs() (Weak < 50, Fainting
-# < 0, starvation below -(100 + 10 Con)); https://nethackwiki.com/wiki/Nutrition ;
-# https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (starts with plenty of food);
-# /tmp diag replays of node #60 (public fem seeds 4, 7, 8)
-DIVE_FOOD_RESERVE = 800
-DIVE_FOOD_RESERVE_XL = 6
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -342,15 +325,32 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: diag replays of #16 met homunculi in 6/7 grinds and slept in 4/7; one lone homunculus took an XL5
-# Tourist 32 -> 0 HP through three sleeps (fem s12), another 51 -> 5 HP and the HP prayer (s8). A homunculus
-# respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently.
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16
-SLEEP_BITER_REST = True
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
+# ignored it
+HOSTILE_RECHECK = True
+
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind and dive-start losses include packs -- hill orcs,
+# rothes, large kobolds, giant/rabid rats, jackals, a were's summoned jackals/rats (parent public seeds 1 rothe,
+# 2 hill orc, 4 rabid rat, 7 large kobold, 8 hobgoblin; dev 480652 large kobold, 480662 werejackal, 480664 wererat)
+# -- that surround it in an open room, while fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak
+# mobile hostiles within 7 squares, prefer corridor squares and open doors (at most 2 squares to be attacked from;
+# nothing passes a door diagonally) and hold one there for a few turns, so the pack arrives one or two at a time --
+# and down a corridor in a line, into the thrown darts' line of fire (combat/fight_heur.py). Complements
+# DIVE_PRAYER_READY and the peaceful recheck: fewer simultaneous attackers means fewer drops below the
+# Elbereth-rest / prayer thresholds. Port of #8/#26/#33/#73 (kept 3/3 on held-out: +0.0235, +0.0008, +0.0019)
+# onto the #17/#61 chain.
+# sources: https://nethackwiki.com/wiki/Corridor (single file: not overwhelmed by numbers; foes line up for missiles),
+#          https://nethackwiki.com/wiki/Doorway (no diagonal moves through a door: monsters stream in one by one),
+#          https://nethackwiki.com/wiki/Hill_orc (groups: draw them into a corridor so only one attacks at a time),
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Movement_tactics,
+#          http://crpgaddict.blogspot.com/2012/10/nethack-dos-and-donts.html (comments: fight ants diagonal to a door),
+#          https://stuff.mit.edu/afs/sipb/project/nethackserver/src/slashem-0.0.7E7F2/doc/strategy.txt (retreat into a hallway),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/history/73.diff, /refs/history/33.diff, /refs/history/8.diff
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

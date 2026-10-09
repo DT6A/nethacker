@@ -71,9 +71,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: a homunculus's sleep bite chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP
-# sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; jf_config.SLEEP_BITER_REST
-SLEEP_BITERS = frozenset(('homunculus',))
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1270,9 +1267,7 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # SLEEP_BITER_REST: not a sleep biter (fem s12: a lone homunculus slept an XL5 Tourist three times, 32 -> 0 HP)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \

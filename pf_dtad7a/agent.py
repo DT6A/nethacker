@@ -2044,6 +2044,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2576,29 +2581,11 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        food = self.edible_carried_food()
-        if food and not diving and self._keep_dive_food(food[0]):
-            yield False
-        for item in food:
+        for item in self.edible_carried_food():
             yield True
             self.inventory.eat(item)
             return
         yield False
-
-    def _keep_dive_food(self, item):
-        """DIVE_FOOD_RESERVE: the late grind keeps its last carried food for the dive while waiting for the
-        hunger prayer / faint clock is safe (a prayer >= 500 turns away, HP >= half, no threat, not starving)."""
-        # hypothesis: see jf_config.DIVE_FOOD_RESERVE -- the XL8 dive starts with food instead of an empty pack
-        # sources: NetHack 3.6.6 src/pray.c in_trouble() (TROUBLE_STARVING before TROUBLE_HIT), pleased();
-        #          https://nethackwiki.com/wiki/Nutrition ; diag replays of node #60 (public seeds 7, 8)
-        bl = self.blstats
-        if not jf_config.DIVE_FOOD_RESERVE or self.prayer_failed or \
-                bl.experience_level < jf_config.DIVE_FOOD_RESERVE_XL:
-            return False
-        if self.carried_food_nutrition() - self._food_item_nutrition(item, 1) >= jf_config.DIVE_FOOD_RESERVE:
-            return False
-        return self.is_safe_to_pray(500) and bl.hitpoints >= 0.5 * bl.max_hitpoints and \
-            not self._starvation_near() and self._hunger_threat() is None
 
     @Strategy.wrap
     def summon_were_allies(self):
@@ -2682,15 +2669,13 @@ class Agent:
 
     def carried_food_nutrition(self):
         """Nutrition of edible_carried_food (corpses by their monster, unidentified items as 0)."""
-        return sum(self._food_item_nutrition(item) for item in self.edible_carried_food())
-
-    def _food_item_nutrition(self, item, count=None):
-        count = item.count if count is None else count
-        if item.is_corpse():
-            return getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * count
-        if item.is_unambiguous():
-            return getattr(item.object, 'nutrition', 0) * count
-        return 0
+        total = 0
+        for item in self.edible_carried_food():
+            if item.is_corpse():
+                total += getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * item.count
+            elif item.is_unambiguous():
+                total += getattr(item.object, 'nutrition', 0) * item.count
+        return total
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""
