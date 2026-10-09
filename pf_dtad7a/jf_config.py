@@ -204,8 +204,8 @@ DIVE_FED_MAX_WAIT = 2000
 # https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
 # https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
 # (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
-# node #16: stacked on #6 (darts + KEEP_WANDS_FIRST) as a port of tree node #4 (held-out 0.1792 -> 0.2112 on the
-# dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
+# node #61: ported onto darts+wands+hostile-recheck from /refs/history/4.diff (#4: held-out 0.1792 -> 0.2112;
+# #16 on darts+wands: 0.1873 -> 0.2200)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -325,15 +325,10 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: diag replays of #16 met homunculi in 6/7 grinds and slept in 4/7; one lone homunculus took an XL5
-# Tourist 32 -> 0 HP through three sleeps (fem s12), another 51 -> 5 HP and the HP prayer (s8). A homunculus
-# respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently.
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16
-SLEEP_BITER_REST = True
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
+# ignored it
+HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
