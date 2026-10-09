@@ -360,9 +360,12 @@ WAND_STAIRS_FIX = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption held down to a flat 6 HP -- below one
+# round of a rothe (14), dwarf or a fast dog/kitten/bat. On: it holds only while HP exceeds that monster's max
+# one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep 6.
+# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
+# sources: /refs/history/18.diff; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
