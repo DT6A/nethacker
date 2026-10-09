@@ -208,6 +208,23 @@ DIVE_FED_MAX_WAIT = 2000
 # dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
+# the late Dlvl-1 grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of
+# carried food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long
+# as a prayer is >= 500 turns away (the hunger prayer / faint clock covers it), HP >= half, nothing threatening is
+# near and starvation isn't close -- i.e. it does then what every empty-pack grind already does (0: off)
+# hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the 14-34k-turn grind, so the
+# XL8 dive often starts with an empty pack; it begins ~500 turns after a hunger prayer (DIVE_PRAYER_READY), so it
+# is Weak a few hundred turns later on Dlvl 2-6, where there is no faint guard and pray.c's in_trouble() ranks
+# TROUBLE_STARVING above TROUBLE_HIT -- an HP prayer while Weak/Fainting may fix only the hunger (pleased() case 1).
+# Diag replays of #60: s8 began the dive Weak with 180 nutrition and died praying at 2 HP while Fainting; s7
+# fainted on Dlvl 4 with no food left ~600 turns after its HP prayer and died. Spending one more quiet, guarded
+# faint cycle on Dlvl 1 buys ~800 turns of food where faints kill.
+# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased() / can_pray(); src/eat.c newuhs() (Weak < 50, Fainting
+# < 0, starvation below -(100 + 10 Con)); https://nethackwiki.com/wiki/Nutrition ;
+# https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (starts with plenty of food);
+# /tmp diag replays of node #60 (public fem seeds 4, 7, 8)
+DIVE_FOOD_RESERVE = 800
+DIVE_FOOD_RESERVE_XL = 6
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -334,19 +351,6 @@ MISSILES_NOT_MELEE = True
 # sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
 # https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16
 SLEEP_BITER_REST = True
-
-# GRIND_CAMERA (combat/fight_heur.camera_actions): the levelling grind also flashes the Tourist's expensive camera at
-# an adjacent attacker, below GRIND_CAMERA_BELOW of max HP, only where the grind fights on instead of hiding (the
-# Elbereth rest's lone-weak-monster exemption, or no Elbereth to be had), at most once per GRIND_CAMERA_GAP turns,
-# and never below GRIND_CAMERA_RESERVE known charges (kept for the dive's Elbereth-ignorers)
-# hypothesis: the grind's last fights at < 40% HP (hill orc, large kobold, giant/rabid rat, newt) end the game when
-# the HP prayer is spent or only fixes hunger; a blinded attacker flees 3 times in 4 instead of finishing us
-# sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
-#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/pray.c pleased
-GRIND_CAMERA = True
-GRIND_CAMERA_BELOW = 0.4
-GRIND_CAMERA_GAP = 20
-GRIND_CAMERA_RESERVE = 15
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
