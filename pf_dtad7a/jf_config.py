@@ -88,6 +88,8 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
+# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
+KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -191,6 +193,21 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
+# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8, ~T24-26k on dev seeds) come in
+# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
+# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
+# the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
+# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
+# (killed while praying / right after); port of /refs/past_runs/20261008-132537/75.diff (held-out 0.2127 -> 0.2419)
+# node #16: stacked on #6 (darts + KEEP_WANDS_FIRST) as a port of tree node #4 (held-out 0.1792 -> 0.2112 on the
+# dart chain); https://nethackwiki.com/wiki/Prayer_timeout (rnz(350), mean ~454, sd ~365 turns)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -198,24 +215,7 @@ TOUR_FAINT_PRAYER_GAP = 0
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
-# hypothesis: DT6A's 'HP < 12' rule makes the XL 1-5 Tourist grind (max HP 10-40) pray at 6-11 HP, where pray.c sees
-# no trouble: with the timeout > 0 that is p_type 0 (timeout += rnz(250), Luck -3, god angry), the bot marks the
-# prayer failed and cannot pray again for PRAYER_FAILURE_WAIT turns; with the timeout at 0 it only resets the timeout
-# to rnz(350), so the real critical-HP prayer soon after fails. Now that the Tourist throws its darts (#2) and fights
-# longer bouts at range/point blank, praying only at critically_low_hp (u.uhp <= 5 or u.uhp * divisor <= min(maxhp,
-# 15 * XL)) keeps the prayer for the moment it heals fully -- and the first HP prayer is allowed from turn 100, when
-# the starting timeout of 300 has already dropped to <= 200, pray.c's limit for major trouble. Fewer Dlvl 1-4 grind
-# deaths at XL 1-5 right after a wasted or failed prayer (jackal, wererat, hobgoblin, sewer rat, kobold).
-# Port of past run 20261008-132537 #2/#24/#27 (same pf_dtad7a engine and Tourists: +0.078 over its parent, kept, on
-# the dart chain; +0.137 on a sibling chain).
-# sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble -> TROUBLE_HIT, can_pray p_type, dopray
-#          p_type == 0 branch; u.ublesscnt = 300 in u_init.c), https://nethackwiki.com/wiki/Prayer,
-#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Tourist,
-#          /refs/past_runs/20261008-132537/27.diff (+ 2.diff, 24.diff)
-LOWHP_EXACT = True
-# with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
-# major trouble needs <= 200) instead of 300
-LOWHP_FIRST_TURN = 100
+LOWHP_EXACT = False
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -321,40 +321,29 @@ LR_ELBERETH = True
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
 
-# hypothesis: with LOWHP_EXACT (#5) the HP prayer waits for pray.c's critically_low_hp (HP <= 1/5 max at XL 1-5,
-# 1/6 at XL 6-13), and the Elbereth rest skips a lone level <= 2 monster down to 6 HP -- but a lone rothe (claw d3,
-# bites d3 + d8: 8.5 a turn, 14 max) or giant bat (d6 at speed 22) is level 2 and jumps straight past that window
-# from 7-17 HP, and 2-3 rothes / hill orcs / ants pass the fixed 40% trigger and kill in the turn or two after it.
-# The parent's public deaths are mostly those kinds (rothe x4, giant bat x2, giant ant, fire ant, jaguar, panther).
-# So start (and keep) the Elbereth rest once HP is within two rounds of the near (radius 2) hostiles' expected melee
-# damage (kinds averaging under THREAT_REST_MIN_DMG a turn left out), the lone-weak exemption included, for at most
-# THREAT_REST_TURNS turns in a row: the engraving is down before the killing round and the prayer window is kept.
-# sources: https://nethackwiki.com/wiki/Rothe (3 attacks up to 14/turn, groups of 2-4, "Rothes respect Elbereth"),
-#          https://nethackwiki.com/wiki/Elbereth (fast dust engraving works at once; scared adjacent monsters flee
-#          and don't melee), https://nethackwiki.com/wiki/Tourist (AC 10, "extreme caution" early),
-#          https://nethackwiki.com/wiki/Prayer (no trouble + timeout > 0 = failed prayer),
-#          https://www.melankolia.net/nethack/nethack.guide.html (rothes: many attacks a round, groups),
-#          https://beforeiplay.com/index.php?title=Nethack and https://forums.civfanatics.com/threads/nethack.256120/page-2
-#          (players: swarms of rothes / ants kill; Elbereth as a breather, never attack from it),
-#          /refs/past_runs/20261008-132537/42.diff (THREAT_REST, kept: held-out 0.2097 -> 0.2127),
-#          /refs/top/9e75ceeb9559 (zReactiveRest: Elbereth rest even next to one 'weak' monster after a burst),
-#          NetHack 3.6.6 src/monst.c attacks (nhbot/nhmodel/mondata.py, copied as pf_dtad7a/mondata.py)
-THREAT_REST = True
-THREAT_REST_TURNS = 300
-THREAT_REST_MIN_DMG = 3.0
-
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-# hypothesis (node #56): on the darts+LOWHP_EXACT+THREAT_REST chain an attacker wrongly masked peaceful is also left
-# out of THREAT_REST's expected-damage sum, so the rest starts late and the critically_low_hp prayer window is jumped
-# sources: /refs/history/47.diff, /refs/history/3.diff (held-out +0.020), #24 (+0.023), NetHack 3.6.6 monmove.c
-#          dochug(), https://nethackwiki.com/wiki/Peaceful, https://nethackwiki.com/wiki/Why_do_I_keep_dying
-HOSTILE_RECHECK = True
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. The parent's early losses (rothe, hill orc,
+# large kobold, hobgoblin, rabid rat, iguana, giant ant, owlbear; extra seeds: yeti, pony, rope golem, wererat) are
+# all melee losses at AC 10. Random armour is cursed 12.3% of the time and then mostly +0/-1 (Armor wiki): a cursed
+# plain piece only sticks and still gives about its base AC, and takeoff() already handles 'It is cursed.' (do_wear.c
+# cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous (no random-appearance helm/boots/gloves:
+# those hide the autocursing / levitation / fumbling items), NON-magical (oc_magic 0), gives AC (base >= 1, so no AC-0
+# piece locks a slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid.
+# Known-BUC items keep priority on ties; lower AC -> fewer hits taken in every early fight.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... better armor"; mithril/orcish helm/iron shoes kit),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm (only random-appearance helms autocurse),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY ("other classes can get away with
+#          wearing that cursed dwarvish mithril"), https://www.chiark.greenend.org.uk/~damerell/games/nhid.html,
+#          /refs/past_runs/20261008-132537/71.diff (kept there: held-out 0.2070 -> 0.2105),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
+WEAR_UNKNOWN_MUNDANE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
