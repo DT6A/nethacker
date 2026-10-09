@@ -190,12 +190,23 @@ def ranged_priority(agent, dy, dx, monsters):
             # a miss, or the rest of a multishot volley, flies on past the target: never with a pet or a
             # peaceful behind it (two unseen games hit Minetown gnomes that way: the Watch killed them)
             by, bx, reach = y, x, agent.character.get_range(launcher, ammo)
+            # hypothesis: a missile that misses flies on and kills a pet that is out of view behind the
+            # target ("You kill it!" + "rumble of distant thunder": -15 alignment, -1 Luck, so the next
+            # prayer fails and the XL4-6 game is lost; seed 733389). Skip lines with open floor behind the
+            # target while the pet was seen lately on this level and is not in view now.
+            # sources: pray.c / mon.c xkilled() (killing a pet: adjalign(-15), change_luck(-1 unseen, -5 if seen "You murderer!")),
+            #   nethackwiki Pet#Killing_pets, spore_blast_hits_friend above (same pet_seen test)
+            pet_unseen = jf_config.PET_SAFE_THROW and not utils.any_in(agent.glyphs, G.PETS) and \
+                agent.global_logic.dive.pet_seen.get(agent.current_level().key(), -10 ** 9) \
+                > agent.blstats.time - jf_config.PET_SAFE_THROW_TURNS
             for _ in range(max(reach - dis, 0)):
                 by += dy
                 bx += dx
                 if not 0 <= by < agent.glyphs.shape[0] or not 0 <= bx < agent.glyphs.shape[1] or \
                         not agent.current_level().walkable[by, bx]:
                     break
+                if pet_unseen:
+                    return None
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
@@ -429,8 +440,26 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
+    # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
+    # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
+    # GRIND_CAMERA_RATIO only, with a 10-turn cooldown (an already-blind monster resists the flash).
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
+    #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, /refs/history/51.diff
     if not agent.global_logic.dive.diving:
-        return []
+        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
+                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
+                (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+            return []
+        actions = []
+        for monster in monsters:
+            _, y, x, mon, _ = monster
+            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
+                continue
+            actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+            agent._grind_flash_turn = agent.blstats.time
+            break
+        return actions
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
