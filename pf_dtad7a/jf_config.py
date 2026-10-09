@@ -191,6 +191,18 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8 at XL 7-8,
+# e.g. parent dev seeds: yeti/pony Dlvl 3-4, black unicorn Dlvl 5, giant beetle Dlvl 5, wolf Dlvl 5, ~T21-26k) come in
+# the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85%
+# (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives
+# the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
+# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# port of /refs/past_runs/20261008-213012/4.diff, 16.diff, 61.diff (held-out 0.1792->0.2112, 0.1873->0.2200)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -347,18 +359,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting kitten/little dog (which ate nothing)
-# starves by ~T1500: dogmove.c dog_hunger confuses it ('<pet> is confused from hunger.'), mon.c mfndpos gives a
-# confused monster ALLOW_U, dog_move then mattacku()s us -- and fight2 never answers a pet (past dev seed 421796,
-# both identities: 'killed by a kitten' at XL2, T1509, score ~0). Leaving floor corpses to the pet (unless we are
-# Weak) until we see it eat (dog_eat clears mconf) or PET_HUNGER_TURNS pass lets it feed and calm down.
-# sources: /refs/past_runs/20261008-132537/72.diff (PET_HUNGER_FIX, kept in 3 chains), https://nethackwiki.com/wiki/Pet,
-#          https://nethackwiki.com/wiki/Talk:Pet, https://nethackwiki.com/wiki/Tourist,
-#          https://steamcommunity.com/app/341390/discussions/0/610573751148849294/ (players: hungry pet attacks "from confusion"),
-#          https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_PostRelease/src/dogmove.c (dog_hunger)
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
