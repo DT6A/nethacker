@@ -342,15 +342,11 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: a lone homunculus chains sleeps on the AC10 Tourist (#60's replays: 32 -> 0 HP in three sleeps);
-# it respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff ;
-# /refs/history/71.diff
-SLEEP_BITER_REST = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast kitten/dog/ant.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

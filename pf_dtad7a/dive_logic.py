@@ -68,18 +68,33 @@ MINES_REQUIRED_XL = {}
 # a tool-less dive of a non-dwarf/gnome walks Mines levels 1..PICK_DETOUR_LEVELS for a dwarf's digging tool
 PICK_DETOUR = True
 PICK_DETOUR_LEVELS = 2
-# hypothesis: a homunculus's sleep bite chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP;
-# on the pick-detour + chokepoint chain the Mines/dive levels add more of them, so hiding on Elbereth below 40% HP
-# keeps the run alive (it respects Elbereth)
-# sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ;
-# /refs/history/60.diff (#60: held-out 0.2200 -> 0.2442 on #16), /refs/history/71.diff (#71: 0.2385 -> 0.2627 on #59)
-SLEEP_BITERS = frozenset(('homunculus',))
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
 DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
+# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
+# a dwarf's mattock d12, speed-18+ kittens, little dogs, giant ants and bats hitting twice, weapon-using hill orcs and
+# hobgoblins -- and they are this chain's Dlvl 1-4 grind killers (parent public s2 hill orc, s4 giant ant, s8
+# hobgoblin, s14 kitten; dev 480652 large kobold, 480661 gnome zombie). Keep the exemption only while HP exceeds the
+# monster's max one-round damage (weapon users ~8, fast monsters doubled), so a single max round can't kill; below
+# that, hide on Elbereth (all of these respect it) as against any other monster. Unlisted weak monsters (newt, jackal,
+# sewer rat, ...) keep the old 6. Port of #68 (held-out 0.2200 -> 0.2288 on #58) onto the pick-detour+chokepoint chain.
+# sources: https://nethackwiki.com/wiki/Giant_ant ('a frequent cause of early deaths'; 'Elbereth can reliably drive
+#          off attacking ants'), https://nethackwiki.com/wiki/Elbereth ('must not wait until you are one turn from
+#          death'; dust engraving fails ~27%), https://nethackwiki.com/wiki/Tourist (AC 10, 'extreme caution'),
+#          https://nethackwiki.com/wiki/Kitten, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY ('less than 15 HP or so, I start
+#          looking for ways to run away'), https://gamefaqs.gamespot.com/boards/582497-nethack/59952741 ('decide after
+#          the first exchange, not when you are down to your last few hit points'),
+#          NetHack 3.6.6 src/monst.c (attack dice), src/mhitu.c mattacku, /refs/history/68.diff
+WEAK_ROUND_DAMAGE = {
+    'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
+    'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
+    'dwarf zombie': 7, 'gnome zombie': 6,
+}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1276,9 +1291,10 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # SLEEP_BITER_REST: not a sleep biter (a lone homunculus can sleep an XL5 Tourist three times, 32 -> 0 HP)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+        weak_floor = 6
+        if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
+            weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
