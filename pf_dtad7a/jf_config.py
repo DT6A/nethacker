@@ -193,6 +193,19 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8,
+# and on this chain the PICK_DETOUR walk through Mines levels 1-2: dwarves with mattocks d12, gnome lords, hill
+# orcs) come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready
+# and HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
+# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
+# makemon.c monmax_difficulty; https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Prayer;
+# https://nethackwiki.com/wiki/Tourist ("descend slowly"); https://nethackwiki.com/wiki/Standard_strategy;
+# /refs/history/4.diff, /refs/history/16.diff, /refs/history/59.diff, /refs/history/65.diff (tree nodes #4: held-out
+# 0.1792 -> 0.2112, #16: 0.1873 -> 0.2200, #65 on #18: 0.1875 -> 0.2158; #59 = pick-detour + dive-prayer 0.2385)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -320,14 +333,6 @@ MISSILES_NOT_MELEE = True
 #          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
 #          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
 MOLD_NO_MELEE = True
-
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-# hypothesis: one max round of a listed weak monster can no longer take the AC10 Tourist from 'fight on' to dead
-# sources: /refs/history/68.diff, https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/monst.c
-WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
