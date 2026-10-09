@@ -79,6 +79,24 @@ ELBERETH_REST_UNTIL = 0.85
 # sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ;
 # /refs/history/60.diff (#60: held-out 0.2200 -> 0.2442 on #16) ; jf_config.SLEEP_BITER_REST
 SLEEP_BITERS = frozenset(('homunculus',))
+# hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
+# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
+# a dwarf's mattock, speed-18+ kittens, little dogs, giant ants and giant bats hitting twice, weapon-using kobolds,
+# orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind and dive-start killers (rothe s1, hill orc s2,
+# rabid rat s4, large kobold 480652, wererat 480664, werejackal 480662/480663, gnome zombie 480661). Keep the
+# exemption only while HP exceeds the monster's max one-round damage, so one max round can't kill; below that, hide
+# on Elbereth (all of these respect it) like against any other monster. Unlisted weak monsters keep the old 6.
+# Complements SLEEP_BITER_REST above (same exemption, the homunculus is excluded outright).
+# sources: /refs/history/68.diff (#68: held-out 0.2200 -> 0.2288 on #58), /refs/history/86.diff (#86: 0.1793 ->
+#          0.2106), /refs/history/89.diff (were-/zombie additions); https://nethackwiki.com/wiki/Rothe ('can hit
+#          quite hard', 'somewhat slow at 9 speed and respect Elbereth'), https://nethackwiki.com/wiki/Elbereth,
+#          https://nethackwiki.com/wiki/Giant_ant, https://nethackwiki.com/wiki/Tourist;
+#          NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku
+WEAK_ROUND_DAMAGE = {
+    'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
+    'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
+    'wererat': 8, 'werejackal': 8, 'dwarf zombie': 7, 'gnome zombie': 6,
+}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1276,7 +1294,11 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # SLEEP_BITER_REST: not a sleep biter (a lone homunculus can sleep an XL5 Tourist three times, 32 -> 0 HP)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+        # WEAK_FLOOR_BY_DAMAGE: and only while HP exceeds that monster's max one-round damage (else hide)
+        weak_floor = 6
+        if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
+            weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
                 not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
             self._elbereth_resting = False
             yield False

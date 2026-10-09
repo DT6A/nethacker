@@ -334,10 +334,13 @@ MISSILES_NOT_MELEE = True
 # https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
 SLEEP_BITER_REST = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
+# sources: /refs/history/68.diff, /refs/history/86.diff; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
