@@ -1,7 +1,6 @@
 from collections import defaultdict
 from itertools import product
 
-import nle.nethack as nh
 import numpy as np
 from scipy import signal
 
@@ -465,93 +464,6 @@ def camera_actions(agent, monsters):
     return actions
 
 
-# hypothesis: hostile domestic animals -- a kitten or little dog that went wild, a pony (speed 16, kick 1d6 + bite
-# 1d2) -- kill the AC10 Tourist in the Dlvl 1-4 grind and at the start of the dive (both seed-14 games: a kitten,
-# Dlvl 4 T1996; extra 480663 mal: a pony). A thrown food item never misses one (dothrow.c thitmonst ->
-# befriend_with_obj -> dog.c tamedog): food it eats tames it, any other food (veggy only for horses) makes it
-# peaceful at worst. Throw the cheapest such item from the Tourist's food pile instead of trading darts and blows
-# with it, gaining a pet that fights for us.
-# sources: https://nethackwiki.com/wiki/Domestic_animal, https://nethackwiki.com/wiki/Pony,
-#          https://nethackwiki.com/wiki/Tourist ('depend on pets more than other roles'),
-#          https://nethackwiki.com/wiki/Tripe_ration,
-#          https://www.alt.org/nethack/mirror/www.nethack.de/spoiler/32pets.txt,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/xn_8by0AXTI (keep apples/carrots to tame
-#          steeds), NetHack 3.6.6 src/dothrow.c thitmonst(), src/dog.c tamedog()/dogfood(), include/mondata.h
-#          befriend_with_obj
-_MEAT_TREATS = frozenset(('tripe ration', 'meatball', 'meat stick', 'huge chunk of meat', 'meat ring'))
-_PEOPLE_FOOD = frozenset(('lump of royal jelly', 'candy bar', 'fortune cookie', 'pancake', 'lembas wafer',
-                          'cram ration', 'food ration', 'K-ration', 'C-ration'))   # otyp > SLIME_MOLD, VEGGY
-_FRUIT_VEG = frozenset(('apple', 'carrot', 'banana', 'orange', 'pear', 'slime mold', 'kelp frond',
-                        'eucalyptus leaf', 'clove of garlic'))   # otyp <= SLIME_MOLD, VEGGY (not wolfsbane, melon)
-
-
-def _tame_food(agent, mon):
-    """(item, tames) for the carried food to throw at a domestic `mon`: the least nutritious one it eats (tamed),
-    else the least nutritious one that pacifies it; eggs, melons and cream pies splat, corpses and wolfsbane are
-    kept."""
-    horse = ord(mon.mlet) == MON.S_UNICORN
-    if horse:
-        tames, pacifies = _FRUIT_VEG, _PEOPLE_FOOD
-    else:
-        tames, pacifies = _MEAT_TREATS | _PEOPLE_FOOD, _FRUIT_VEG | {'tin'}
-    best = None
-    for item in agent.inventory.items:
-        if item.category != nh.FOOD_CLASS or not item.is_unambiguous() or item.equipped:
-            continue
-        name = item.object.name
-        if name not in tames and name not in pacifies:
-            continue
-        key = (name not in tames, getattr(item.object, 'nutrition', 0))
-        if best is None or key < best[0]:
-            best = (key, item)
-    return None if best is None else (best[1], not best[0][0])
-
-
-def tame_actions(agent, monsters):
-    if not jf_config.TAME_DOMESTIC or agent.character.prop.blind or agent.character.prop.hallu or \
-            agent.character.prop.polymorph or (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-        return []
-    targets = [m for m in monsters if getattr(m[3], 'mflags2', 0) & MON.M2_DOMESTIC]
-    if not targets:
-        return []
-    tries = getattr(agent, '_tame_tries', None)
-    if tries is None:
-        tries = agent._tame_tries = {}
-    key = agent.current_level().key()
-    by, bx = agent.blstats.y, agent.blstats.x
-    actions = []
-    for _, y, x, mon, glyph in targets:
-        dy, dx = y - by, x - bx
-        if not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
-            continue
-        # a domestic animal that ignored two throws on this level (out of reach, a shapeshifter) is fought again
-        hist = [t for t in tries.get((key, glyph), []) if agent.blstats.time - t < 200]
-        if len(hist) >= 2:
-            continue
-        food = _tame_food(agent, mon)
-        if food is None:
-            continue
-        item, tames = food
-        # dothrow.c throwit: range = ACURRSTR / 2 - weight / 40, and the item stops at the first monster on its way
-        reach = max(1, min(agent.blstats.strength, 18) // 2 - item.unit_weight() // 40)
-        dis = max(abs(dy), abs(dx))
-        if dis > reach:
-            continue
-        sy, sx = (dy > 0) - (dy < 0), (dx > 0) - (dx < 0)
-        clear = True
-        for i in range(1, dis):
-            cy, cx = by + sy * i, bx + sx * i
-            if not agent.current_level().walkable[cy, cx] or agent.glyphs[cy, cx] in G.PETS or \
-                    agent.glyphs[cy, cx] in G.MONS or agent.glyphs[cy, cx] in G.INVISIBLE_MON:
-                clear = False
-                break
-        if not clear:
-            continue
-        # above melee (<= 18) and darts, below the distant / low-HP camera flash
-        actions.append((30 if tames else 28, ('tame', dy, dx, item)))
-    return actions
-
-
 def get_available_actions(agent, monsters):
     actions = []
 
@@ -595,7 +507,6 @@ def get_available_actions(agent, monsters):
         actions.append((15, ('pickup', to_pickup)))
 
     actions.extend(camera_actions(agent, monsters))
-    actions.extend(tame_actions(agent, monsters))
     actions.extend(elbereth_action(agent, monsters))
     actions.extend(wait_action(agent, monsters))
 
