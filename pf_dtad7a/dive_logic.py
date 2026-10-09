@@ -508,6 +508,8 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
+        self._elbereth_rest_start = -10 ** 9
+        self._elbereth_last_near = -10 ** 9
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1263,6 +1265,25 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
+    def _sticky_rest_ok(self):
+        """ELBERETH_STICKY: keep an Elbereth rest going with nothing within radius 2."""
+        agent = self.agent
+        bl = agent.blstats
+        if agent.character.prop.blind or agent.character.prop.polymorph or bl.hunger_state >= Hunger.WEAK or \
+                agent.current_level().dungeon_number == GEHENNOM:
+            return False
+        if bl.time - self._elbereth_rest_start > jf_config.ELBERETH_STICKY_MAX_TURNS:
+            return False
+        if (agent.inventory.engraving_below_me or '').lower() != 'elbereth':
+            return False
+        y0, x0 = bl.y, bl.x
+        around = [m for m in agent.get_visible_monsters()
+                  if max(abs(m[1] - y0), abs(m[2] - x0)) <= 8 and not self._ignores_elbereth(m[3])]
+        if any(self._ignores_elbereth(m[3]) for m in agent.get_visible_monsters()
+               if max(abs(m[1] - y0), abs(m[2] - x0)) <= 8):
+            return False
+        return bool(around) or bl.time - self._elbereth_last_near <= jf_config.ELBERETH_STICKY_RECENT
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1293,6 +1314,22 @@ class DiveLogic:
                 not infectious_were(agent, near[0][3]):
             self._elbereth_resting = False
             yield False
+        # hypothesis: ELBERETH_STICKY -- the rest's 40%->85% hysteresis lived in _elbereth_resting, which every
+        # exit above clears the moment nothing is within radius 2; a hit-and-run attacker (a white unicorn,
+        # speed 24, in/out of radius 2) made the bot drop the rest at 40-73% HP, walk back into it, lose
+        # 29 HP in 6 turns and start the next rest lower (parent seed 14: ~20 'ELBERETH rest start' on Dlvl 4,
+        # then dead). Keep holding the intact Elbereth square, searching, until 85% HP.
+        # sources: https://nethackwiki.com/wiki/Elbereth (scared monsters flee and come back; a dust engraving
+        #          stays until a scared monster erases it, 1 in 7), https://nethackwiki.com/wiki/Unicorn (speed 24,
+        #          butt d12 + kick d6, hostile to the other two alignments), NetHack 3.6.6 src/monmove.c onscary,
+        #          m_move (unicorns keep out of line), engrave.c sengr_at
+        if near and not any(self._ignores_elbereth(m[3]) for m in near):
+            self._elbereth_last_near = bl.time
+        if jf_config.ELBERETH_STICKY and resting and not near and self._sticky_rest_ok():
+            yield True
+            self._elbereth_resting = True
+            agent.search()
+            return
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
             self._elbereth_resting = False
@@ -1304,6 +1341,7 @@ class DiveLogic:
         yield True
         if not self._elbereth_resting:
             agent.log(f'ELBERETH rest start: {[m[3].mname for m in near]}')
+            self._elbereth_rest_start = bl.time
         self._elbereth_resting = True
         if engraving != 'elbereth':
             agent.engrave('Elbereth')
