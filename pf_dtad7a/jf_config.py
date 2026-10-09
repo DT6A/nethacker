@@ -364,12 +364,6 @@ PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
-# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6 HP.
-# hypothesis: fewer Dlvl 1-4 grind deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: /refs/past_runs/20261008-213012/102.diff; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c
-WEAK_FLOOR_BY_DAMAGE = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
