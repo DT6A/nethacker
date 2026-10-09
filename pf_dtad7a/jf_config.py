@@ -376,13 +376,18 @@ PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_
 #          /refs/past_runs/20261008-132537/71.diff (kept, held-out 0.2070 -> 0.2105)
 WEAR_UNKNOWN_MUNDANE = True
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/past_runs/20261008-213012/102.diff
-WEAK_FLOOR_BY_DAMAGE = True
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain; also in the best tree node #27).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM,
+#          /refs/past_runs/20261008-213012/8.diff, /refs/history/27.diff
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
