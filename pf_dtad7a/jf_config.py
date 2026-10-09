@@ -321,16 +321,13 @@ MISSILES_NOT_MELEE = True
 #          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
 MOLD_NO_MELEE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: the AC10 Tourist's Dlvl 1-4 grind meets homunculi often; a lone one slept an XL5 Tourist three times
-# 32 -> 0 HP (#60 diag). A homunculus respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest and
-# keeps the HP prayer; nothing else is fought differently. Port of #60 (held-out 0.2200 -> 0.2442) / #71 (0.2385 -> 0.2627).
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Tourist ;
-# /refs/history/60.diff
-SLEEP_BITER_REST = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+# hypothesis: one max round of a listed weak monster can no longer take the AC10 Tourist from 'fight on' to dead
+# sources: /refs/history/68.diff, https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/monst.c
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
