@@ -25,7 +25,7 @@ from scipy import ndimage
 
 from . import objects as O
 
-from . import jf_config, jf_log, mondata, power, utils, valley
+from . import jf_config, jf_log, power, utils, valley
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -71,24 +71,21 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the grind's and the dive start's losses come from hard hitters an AC10 Tourist can't outfight (rothe:
-# 3 attacks ~9 HP a round, hill orc/hobgoblin packs, yeti/pony/rope golem/jaguar at XL 7-8, fire/soldier ants): one
-# or two rounds take a 40-60 HP hero past the 40% / 30%-drop triggers, and with the HP prayer already spent on
-# hunger it dies in the turn after them. Start (and keep) the Elbereth rest once HP is within two rounds of the near
-# (radius 2) hostiles' expected melee damage -- monsters of level <= 1 left out (a lone level-2 rothe/hill orc is
-# still fought by the lone-weak rule, but a pack of them counts) -- so the
-# engraving is down before the next round, at most THREAT_REST_TURNS turns in a row (no endless stand-off at full HP)
-# sources: past run 20261008-132537 #42 (kept, held-out 0.2097 -> 0.2127), /refs/history/7.diff (#7: held-out
-#          0.1157 -> 0.1319 on #1), https://nethackwiki.com/wiki/Elbereth (a dust engraving scares at once),
-#          https://nethackwiki.com/wiki/Rothe ("one of the most dangerous early monsters"),
-#          https://nethackwiki.com/wiki/Tourist (low HP, AC 10: avoid melee with strong monsters),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Gmy45ilIIIQ (soldier ants, the no.1 killer),
-#          NetHack 3.6.6 src/monst.c attacks (mondata.py), mhitu.c to-hit
-THREAT_REST = True
-THREAT_REST_TURNS = 300
-# include/monattk.h attack types that hit an adjacent hero (no passive, spit, engulf, breath, explosion, gaze, spell)
-MELEE_ATTACK_TYPES = frozenset((1, 2, 3, 4, 5, 6, 7, 16, 254))
-AT_WEAP = 254
+# hypothesis: the lone-weak-monster exemption below fights on to 6 HP counting on the HP prayer at critically_low_hp
+# (the only HP prayer since LOWHP_EXACT, #5); within 500 turns of the last prayer (the grind's Weak hunger prayers
+# come every ~1150-1300 turns, so ~40% of grind turns) or after a failed one there is no such prayer, and the
+# desperate prayer then fails with no shimmering light (pray.c: p_type 3 only gives u.uinvulnerable) while a jackal,
+# coyote, hobgoblin or giant rat bites the AC10 Tourist through the three helpless turns. With the darts thrown (#2)
+# the fights last more rounds at point blank, so the exemption runs longer too. Without a safe HP prayer, hide on
+# Elbereth below 40% HP from a lone weak monster as well (PRAYERLESS_GUARD) -- fewer Dlvl 1-4 grind deaths at XL 1-7.
+# Port of past run 20261008-132537 #4 (kept on a LOWHP_EXACT parent: held-out 0.1517 -> 0.2196).
+# sources: https://nethackwiki.com/wiki/Prayer (a successful prayer protects; above timeout 200 in major trouble it
+#          fails and smites), https://nethackwiki.com/wiki/Elbereth ('engrave early', dust fails ~27%),
+#          https://nethackwiki.com/wiki/Tourist, https://strategywiki.org/wiki/NetHack/Staying_Alive (if you prayed too
+#          recently you need other ways to survive), https://forums.civfanatics.com/threads/nethack.256120/page-5
+#          (player thread: Elbereth for all it's worth), NetHack 3.6.6 src/pray.c dopray/can_pray,
+#          /refs/past_runs/20261008-132537/4.diff
+PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -505,8 +502,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._threat_since = 0             # THREAT_REST: first and last turn of the current threat streak
-        self._threat_last = -10 ** 9
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -582,8 +577,6 @@ class DiveLogic:
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
         self._fed_wait_logged = False
-        self._pray_wait_start = None    # DIVE_PRAYER_READY: turn the grind first reached its end XL
-        self._pray_wait_logged = False
 
     # ------------------------------------------------------------------ state
 
@@ -916,8 +909,6 @@ class DiveLogic:
         xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
-        if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.prayer_ready_for_dive():
-            xl_trigger = False   # DIVE_PRAYER_READY: start the dive with the HP prayer available
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
                 rescue or late_rescue or planned:
             tag = ', rescue' if rescue else ', late rescue' if late_rescue else ', early' if planned else ''
@@ -1276,8 +1267,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if THREAT_REST and self._threat_rest():
-            falling = True
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1289,7 +1278,10 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(
+                    500, first_turn=jf_config.LOWHP_FIRST_TURN if jf_config.LOWHP_EXACT else None)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1540,32 +1532,6 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
-
-    def _near_melee_damage(self):
-        """Expected damage of one turn if every near hostile above level 1 lands all its melee attacks (speed over 12
-        counted as extra attacks). Level 0-1 monsters are left out; a lone level-2 one is still fought by the lone-weak
-        rule, but a rothe or hill orc pack counts."""
-        total = 0.0
-        for m in self._near_hostiles():
-            if getattr(m[3], 'mlevel', 0) <= 1:
-                continue
-            data = mondata.MONS.get(getattr(m[3], 'mname', ''))
-            if data is None:
-                continue
-            dmg = sum(3.5 if aatyp == AT_WEAP and damn == 0 else damn * (damd + 1) / 2
-                      for aatyp, _, damn, damd in data[5] if aatyp in MELEE_ATTACK_TYPES)
-            total += dmg * max(1.0, data[1] / 12)
-        return total
-
-    def _threat_rest(self):
-        """THREAT_REST: HP within two rounds of the near hostiles' melee damage, for at most THREAT_REST_TURNS in a row."""
-        bl = self.agent.blstats
-        if bl.hitpoints > 2 * self._near_melee_damage():
-            return False
-        if bl.time - self._threat_last > 5:
-            self._threat_since = bl.time
-        self._threat_last = bl.time
-        return bl.time - self._threat_since <= THREAT_REST_TURNS
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats
@@ -2451,29 +2417,7 @@ class DiveLogic:
     def first_level_done(self):
         """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive() and \
-            self.prayer_ready_for_dive()
-
-    def prayer_ready_for_dive(self):
-        """jf_config.DIVE_PRAYER_READY: the grind ends with the low-HP prayer available (the HP prayer's own
-        is_safe_to_pray(500) test) and HP >= ELBERETH_REST_UNTIL; else it goes on on Dlvl 1, at most
-        DIVE_PRAYER_MAX_WAIT turns. A failed prayer doesn't wait (the rescue dive handles that)."""
-        # hypothesis: dive-start losses on Dlvl 2-8 come right after a hunger prayer, with no HP prayer left
-        # sources: NetHack 3.6.6 pray.c (rnz(350) timeout); nethackwiki.com/wiki/Prayer_timeout; see jf_config
-        if not jf_config.DIVE_PRAYER_READY:
-            return True
-        agent = self.agent
-        bl = agent.blstats
-        if self._pray_wait_start is None:
-            self._pray_wait_start = bl.time
-        if bl.time - self._pray_wait_start > jf_config.DIVE_PRAYER_MAX_WAIT or agent.prayer_failed:
-            return True
-        ready = agent.is_safe_to_pray(500) and bl.hitpoints >= ELBERETH_REST_UNTIL * bl.max_hitpoints
-        if not ready and not self._pray_wait_logged:
-            self._pray_wait_logged = True
-            agent.log(f'DIVE_PRAYER_READY waiting: gap={None if agent.last_prayer_turn is None else bl.time - agent.last_prayer_turn} '
-                      f'hp={bl.hitpoints}/{bl.max_hitpoints}')
-        return ready
+        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
