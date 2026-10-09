@@ -315,26 +315,19 @@ MISSILES_NOT_MELEE = True
 # ignored it
 HOSTILE_RECHECK = True
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. The parent's early losses (hobgoblin, hill
-# orc, rothe, rabid rat, homunculus, large kobold, iguana, wererat, gnome zombie on Dlvl 1-4 at XL 5-7) are all melee
-# losses at AC 10. Random armour is cursed 12.3% of the time and then mostly -0/-1 (Armor wiki): a cursed plain piece
-# only sticks and still gives about its base AC, and takeoff() already handles 'It is cursed.' (do_wear.c cursed()
-# sets bknown). So also wear unknown-BUC armour that is unambiguous, NON-magical (oc_magic 0: no levitation/fumbling/
-# dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so no AC-0 cloak locks the suit slot), is not a
-# shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid. Known items keep priority on ties.
-# Lower AC -> fewer hits taken in every early fight, on top of the darts thrown from range.
-# sources: /refs/past_runs/20261008-132537/71.diff (kept there, held-out 0.2070 -> 0.2105),
-#          https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Armor_class, https://nethackwiki.com/wiki/Helm,
-#          https://nethackwiki.com/wiki/Forum:Inventory_Management (players: cursed armour is sticky, usually -0..-1),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/LajS06KywRk (r.g.r.n: stuck in cursed armour, prayed out),
-#          https://nethackwiki.com/wiki/User:Furey/Furey%27s_NetHack_Tips (wear-test lots of armour early),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
-WEAR_UNKNOWN_MUNDANE = True
+# a hostile domestic animal (kitten/dog/pony family) in a clear throwing line gets a carried food item thrown at it
+# instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
+TAME_DOMESTIC = True
+
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: homunculi are met in most Dlvl 1-4 grinds and their sleep bites turn a lone weak monster into a killer
+# of the AC10 Tourist; a homunculus respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest.
+# Port of #60 / #71 (held-out +0.024 on both chains); nothing else is fought differently.
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
+SLEEP_BITER_REST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
