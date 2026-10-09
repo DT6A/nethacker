@@ -354,33 +354,20 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: a shrieker is no free "weak monster" to punch to death: while we (or something fighting us) stand next to it
-# it shrieks (monmove.c dochug -> m_respond), each shriek aggravates and has a 1 in 10 chance to makemon() an extra monster,
-# sometimes a purple worm (level 15, engulfs, digests ~10 HP a turn): seeds 5 and 8 died on Dlvl 1/4 at XL5-7 right after
-# "The shrieker shrieks." (4 of 30 parent games) in a 6-20 turn bare-handed melee (unskilled punches miss ~60%). So fight it
-# with the +2 darts: line up 2+ squares away (it has no attack and speed 1, so no shriek at range) and, if it is adjacent,
-# throw point blank (priority 17 > the punch's 16) -- a few turns next to it instead of a dozen.
-# sources: https://nethackwiki.com/wiki/Shrieker (shrieks only when adjacent; 'ranged attacks stop it before it can shriek'),
-# NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8
-SHRIEKER_RANGED = True
-
 # GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
 # GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# hypothesis: the Tourist's Dlvl 1-4 early losses are bare-hand/dagger melee at XL1-5 with 14-35 +2 darts unused: item_manager
-# turns every UNKNOWN BUC into UNCURSED, so get_best_melee_weapon wields any found dagger -- debug logs of 9 early-loss games
-# show "The crude dagger welds itself to your hand!" (seeds 7, 733402) and, with that Unskilled (-4 to hit, d4) dagger in hand,
-# point_blank_throw is False so the bot stabs at ~35% to hit instead of throwing a +2 dart (+2 enchant, +2 point blank, Basic
-# skill, multishot) at ~80%. Below XL 5 (the wiki's "start melee training at about XL 5") wield only a weapon whose text names
-# its BUC; otherwise keep the hands free and throw.
-# sources: https://nethackwiki.com/wiki/Tourist (darts first, melee weapon ~XL5, Unskilled -4 to hit),
-# https://nethackwiki.com/wiki/Forum:Enhancing_dart_and_dagger_skills (wield a dagger only once it is known not cursed),
-# https://nethackwiki.com/wiki/Dart, rec.games.roguelike.nethack "it took me 4 years to understand" (Tourist: darts),
-# NetHack 3.6.6 src/wield.c ready_weapon/welded (cursed wielded weapon welds)
-NO_BLIND_WIELD = True
-NO_BLIND_WIELD_XL = 5
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
+# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
+# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
+# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
+WEAK_FLOOR_BY_DAMAGE = True
+
+# PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
+# interrupts the PRAY step (see the hypothesis in agent.pray)
+PRAYER_RECORD_FIX = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
