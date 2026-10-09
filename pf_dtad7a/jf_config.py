@@ -97,18 +97,7 @@ GRIND_DEEP_LEVEL = 3
 NO_DIP_WITH_TOOL = False
 # the grind's main-dungeon level by XL, {min XL: Dlvl} (empty: Dlvl 1 throughout; overrides GRIND_DEEP_*):
 # e.g. {5: 3, 7: 2} keeps the random-monster cap (depth + XL) / 2 at 4 from XL 5 (global_logic._grind_level)
-# hypothesis: ~70% of this chain's games are lost in the 12-25k-turn Dlvl-1 grind at XL 5-7 (werejackal, dwarf, wand, rabid
-# rat, hill orc): random spawns are capped at difficulty (depth + XL) / 2 (makemon.c), which is 3 on Dlvl 1 at XL 5-6, so
-# XP per spawn is low, the grind drags on through ~12 hunger prayers and every extra thousand turns is more exposure.
-# Grinding on Dlvl 3 at XL 5-6 and Dlvl 2 at XL 7 keeps that cap at 4 (global_logic._grind_level) -- more XP per kill,
-# fewer turns and prayers -- without reaching the difficulty 5-6 monsters (soldier ants, killer bees) of a deeper grind.
-# Never tried on this Tourist chain; measured on the same engine's other classes: prayers 12.2 -> 7.2 per game and grind
-# losses 10 -> 5 ("train 3, early-game A027" in the top programs' jf_config).
-# sources: /refs/top/ac6a6251af7b/nhbot_v2/jf_config.py and /refs/top/0f95a4e16b4c/pf_v35/jf_config.py (GRIND_LEVELS),
-#          https://nethackwiki.com/wiki/Monster_generation (maxmlev = (level difficulty + XL) / 2),
-#          https://nethackwiki.com/wiki/Level_difficulty, https://nethackwiki.com/wiki/Werejackal,
-#          https://nethackwiki.com/wiki/Tourist
-GRIND_LEVELS = {5: 3, 7: 2}
+GRIND_LEVELS = {}
 # the tour skips to its next milestone after this many turns within 8 squares of one spot on one level
 # (0: never). Stalls held 12 of 90 games for 1500-14000 turns, fainting through hunger prayers.
 TOUR_STALL_TURNS = 1500
@@ -204,6 +193,17 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
+# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
+# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
+# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://nethackwiki.com/wiki/Standard_strategy; /refs/past_runs/20261008-213012/92.diff (kept on the armour chain:
+# held-out 0.1875 -> 0.2158), /refs/past_runs/20261008-213012/65.diff, 61.diff, 16.diff (held-out +0.03 each)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -378,6 +378,23 @@ MISSILES_NOT_MELEE = True
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
+
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
+# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then
+# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
+# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
+# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so
+# no AC-0 cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is
+# not unpaid. Known items keep priority on ties; lower AC -> fewer hits taken in every early fight.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
+#          /refs/past_runs/20261008-132537/71.diff
+WEAR_UNKNOWN_MUNDANE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
