@@ -73,6 +73,7 @@ class Agent:
         self._pray_reason = None      # which rule asked for the next prayer (logged)
         self._no_kick_until = -1      # wounded legs: no kicking until this turn
         self._last_resort_stairs_turn = -10 ** 9
+        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which corpses on the floor are left to the pet
         self._last_resort_dig_turn = -1   # LAST_RESORT_DIG: at most one zap per turn
         self._last_resort_zapped = set()  # LR_WAND_ONCE: glyphs of unknown wands the last resort already zapped
         self.prayer_failed = False
@@ -430,6 +431,8 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        if jf_config.PET_HUNGER_FIX:
+            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -2044,11 +2047,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2240,10 +2238,30 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
+    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) "
+                           r"(?:eats|devours) ")
+
+    def _note_pet_hunger(self):
+        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
+        it is 500 turns past its hungrytime; the pet eating something (dog_eat) ends it."""
+        bl = getattr(self, 'blstats', None)
+        if bl is None:
+            return
+        msg = getattr(self, 'message', None) or ''
+        if 'is confused from hunger' in msg:
+            if getattr(self, '_pet_starving_until', -1) < bl.time:
+                self.log('PET starving (confused from hunger): leaving the corpses to it')
+            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+        elif getattr(self, '_pet_starving_until', -1) >= bl.time and self._PET_EATS.search(msg):
+            self._pet_starving_until = -1
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
+        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
+                self.blstats.hunger_state < Hunger.WEAK:
+            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
