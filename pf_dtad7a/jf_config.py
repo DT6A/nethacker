@@ -202,6 +202,8 @@ DIVE_FED_MAX_WAIT = 2000
 # makemon.c monmax_difficulty; https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist
 # ("descend slowly"); https://nethackwiki.com/wiki/Standard_strategy; /refs/history/4.diff and /refs/history/16.diff
 # (tree nodes #4: held-out 0.1792 -> 0.2112, #16: 0.1873 -> 0.2200); node #65 stacks it on #18 (darts+wands+mold)
+# node #92 stacks it on #66 (darts+wands+mold+WEAR_UNKNOWN_MUNDANE): #79 got 0.1873 -> 0.2200 on the armour chain #62,
+# #65 0.1875 -> 0.2158 on #18 -- worn armour makes the waiting turns on Dlvl 1 cheaper still
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -332,24 +334,25 @@ MISSILES_NOT_MELEE = True
 #          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
 MOLD_NO_MELEE = True
 
-# hypothesis: combat/movement_priority.py drew melee squares around every hostile unicorn at HP >= 15 and never a
-# retreat ('unicorn': pass), and goto_action walks at any monster when the heatmap is flat, so the AC10 bare-handed
-# Tourist chased cross-aligned unicorns (base level 4, speed 24, AC 2, butt 1d12 + kick 1d6, several hits a turn).
-# A unicorn keeps out of line with a hero it sees and never steps into melee on its own (monmove.c m_move NOTONL);
-# closed in on, it strikes first and jumps clear -- the chaser takes free hits and rarely lands one. Dev XL8 dive
-# starts died that way on Dlvl 3-4 (480663 mal white unicorn, 480665 fem+mal black unicorn), as did earlier runs'
-# Tourists ('killed by a white/black unicorn', Xp:8). Until AC <= UNICORN_FIGHT_AC and XL >= UNICORN_FIGHT_XL a
-# hostile unicorn is fought only when adjacent (hit back: it out-runs us) or lined up for darts; otherwise fight2
-# lets it be and the move heatmap keeps us off its adjacent squares, so the dive goes on. Expect fewer dive-start
-# losses; unicorns respect Elbereth, so the low-HP rest still covers an adjacent one.
-# sources: https://nethackwiki.com/wiki/Unicorn ("won't deliberately step into melee range... usually attacks you
-#          first, then jumps or teleports clear"; early game: let a pet kill it), NetHack 3.6.6 src/monmove.c m_move
-#          (is_unicorn NOTONL avoidance), https://nethackwiki.com/wiki/Tourist (AC 10, weak melee),
-#          web search "nethack unicorn early game low level" (players: if low level with weak AC, don't chase one),
-#          /refs/past_runs.md (Tourist XL8 dives 'killed by a white/black unicorn' in several runs)
-UNICORN_NO_CHASE = True
-UNICORN_FIGHT_AC = 2
-UNICORN_FIGHT_XL = 10
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. The parent's early losses (rothe, hill orc,
+# large kobold, hobgoblin, rabid rat, iguana, giant ant, owlbear; extra seeds: yeti, pony, rope golem, wererat) are
+# all melee losses at AC 10. Random armour is cursed 12.3% of the time and then mostly +0/-1 (Armor wiki): a cursed
+# plain piece only sticks and still gives about its base AC, and takeoff() already handles 'It is cursed.' (do_wear.c
+# cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous (no random-appearance helm/boots/gloves:
+# those hide the autocursing / levitation / fumbling items), NON-magical (oc_magic 0), gives AC (base >= 1, so no AC-0
+# piece locks a slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid.
+# Known-BUC items keep priority on ties; lower AC -> fewer hits taken in every early fight.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... better armor"; mithril/orcish helm/iron shoes kit),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm (only random-appearance helms autocurse),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY ("other classes can get away with
+#          wearing that cursed dwarvish mithril"), https://www.chiark.greenend.org.uk/~damerell/games/nhid.html,
+#          /refs/past_runs/20261008-132537/71.diff (kept there: held-out 0.2070 -> 0.2105),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
+WEAR_UNKNOWN_MUNDANE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

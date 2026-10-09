@@ -41,27 +41,6 @@ def is_dangerous_monster(monster):
     return is_pet or mon.mname in INSECTS
 
 
-def unicorn_keep_away(agent, monster):
-    """UNICORN_NO_CHASE: a hostile unicorn a weak hero (bad AC or low XL) should not walk up to."""
-    if not jf_config.UNICORN_NO_CHASE or 'unicorn' not in monster[3].mname:
-        return False
-    bl = agent.blstats
-    return bl.armor_class > jf_config.UNICORN_FIGHT_AC or bl.experience_level < jf_config.UNICORN_FIGHT_XL
-
-
-def unicorn_out_of_reach(agent, monster):
-    """A keep-away unicorn that is neither adjacent (fleeing a speed-24 monster is pointless: hit back) nor
-    lined up within dart range with missiles to throw: fight2 lets it be."""
-    if not unicorn_keep_away(agent, monster):
-        return False
-    _, y, x, _, _ = monster
-    dy, dx = int(y) - agent.blstats.y, int(x) - agent.blstats.x
-    if max(abs(dy), abs(dx)) <= 1:
-        return False
-    lined_up = dy == 0 or dx == 0 or abs(dy) == abs(dx)
-    return not (lined_up and max(abs(dy), abs(dx)) <= 7 and agent.inventory.get_ranged_combinations())
-
-
 def _adjacent_turns(agent, monster):
     """Turns this monster has stayed adjacent to us (a gap of more than 3 turns resets it)."""
     _, y, x, mon, _ = monster
