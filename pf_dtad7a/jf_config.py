@@ -321,26 +321,10 @@ WAND_STAIRS_FIX = True
 #          /refs/past_runs/20261008-132537/79.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats (parent dev seeds 480659 hill orc, 480660 rothe,
-# 480661 Uruk-hai, 480657 sewer rat, 480658/480665 wererat, s1 jackal) -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-132537 #5/#65 (kept both times on this pf_dtad7a engine; #5 held-out 0.2114 vs 0.1517).
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://www.melankolia.net/nethack/nethack.guide.html (rothes),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          http://crpgaddict.blogspot.com/2012/07/nethack-documentation.html (comments: 5 jackals, fight in a hallway),
-#          /refs/past_runs/20261008-132537/65.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
+# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
+# could not be thrown, so the Tourist never used its starting ranged attack
+MISSILES_NOT_MELEE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
