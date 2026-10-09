@@ -98,6 +98,10 @@ NO_DIP_WITH_TOOL = False
 # the grind's main-dungeon level by XL, {min XL: Dlvl} (empty: Dlvl 1 throughout; overrides GRIND_DEEP_*):
 # e.g. {5: 3, 7: 2} keeps the random-monster cap (depth + XL) / 2 at 4 from XL 5 (global_logic._grind_level)
 GRIND_LEVELS = {}
+# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
+# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
+GRIND_CAMERA = True
+GRIND_CAMERA_RATIO = 0.4
 # the tour skips to its next milestone after this many turns within 8 squares of one spot on one level
 # (0: never). Stalls held 12 of 90 games for 1500-14000 turns, fainting through hunger prayers.
 TOUR_STALL_TURNS = 1500
@@ -193,18 +197,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; the parent's dive-start losses (rope
-# golem Dlvl 7, newt Dlvl 4, yeti/pony Dlvl 3, black unicorn Dlvl 4 at XL 7-8) come in the first few hundred
-# turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85% (at most
-# DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives the dive
-# start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# port of /refs/past_runs/20261008-213012/61.diff (#61: held-out 0.1873 -> 0.2200), #4/#16/#79/#92 same idea
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
