@@ -357,9 +357,21 @@ WAND_STAIRS_FIX = True
 #          NetHack 3.6.6 src/monst.c
 WEAK_FLOOR_BY_DAMAGE = True
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Nearly every grind/dive-start loss (hill orc,
+# wererat, hobbit, gnome, dingo, zombies) is a melee loss at AC 10. Random armour is cursed 12.3% of the time and then
+# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
+# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
+# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment), gives AC (base >= 1, so no AC-0
+# cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is not
+# unpaid. Known items keep priority on ties. Lower AC -> fewer hits taken in every early fight.
+# sources: /refs/past_runs/20261008-132537/71.diff (kept there, held-out 0.2070 -> 0.2105),
+#          https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm, NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
+WEAR_UNKNOWN_MUNDANE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
