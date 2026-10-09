@@ -507,7 +507,27 @@ def _tame_food(agent, mon):
     return None if best is None else (best[1], not best[0][0])
 
 
+# hypothesis: the parent's TAME_DOMESTIC never threw a single food item -- the monster coordinates and blstats are numpy
+# integers, so the line-direction sign `(dy > 0) - (dy < 0)` raised "numpy boolean subtract is not supported" in
+# tame_actions on every fight2 call with a hostile domestic animal in a straight line. fight2 panicked, the panic
+# loop fell back to a random walk, and the Tourist wandered unanswered while the kitten / little dog / pony bit it
+# (my replay of public seed 5: 'PANIC TypeError ... random walk' at T786, dead at T792). That is 13 of the parent's 30
+# public and 13 of its 30 extra-seed games ending 'killed by a kitten/little dog/dog/pony' (the #17 chain
+# before it: a few). Plain ints make the throw actually happen (dothrow.c thitmonst -> dog.c tamedog: tamed or
+# pacified, never a miss), and the action builder now fails closed (no tame action, the normal dart/melee fight) on
+# any unexpected error instead of panicking the whole fight. Fewer early losses to domestic animals.
+# sources: my diagnostic replay of /refs/parent-eval.json seed 5 (JF_LOG_DIR), numpy docs (bool '-' is a TypeError
+#          since numpy 1.13), NetHack 3.6.6 src/dothrow.c thitmonst(), src/dog.c tamedog(),
+#          https://nethackwiki.com/wiki/Domestic_animal, https://nethackwiki.com/wiki/Tourist
 def tame_actions(agent, monsters):
+    try:
+        return _tame_actions(agent, monsters)
+    except Exception as e:  # never let the taming shortcut panic fight2
+        agent.log(f'TAME_DOMESTIC: skipped ({type(e).__name__}: {e})')
+        return []
+
+
+def _tame_actions(agent, monsters):
     if not jf_config.TAME_DOMESTIC or agent.character.prop.blind or agent.character.prop.hallu or \
             agent.character.prop.polymorph or (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
         return []
@@ -518,10 +538,10 @@ def tame_actions(agent, monsters):
     if tries is None:
         tries = agent._tame_tries = {}
     key = agent.current_level().key()
-    by, bx = agent.blstats.y, agent.blstats.x
+    by, bx = int(agent.blstats.y), int(agent.blstats.x)
     actions = []
     for _, y, x, mon, glyph in targets:
-        dy, dx = y - by, x - bx
+        dy, dx = int(y) - by, int(x) - bx
         if not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
             continue
         # a domestic animal that ignored two throws on this level (out of reach, a shapeshifter) is fought again

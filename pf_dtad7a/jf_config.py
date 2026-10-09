@@ -319,16 +319,6 @@ HOSTILE_RECHECK = True
 # instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
 TAME_DOMESTIC = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: homunculi are met in most Dlvl 1-4 grinds and their sleep bites turn a lone weak monster into a killer
-# of the AC10 Tourist; a homunculus respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest.
-# Port of #60 / #71 (held-out +0.024 on both chains); nothing else is fought differently.
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
-SLEEP_BITER_REST = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
