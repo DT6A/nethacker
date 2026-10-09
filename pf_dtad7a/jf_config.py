@@ -193,20 +193,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8 at XL 7-8,
-# parent: invisible rothe Dlvl 7, little dog / pony / dog Dlvl 3, soldier Dlvl 8) come in the first few hundred
-# turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and HP >= 85% (at most
-# DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2 monsters) gives the dive
-# start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350) after a prayer; low HP is major trouble, fixed only
-# with timeout <= 200); makemon.c monmax_difficulty ((depth + XL) / 2); https://nethackwiki.com/wiki/Prayer and
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://en.wikibooks.org/wiki/NetHack/Staying_Alive; https://gamefaqs.gamespot.com/boards/582497-nethack/55423151
-# node #82: ported onto darts+wands+hostile-recheck+tame-domestic from /refs/history/61.diff (#61 on #17:
-# held-out 0.1873 -> 0.2200; #16 on darts+wands: 0.1873 -> 0.2200; #4: 0.1792 -> 0.2112)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -323,15 +309,28 @@ WAND_STAIRS_FIX = True
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
+# hypothesis: the 'HP full' melee permission for brown molds / blue jellies (combat/monster_utils.py
+# consider_melee_only_ranged_if_hp_full) hurts the AC10 Tourist, which since MISSILES_NOT_MELEE punches bare-handed
+# for 1-2 damage. uhitm.c passive() AD_COLD answers 2 of 3 swings that don't kill with (lvl+1)d6 cold (2d6 brown
+# mold, 5d6 blue jelly), heals the target by half of it and splits it once its max HP passes (lvl+1)*8 ('multiplies
+# from your heat'), so a 10-30 HP grind Tourist loses ~5 HP a swing and can wall itself in with molds on Dlvl 1
+# (past run: Elbereth rest/swing/rest until starvation). Without cold resistance (only the Valkyrie keeps the
+# exception) molds are only targets for thrown darts or squares to walk around; expect fewer Dlvl 1-4 grind deaths.
+# sources: https://nethackwiki.com/wiki/Brown_mold, https://nethackwiki.com/wiki/Blue_jelly,
+#          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
+#          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
+MOLD_NO_MELEE = True
 
-# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
-# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
-# ignored it
-HOSTILE_RECHECK = True
-
-# a hostile domestic animal (kitten/dog/pony family) in a clear throwing line gets a carried food item thrown at it
-# instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
-TAME_DOMESTIC = True
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: the AC10 Tourist's Dlvl 1-4 grind meets homunculi often; a lone one slept an XL5 Tourist three times
+# 32 -> 0 HP (#60 diag). A homunculus respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest and
+# keeps the HP prayer; nothing else is fought differently. Port of #60 (held-out 0.2200 -> 0.2442) / #71 (0.2385 -> 0.2627).
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Tourist ;
+# /refs/history/60.diff
+SLEEP_BITER_REST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
