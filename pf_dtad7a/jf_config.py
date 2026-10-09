@@ -324,32 +324,33 @@ WAND_STAIRS_FIX = True
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
+# hypothesis: the AC 10 Tourist's grind and dive-start losses are mostly packs or several hostiles at once -- parent
+# seeds 1 rothe, 2 hill orc, 4 rabid rat, 8 hobgoblin, 13 gnome lord (Mines detour), dev 480652 large kobold, 480662
+# werejackal, 480664 wererat (summoned rats) -- that surround it in an open room, while fight2's 'strike first'
+# heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer corridor squares and open doors
+# (at most 2 squares to be attacked from; nothing passes a door diagonally) and hold one there for a few turns, so
+# the pack arrives one or two at a time -- in a line, into the thrown darts' line of fire (combat/fight_heur.py).
+# Also covers PICK_DETOUR's Mines levels (gnome/dwarf/hill orc groups). Port of #8/#26/#33 (kept all three times:
+# held-out 0.1157 -> 0.1392, 0.1319 -> 0.1327, 0.1792 -> 0.1811) / past run 20261008-132537 #5 / #65.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Tourist,
+#          https://nethackwiki.com/wiki/Hill_orc, https://nethackwiki.com/wiki/Standard_strategy,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          https://www.melankolia.net/nethack/nethack.guide.html (retreat-into-a-corridor trick, rothes),
+#          /refs/history/8.diff, /refs/history/33.diff, /refs/past_runs/20261008-132537/65.diff,
+#          AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. The parent's early losses (rothe, hill orc,
-# large kobold, hobgoblin, rabid rat, iguana, giant ant, owlbear; extra seeds: yeti, pony, rope golem, wererat) are
-# all melee losses at AC 10. Random armour is cursed 12.3% of the time and then mostly +0/-1 (Armor wiki): a cursed
-# plain piece only sticks and still gives about its base AC, and takeoff() already handles 'It is cursed.' (do_wear.c
-# cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous (no random-appearance helm/boots/gloves:
-# those hide the autocursing / levitation / fumbling items), NON-magical (oc_magic 0), gives AC (base >= 1, so no AC-0
-# piece locks a slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid.
-# Known-BUC items keep priority on ties; lower AC -> fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... better armor"; mithril/orcish helm/iron shoes kit),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Helm (only random-appearance helms autocurse),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY ("other classes can get away with
-#          wearing that cursed dwarvish mithril"), https://www.chiark.greenend.org.uk/~damerell/games/nhid.html,
-#          /refs/past_runs/20261008-132537/71.diff (kept there: held-out 0.2070 -> 0.2105),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
-WEAR_UNKNOWN_MUNDANE = True
-
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast pony/dog/kitten.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-WEAK_FLOOR_BY_DAMAGE = True
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: a lone homunculus chains sleeps on the AC10 Tourist (#60's replays: 32 -> 0 HP in three sleeps);
+# it respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff ;
+# /refs/history/71.diff
+SLEEP_BITER_REST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
