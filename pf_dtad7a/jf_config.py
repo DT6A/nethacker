@@ -354,29 +354,29 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# hypothesis: a shrieker is no free "weak monster" to punch to death: while we (or something fighting us) stand next to it
+# it shrieks (monmove.c dochug -> m_respond), each shriek aggravates and has a 1 in 10 chance to makemon() an extra monster,
+# sometimes a purple worm (level 15, engulfs, digests ~10 HP a turn): seeds 5 and 8 died on Dlvl 1/4 at XL5-7 right after
+# "The shrieker shrieks." (4 of 30 parent games) in a 6-20 turn bare-handed melee (unskilled punches miss ~60%). So fight it
+# with the +2 darts: line up 2+ squares away (it has no attack and speed 1, so no shriek at range) and, if it is adjacent,
+# throw point blank (priority 17 > the punch's 16) -- a few turns next to it instead of a dozen.
+# sources: https://nethackwiki.com/wiki/Shrieker (shrieks only when adjacent; 'ranged attacks stop it before it can shriek'),
+# NetHack 3.6.6 src/monmove.c dochug/m_respond (MS_SHRIEK: um_dist(..., 1) then makemon), /refs/parent-eval.json seeds 5 and 8
+SHRIEKER_RANGED = True
 
-# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
-# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
-GRIND_CAMERA = True
-GRIND_CAMERA_RATIO = 0.4
-
-# PET_SAFE_THROW: no thrown volley along a line with open floor behind the target while the pet was seen on
-# this level within PET_SAFE_THROW_TURNS turns and is out of view now (see fight_heur.ranged_priority)
-PET_SAFE_THROW = True
-PET_SAFE_THROW_TURNS = 30
+# the late Dlvl-1 grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of
+# carried food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long
+# as a prayer is >= 500 turns away (the hunger prayer / faint clock covers it), HP >= half, nothing threatening is
+# near and starvation isn't close -- i.e. it does then what every empty-pack grind already does (0: off)
+# hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the long grind, so the XL8 dive
+# often starts with an empty pack and is Weak a few hundred turns later on Dlvl 2-6, where faints kill; pray.c's
+# in_trouble() ranks TROUBLE_STARVING above TROUBLE_HIT, so an HP prayer while Weak may fix only the hunger.
+# One more guarded faint cycle on Dlvl 1 buys ~800 turns of food where faints kill.
+# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased() / can_pray(); src/eat.c newuhs();
+# https://nethackwiki.com/wiki/Nutrition ; https://nethackwiki.com/wiki/Prayer ;
+# /refs/past_runs/20261008-213012/74.diff (tree node #57: public 0.1350 -> 0.1931 on its chain)
+DIVE_FOOD_RESERVE = 800
+DIVE_FOOD_RESERVE_XL = 6
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
