@@ -360,17 +360,26 @@ WAND_STAIRS_FIX = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# sources: /refs/past_runs/20261008-213012/8.diff (kept on darts chain; chain {darts,weak,chokepoint} = best node #27),
-#          https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-132537/65.diff
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
+# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed ~12% of the time and then
+# mostly -0/-1: a cursed plain piece only sticks and still gives about its base AC, and takeoff() already handles
+# 'It is cursed.'. So also wear unknown-BUC armour that is unambiguous, NON-magical (oc_magic 0: no levitation/
+# fumbling/dunce cap/opposite alignment), gives AC, is not a shield (a stuck shield blocks the dive's two-handed
+# mattock) and is not unpaid. Known items keep priority on ties.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
+#          /refs/past_runs/20261008-132537/71.diff (kept, held-out 0.2070 -> 0.2105)
+WEAR_UNKNOWN_MUNDANE = True
+
+# GRIND_CAMERA: during the levelling grind (not diving) flash the expensive camera at an adjacent hostile below
+# GRIND_CAMERA_RATIO of max HP (see fight_heur.camera_actions)
+GRIND_CAMERA = True
+GRIND_CAMERA_RATIO = 0.4
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
