@@ -71,9 +71,25 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: a homunculus's sleep bite chains helpless turns, so it is no 'lone weak monster' to fight down to 6 HP
-# sources: mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; /refs/history/60.diff (#60, #71, #76) ; jf_config.SLEEP_BITER_REST
-SLEEP_BITERS = frozenset(('homunculus',))
+# hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
+# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
+# a dwarf's mattock d12, speed-18+ kittens, little dogs, giant ants, killer bees and giant bats hitting twice, a
+# weapon-using hobbit/hill orc/wererat -- and they are this chain's Dlvl 1-4 grind and dive-start killers (public
+# giant bat s2, giant ant s8/s9, kitten s14, coyote s12; extra: giant ant, hobbit, wererat x2, killer bee, little dog,
+# gnome zombie, werejackal). Keep the exemption only while HP exceeds the monster's max one-round damage (fast
+# monsters doubled), so a single max round can't kill the AC10 Tourist; below that, hide on Elbereth (all of these
+# respect it) like against any other monster. With DIVE_PRAYER_READY the HP prayer is often still recharging when
+# this happens, so the Elbereth square is the only fallback. Unlisted weak monsters (newt, jackal, sewer rat) keep 6.
+# sources: /refs/history/68.diff (#68: held-out 0.2200 -> 0.2288 on #58), https://nethackwiki.com/wiki/Giant_ant
+#          ('speed 18 ... Elbereth can reliably drive off attacking ants'), https://nethackwiki.com/wiki/Rothe,
+#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist ('engrave and stay put'),
+#          https://nethackwiki.com/wiki/Game_Stages ('engrave Elbereth at first sight' of 'a'),
+#          https://nethackwiki.com/wiki/Why_do_I_keep_dying, NetHack 3.6.6 src/monst.c (attack dice), src/mhitu.c
+WEAK_ROUND_DAMAGE = {
+    'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
+    'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
+    'wererat': 8, 'werejackal': 8, 'dwarf zombie': 7, 'gnome zombie': 6,
+}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1270,9 +1286,10 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        # SLEEP_BITER_REST: not a sleep biter (a lone homunculus can sleep a low-XL Tourist through repeated free bites)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
+        weak_floor = 6
+        if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
+            weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor:
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
