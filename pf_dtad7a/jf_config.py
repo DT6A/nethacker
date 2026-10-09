@@ -88,8 +88,6 @@ UPWARD_RETURN = False
 # sources: https://nethackwiki.com/wiki/Trap_door, https://nethackwiki.com/wiki/Scroll_of_magic_mapping,
 #          https://nethackwiki.com/wiki/Tourist, /refs/top/1c4099e80253 (explore until the stairs appear)
 FALL_HOME = True
-# the levelling tour keeps every wand ahead of darts/food/unknown bulk in ItemPriority._split (see there)
-KEEP_WANDS_FIRST = True
 # from this XL the Dlvl 1 grind moves to Dlvl GRIND_DEEP_LEVEL (0: never)
 GRIND_DEEP_XL = 0
 GRIND_DEEP_LEVEL = 3
@@ -348,6 +346,15 @@ THREAT_REST_MIN_DMG = 3.0
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
+
+# a monster marked peaceful that the message says attacked us ('The rothe bites!'), the only adjacent one of its name
+# and not an @, is hostile (monster_tracker._recheck_attackers, see its hypothesis): peacefuls never melee, fight2
+# ignored it
+# hypothesis (node #56): on the darts+LOWHP_EXACT+THREAT_REST chain an attacker wrongly masked peaceful is also left
+# out of THREAT_REST's expected-damage sum, so the rest starts late and the critically_low_hp prayer window is jumped
+# sources: /refs/history/47.diff, /refs/history/3.diff (held-out +0.020), #24 (+0.023), NetHack 3.6.6 monmove.c
+#          dochug(), https://nethackwiki.com/wiki/Peaceful, https://nethackwiki.com/wiki/Why_do_I_keep_dying
+HOSTILE_RECHECK = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
