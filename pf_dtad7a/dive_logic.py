@@ -25,7 +25,7 @@ from scipy import ndimage
 
 from . import objects as O
 
-from . import jf_config, jf_log, mondata, power, utils, valley
+from . import jf_config, jf_log, power, utils, valley
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -71,29 +71,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the AC10 Tourist enters the Elbereth rest only below 40% HP (or after losing 30% in a few turns), so
-# a group -- 2-4 rothes (three attacks, up to 14 a turn each), hill orcs/Uruk-hai with weapons, a killer bee swarm
-# (speed 18), fire/soldier ants at the XL8 dive start -- takes it from above the trigger to dead in one or two
-# turns, and a dust Elbereth fails 27% of the time (so one try is often not enough). Start (and keep) the rest
-# once HP is within two rounds of the near (radius 2) hostiles' expected melee damage (monst.c attacks, speed
-# over 12 counted as extra attacks), so the engraving is down before the group's next round. Weak (level <= 2)
-# monsters count only in a group: a lone one is still fought (lone-weak rule). At most THREAT_REST_TURNS turns in
-# a row, so no endless stand-off at full HP. Port of past run 20261008-132537 #42 (kept, held-out 0.2097->0.2127),
-# widened to weak monsters in groups because this parent's grind losses are rothes/hill orcs/bees/wererat packs.
-# sources: https://nethackwiki.com/wiki/Elbereth ("must not wait until you are one turn from death", 72.7% dust
-#          success), https://nethackwiki.com/wiki/Rothe (groups of 2-4, Elbereth respected),
-#          https://nethackwiki.com/wiki/Killer_bee (swarms, Elbereth "breathing room"),
-#          https://nethackwiki.com/wiki/Tourist (early game "with extreme caution"),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/eKuX81R_QrM (bee swarm: engrave Elbereth and stand
-#          still while the pet kills them), https://gamefaqs.gamespot.com/boards/582497-nethack/59952741 (dust-write
-#          Elbereth as soon as a dangerous respecting monster shows up, not as a last resort),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/f-fJyixH3vM, /refs/past_runs/20261008-132537/42.diff,
-#          NetHack 3.6.6 src/monst.c attacks (mondata.py, from nhbot/nhmodel)
-THREAT_REST = True
-THREAT_REST_TURNS = 300
-# include/monattk.h attack types that hit an adjacent hero (no passive, spit, engulf, breath, explosion, gaze, spell)
-MELEE_ATTACK_TYPES = frozenset((1, 2, 3, 4, 5, 6, 7, 16, 254))
-AT_WEAP = 254
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -277,6 +254,22 @@ EARLY_DIVE = False
 EARLY_DIVE_TURN = 1
 # planned early dive from this XL (0: off): see should_dive
 EARLY_DIVE_XL = 0
+# hypothesis: the Dlvl-1 grind waits for XL 8, but random monsters there are capped at difficulty (1 + XL) / 2,
+# so XL 6 -> 8 takes ~11,500 turns of hunger-prayer cycles (median), and on unseen dungeons that long grind is where
+# the games end: 8 of 15 extra dev seeds die on Dlvl 1-2 at XL 5-7 after 8k-26k turns (0.03-0.07 each; replays of
+# 480653/480660 died Weak/Fainting between prayers at XL 7, T21-26k). Once the grind has run GRIND_CAP_TURN turns
+# at XL >= GRIND_CAP_XL, start the dive anyway (still DIVE_FED-gated): REQUIRED_XL keeps it exploring Dlvl 2-5
+# fully (FULL_EXPLORE_TURNS each), where (depth + XL) / 2 gives more XP per kill and items/armour, so it keeps
+# levelling while it banks depth instead of fainting through more Dlvl-1 prayer cycles.
+# sources: https://nethackwiki.com/wiki/Monster_generation (difficulty <= (level difficulty + XL) / 2, 1/70 spawns),
+#          https://nethackwiki.com/wiki/Experience_level (higher XL only raises the cap; XP need doubles),
+#          https://nethackwiki.com/wiki/Standard_strategy ('head down slowly and explore the dungeon carefully'),
+#          https://nethackwiki.com/wiki/Tourist (explore each level for items; slower descent, not a Dlvl-1 grind),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/5gcIf1WbGYY (r.g.r.n: grinding takes
+#          thousands of turns; descend at a steady pace), https://nethackwiki.com/wiki/Forum:Choosing_between_Dlvl_and_XPlvl_increases
+GRIND_CAP = True
+GRIND_CAP_TURN = 12000
+GRIND_CAP_XL = 6
 # Ditch the pet for the Dlvl 1 grind (off: experiment). On 15 unseen grinds the pet ate ~40% of the
 # corpses (497 meals vs our 732) and made ~10% of the kills (no XP for us); food is what the grind runs
 # out of (hunger prayers, their failures, starvation). Take it down to Dlvl 2 and come back up alone
@@ -510,8 +503,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._threat_since = 0             # THREAT_REST: first and last turn of the current threat streak
-        self._threat_last = -10 ** 9
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -917,6 +908,9 @@ class DiveLogic:
         planned = bool(EARLY_DIVE_XL) and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and xl >= EARLY_DIVE_XL \
             and not agent.prayer_failed
         xl_trigger = xl >= DIVE_XL or (xl >= self._min_xl(DIG_DIVE_XL) and self.digging_tool() is not None)
+        if GRIND_CAP and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and xl >= GRIND_CAP_XL and \
+                agent.blstats.time >= GRIND_CAP_TURN:
+            xl_trigger = True   # GRIND_CAP: the Dlvl-1 grind has run long enough, level on Dlvl 2+
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
         if xl_trigger or gl.milestone >= Milestone.GO_DOWN or agent.blstats.time >= DIVE_TURN or \
@@ -1277,8 +1271,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if THREAT_REST and self._threat_rest():
-            falling = True
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1541,32 +1533,6 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
-
-    def _near_melee_damage(self):
-        """Expected damage of one turn if every near hostile lands all its melee attacks (speed over 12 counted as
-        extra attacks). Weak (level <= 2) monsters count only in a group: the lone-weak rule fights a lone one."""
-        near = self._near_hostiles()
-        total = 0.0
-        for m in near:
-            if len(near) < 2 and getattr(m[3], 'mlevel', 0) <= 2:
-                continue
-            data = mondata.MONS.get(getattr(m[3], 'mname', ''))
-            if data is None:
-                continue
-            dmg = sum(3.5 if aatyp == AT_WEAP and damn == 0 else damn * (damd + 1) / 2
-                      for aatyp, _, damn, damd in data[5] if aatyp in MELEE_ATTACK_TYPES)
-            total += dmg * max(1.0, data[1] / 12)
-        return total
-
-    def _threat_rest(self):
-        """THREAT_REST: HP within two rounds of the near hostiles' melee damage, for at most THREAT_REST_TURNS in a row."""
-        bl = self.agent.blstats
-        if bl.hitpoints > 2 * self._near_melee_damage():
-            return False
-        if bl.time - self._threat_last > 5:
-            self._threat_since = bl.time
-        self._threat_last = bl.time
-        return bl.time - self._threat_since <= THREAT_REST_TURNS
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats

@@ -322,10 +322,6 @@ WAND_STAIRS_FIX = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250
 
-# darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
-# could not be thrown, so the Tourist never used its starting ranged attack
-MISSILES_NOT_MELEE = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
