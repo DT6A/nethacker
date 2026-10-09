@@ -73,6 +73,7 @@ class Agent:
         self._pray_reason = None      # which rule asked for the next prayer (logged)
         self._no_kick_until = -1      # wounded legs: no kicking until this turn
         self._last_resort_stairs_turn = -10 ** 9
+        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which corpses on the floor are left to the pet
         self._last_resort_dig_turn = -1   # LAST_RESORT_DIG: at most one zap per turn
         self._last_resort_zapped = set()  # LR_WAND_ONCE: glyphs of unknown wands the last resort already zapped
         self.prayer_failed = False
@@ -430,6 +431,8 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        if jf_config.PET_HUNGER_FIX:
+            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -2235,10 +2238,30 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
+    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) "
+                           r"(?:eats|devours) ")
+
+    def _note_pet_hunger(self):
+        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
+        it is 500 turns past its hungrytime; the pet eating something (dog_eat) ends it."""
+        bl = getattr(self, 'blstats', None)
+        if bl is None:
+            return
+        msg = getattr(self, 'message', None) or ''
+        if 'is confused from hunger' in msg:
+            if getattr(self, '_pet_starving_until', -1) < bl.time:
+                self.log('PET starving (confused from hunger): leaving the corpses to it')
+            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+        elif getattr(self, '_pet_starving_until', -1) >= bl.time and self._PET_EATS.search(msg):
+            self._pet_starving_until = -1
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
+        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
+                self.blstats.hunger_state < Hunger.WEAK:
+            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
@@ -2380,31 +2403,6 @@ class Agent:
         # fixing hunger, and both starved before the next safe prayer; jf25 s10 zapped its wands and drank
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
-
-        # hypothesis: a healing potion was drunk first at any HP < 1/3 (or < 8), even in pray.c's TROUBLE_HIT window
-        # (critically_low_hp) with a safe HP prayer due -- where the prayer heals fully for nothing (and adds rnd(5)
-        # max HP while max HP < 5 * XL + 11: an XL 1-6 Tourist's 10-40), and the potion only heals 6d8. So the
-        # Tourist's 2 extra-healing potions (its only heals) were spent while the prayer was ready, and the grind's
-        # XL 5-7 Dlvl 1 losses and the dive-start losses come in the ~500 turns after a hunger prayer, when the HP
-        # prayer is gone and the potions are too. At critically low HP with the prayer safe (the same
-        # is_safe_to_pray(500) the HP prayer below uses; never after a failed prayer, never polymorphed or in
-        # Gehennom), pray first and keep the potions for the windows with no prayer. As the top programs'
-        # DEEP_PRAY_FIRST, but in the grind and the whole dive, where this chain's early losses are.
-        # sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble TROUBLE_HIT, can_pray: major trouble
-        #          answered while ublesscnt <= 200, fix_worst_trouble TROUBLE_HIT), https://nethackwiki.com/wiki/Prayer
-        #          (pray before quaffing healing potions), https://nethackwiki.com/wiki/Potion_of_extra_healing,
-        #          https://nethackwiki.com/wiki/Tourist ('rely a lot on their extra healing potions'),
-        #          https://nethackwiki.com/wiki/Healer (fight to critical HP, pray, keep the potions),
-        #          https://nethackwiki.com/wiki/Prayer_timeout, /refs/top/4379e93177c0 + ac6a6251af7b (DEEP_PRAY_FIRST)
-        if jf_config.PRAY_FIRST and not poly_buffer and not self.character.prop.polymorph and \
-                not self.prayer_failed and self._critically_low_hp() and self.is_safe_to_pray(500) and \
-                any(item.is_unambiguous() and item.category == nh.POTION_CLASS and
-                    item.object.name in ['healing', 'extra healing', 'full healing']
-                    for item in flatten_items(self.inventory.items)):
-            yield True
-            self.log(f'PRAY_FIRST: HP {self.blstats.hitpoints}/{self.blstats.max_hitpoints}, keeping the potions')
-            self.pray()
-            return
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
