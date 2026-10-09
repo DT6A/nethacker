@@ -359,14 +359,6 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
-WEAK_FLOOR_BY_DAMAGE = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -380,3 +372,23 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# the late grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of carried
+# food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long as a
+# prayer is >= 500 turns away, HP >= half, nothing threatening is near and starvation isn't close (0: off)
+# hypothesis: the XL8 dive starts with food instead of an empty pack (see Agent._keep_dive_food)
+# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased(); src/eat.c newuhs(); https://nethackwiki.com/wiki/Nutrition ;
+# /refs/past_runs/20261008-213012/74.diff
+DIVE_FOOD_RESERVE = 800
+DIVE_FOOD_RESERVE_XL = 6
+
+# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
+# (0: off; EARLY_FIXES also turns this on, as before)
+# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
+# XL1-4 grind, but the first Weak spell (turn ~850, nutrition 900 at the start) spends it on hunger although a Tourist
+# carries 7+ food items; is_safe_to_pray(500) then blocks the HP prayer for ~500 of every ~900 turns, and one made at a
+# 909-turn gap failed (rnz(350) tail, XL2 -> XL1, grid bug kill, fem seed 733390). Eating keeps the prayer for HP.
+# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
+#          https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (rely on healing items and found
+#          food in the early game, play with extreme caution); Agent._eat_before_praying EARLY_FIXES branch
+EAT_BEFORE_PRAY_XL = 5
