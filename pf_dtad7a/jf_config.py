@@ -367,12 +367,9 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
-# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
-# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
-# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
-# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
-ELBERETH_VS_BLINDED = True
+# PACK_ROUND_FLOOR: elbereth_rest also starts below 70% HP when HP <= the summed max one-round damage of the 2+ hostiles
+# within 2 squares (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones)
+PACK_ROUND_FLOOR = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
