@@ -1848,6 +1848,34 @@ class Agent:
         self._fight_stall = None
         self._fight_moves = []
 
+    def _drop_gas_spore_blasts(self, actions, monsters):
+        """GAS_SPORE_AVOID: no melee/kick/dart at an ADJACENT gas spore unless HP can take its worst blast (4d6)."""
+        # hypothesis: a gas spore can't attack (monst.c: only the on-death 4d6 explosion over its 3x3 square), so
+        # waiting beside it costs nothing, while killing it adjacent costs 4-24 HP. Seed 6 (public, XL5 Tourist):
+        # fight2 backed away along a corridor into a dead end, the 'trapped by a gas spore' fallback (priority 1)
+        # meleed it at 30/40 HP, the blast took 22, HP 8 forced a prayer on a 590-turn gap, 'Thou must relearn
+        # thy lessons' (XL5 -> 4) and a sewer rat finished the run. Searching until HP >= min(max HP, 36) ends the
+        # same fight at 12+ HP at worst. Spores 2+ squares away are untouched (darts at range).
+        # sources: https://nethackwiki.com/wiki/Gas_spore, https://nethackwiki.com/wiki/On-death_explosion,
+        # https://nethackwiki.com/wiki/Tourist, https://nethack.fandom.com/wiki/Gas_spore,
+        # https://forums.giantitp.com/archive/index.php/t-295017.html, /refs/past_runs.md (seed 9 'killed by a
+        # gas spore's explosion' on Dlvl 1 at XL4)
+        bl = self.blstats
+        if bl.hitpoints >= min(bl.max_hitpoints, jf_config.GAS_SPORE_MIN_HP):
+            return actions
+        spores = {(m[1], m[2]) for m in monsters if m[3].mname == 'gas spore' and
+                  utils.adjacent((bl.y, bl.x), (m[1], m[2]))}
+        if not spores:
+            return actions
+        kept = []
+        for a in actions:
+            if a[1][0] in ('melee', 'kick', 'ranged') and (bl.y + a[1][1], bl.x + a[1][2]) in spores:
+                continue
+            kept.append(a)
+        if len(kept) != len(actions):
+            self.log('GAS_SPORE_AVOID: no attack on the adjacent gas spore at HP %d/%d' % (bl.hitpoints, bl.max_hitpoints))
+        return kept
+
     @utils.debug_log('fight2')
     @Strategy.wrap
     def fight2(self):
@@ -1899,6 +1927,9 @@ class Agent:
 
             if self.character.prop.polymorph:
                 actions = list(filter(lambda x: x[1][0] != 'ranged', actions))
+
+            if jf_config.GAS_SPORE_AVOID:
+                actions = self._drop_gas_spore_blasts(actions, monsters)
 
             if jf_config.PIT_AWARE_FIGHT and self.in_pit() and \
                     any(utils.adjacent((self.blstats.y, self.blstats.x), (m[1], m[2])) for m in monsters):
@@ -2578,30 +2609,11 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        food = self.edible_carried_food()
-        if food and not diving and self._keep_dive_food(food[0]):
-            yield False
-        for item in food:
+        for item in self.edible_carried_food():
             yield True
             self.inventory.eat(item)
             return
         yield False
-
-    def _keep_dive_food(self, item):
-        # hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the long grind, so the
-        # XL8 dive often starts with an empty pack and is Weak/Fainting a few hundred turns later on Dlvl 2-6, where
-        # an HP prayer may fix only the hunger (TROUBLE_STARVING outranks TROUBLE_HIT); keep the last
-        # jf_config.DIVE_FOOD_RESERVE nutrition for the dive while a faint cycle on Dlvl 1 is guarded and safe
-        # sources: NetHack 3.6.6 src/pray.c in_trouble()/pleased(), src/eat.c newuhs();
-        #          https://nethackwiki.com/wiki/Nutrition ; /refs/past_runs/20261008-213012/74.diff (public +0.028)
-        bl = self.blstats
-        if not jf_config.DIVE_FOOD_RESERVE or self.prayer_failed or \
-                bl.experience_level < jf_config.DIVE_FOOD_RESERVE_XL:
-            return False
-        if self.carried_food_nutrition() - self._food_item_nutrition(item, 1) >= jf_config.DIVE_FOOD_RESERVE:
-            return False
-        return self.is_safe_to_pray(500) and bl.hitpoints >= 0.5 * bl.max_hitpoints and \
-            not self._starvation_near() and self._hunger_threat() is None
 
     @Strategy.wrap
     def summon_were_allies(self):
@@ -2685,15 +2697,13 @@ class Agent:
 
     def carried_food_nutrition(self):
         """Nutrition of edible_carried_food (corpses by their monster, unidentified items as 0)."""
-        return sum(self._food_item_nutrition(item) for item in self.edible_carried_food())
-
-    def _food_item_nutrition(self, item, count=None):
-        count = item.count if count is None else count
-        if item.is_corpse():
-            return getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * count
-        if item.is_unambiguous():
-            return getattr(item.object, 'nutrition', 0) * count
-        return 0
+        total = 0
+        for item in self.edible_carried_food():
+            if item.is_corpse():
+                total += getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * item.count
+            elif item.is_unambiguous():
+                total += getattr(item.object, 'nutrition', 0) * item.count
+        return total
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""

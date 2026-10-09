@@ -377,11 +377,7 @@ if TOUR_FIXES is not None:
 if LATE_FIXES:
     HAZARD_FIXES = True
 
-# the late grind (XL >= DIVE_FOOD_RESERVE_XL, not diving) keeps the last DIVE_FOOD_RESERVE nutrition of carried
-# food for the dive: while Weak/Fainting it does not eat an item that would leave less than that, as long as a
-# prayer is >= 500 turns away, HP >= half, nothing threatening is near and starvation isn't close (0: off)
-# hypothesis: the XL8 dive starts with food instead of an empty pack (see Agent._keep_dive_food)
-# sources: NetHack 3.6.6 src/pray.c in_trouble() / pleased(); src/eat.c newuhs(); https://nethackwiki.com/wiki/Nutrition ;
-# /refs/past_runs/20261008-213012/74.diff
-DIVE_FOOD_RESERVE = 800
-DIVE_FOOD_RESERVE_XL = 6
+# GAS_SPORE_AVOID: no melee/dart at an adjacent gas spore while HP < min(max HP, GAS_SPORE_MIN_HP) (see
+# agent._drop_gas_spore_blasts); the spore can't hurt us unless killed, so fight2 waits/searches instead
+GAS_SPORE_AVOID = True
+GAS_SPORE_MIN_HP = 36
