@@ -77,6 +77,93 @@ def missiles_risk_the_watch(agent):
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
 
+# hypothesis: with its darts no longer wielded (MISSILES_NOT_MELEE), the Tourist punches every monster that reaches
+# melee (bare hands, unskilled: to-hit +1, d2+1), because ranged_priority gives an adjacent target -11 against
+# melee's 16. A +2 dart thrown point blank is far better (dothrow.c thitmonst: +2 for a throwing weapon, +(3 - distance)
+# = +2 at distance 1, +2 enchantment; d3+2 damage) and trains the dart skill toward Skilled/Expert multishot -- so the
+# Dlvl 1-4 grind fights (jackals, coyotes, bats, rats, hill orcs, were-creatures) end in fewer rounds, i.e. less HP
+# lost. A thrown missile also avoids the target's passive attack. As nhbot's Ranger point-blank archery: one above
+# what melee would get (so the HP <= 8 retreat ordering is kept); weak / ranged-only / exploding kinds keep their
+# old handling (darts break 1 in 4 on a hit, dothrow.c; lichens and newts are punched).
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
+#          https://nethackwiki.com/wiki/Ranged_attack (thrown attacks skip passives at melee range),
+#          rec.games.roguelike.nethack "it took me 4 years to understand" (Expert dart/dagger: throw them at melee
+#          range), nhbot/combat/fight_heur.py ranger_point_blank (this repo), NetHack 3.6.6 src/dothrow.c thitmonst
+# node #2 (tree round 1): port of past run 20261008-132537 #22 (MISSILES_NOT_MELEE + POINT_BLANK_THROW, kept there
+# on several chains with held-out gains of +0.04..+0.09) onto this root, whose Tourists still wield the dart stack.
+# Aimed at the Dlvl 1-4 grind deaths that dominate the dev/held-out seeds (jackal, kobold, sewer rat, wererat, rothe,
+# hill orc, imp at XL 1-8).
+# sources (#2): /refs/past_runs/20261008-132537/22.diff (+ 26/34/63.diff), https://nethackwiki.com/wiki/Tourist
+#          ("usually better to kill things by throwing your darts in the early stages"), https://nethackwiki.com/wiki/Dart
+#          ("ineffective in melee, and must be used by throwing"), https://nethackwiki.com/wiki/Standard_strategy,
+#          http://crpgaddict.blogspot.com/2012/06/nethack-from-beginning.html (players: "USE YOUR DARTS"),
+#          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
+POINT_BLANK_THROW = True
+
+
+# hypothesis: the Tourist grind wields whatever unknown-BUC dagger/axe it picks up (get_best_melee_weapon allows unknown
+# status), and that turned point_blank_throw off: the XL1-5 Tourist then stabs adjacent jackals, bats and rats with an
+# Unskilled weapon (-4 to hit, -2 damage; to-hit ~ 3 + XL, d4-2) while 16+ +2 darts sit in its pack, and dies in
+# melee (seed 14 fem: giant bat, 'You miss the giant bat' with a welded cursed runed dagger, 21 HP -> dead in 4 turns).
+# A thrown +2 dart at distance 1 hits at base +1 +2 (throwing weapon) +2 (3 - distance) +2 enchantment at Basic dart
+# skill and does d3+2: keep throwing whenever the expected damage per swing beats the wielded weapon's (calc_dps on the
+# same formulas the bot already uses to pick weapons). A skilled/enchanted weapon still wins and is used in melee.
+# sources: https://nethackwiki.com/wiki/Tourist ("Unless you find something enchanted or high-damage ... lean on
+#          darts early"; Unskilled weapons carry a -4 to-hit penalty), https://nethackwiki.com/wiki/Multishot,
+#          https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Giant_bat (speed 22, d6 bite),
+#          rec.games.roguelike.nethack "it took me 4 years to understand" (throw darts/daggers at melee range),
+#          https://nethackwiki.com/wiki/Talk:Tourist (a Tourist who kept missing with a wielded dagger),
+#          NetHack 3.6.6 src/dothrow.c thitmonst, src/uhitm.c find_roll_to_hit
+POINT_BLANK_WIELDED = True
+
+
+def thrown_beats_wielded(agent, main, ammo):
+    ch = agent.character
+    melee_hit, melee_dmg = ch.get_melee_bonus(main)
+    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
+    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
+    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
+    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
+    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
+    dart_dmg = max(0, ammo_dmg + skill_dmg)
+    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
+
+
+def point_blank_throw(agent, launcher, ammo):
+    """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
+    try:
+        ch = agent.character
+        if not POINT_BLANK_THROW or launcher is not None or ammo is None or ch.prop.polymorph or \
+                ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
+            return False
+        main = agent.inventory.items.main_hand
+        # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
+        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+                main.objs[0].name in ('dart', 'shuriken'):
+            return True
+        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
+    except Exception:
+        return False
+
+
+def point_blank_priority(agent, monster, default):
+    """One above melee_monster_priority for the same monster, bare-handed (16, or 1 at HP <= 8 against a
+    monster that isn't faster: the retreat keeps winning there)."""
+    try:
+        _, _, _, mon, _ = monster
+        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
+                mon.mname in EXPLODING_MONSTERS:
+            return default
+        ret = 2
+        if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
+            ret += 15
+        if 'were' in mon.mname:
+            ret += 1
+        return ret
+    except Exception:
+        return default
+
+
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -142,6 +229,8 @@ def ranged_priority(agent, dy, dx, monsters):
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
                     return None
+            if dis == 1 and point_blank_throw(agent, launcher, ammo):
+                ret = point_blank_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
 
