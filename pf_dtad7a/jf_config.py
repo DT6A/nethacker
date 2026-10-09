@@ -341,16 +341,11 @@ MOLD_NO_MELEE = True
 #          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
 WEAR_UNKNOWN_MUNDANE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: diag replays of #16 met homunculi in 6/7 grinds and slept in 4/7; one lone homunculus took an XL5
-# Tourist 32 -> 0 HP through three sleeps (fem s12), another 51 -> 5 HP and the HP prayer (s8). A homunculus
-# respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest; nothing else is fought differently.
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /tmp/diag2 replays of #16;
-# /refs/history/60.diff, 71.diff, 76.diff (held-out +0.024 on #16, #59, #61); node #91 stacks it on #66
-SLEEP_BITER_REST = True
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast pony/dog/kitten.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
+WEAK_FLOOR_BY_DAMAGE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
