@@ -352,13 +352,6 @@ WAND_STAIRS_FIX = True
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption held down to a flat 6 HP -- below one round of
-# a rothe (14), dwarf or a fast dog/kitten/bat. With this on it holds only while HP exceeds that monster's max
-# one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep 6. See dive_logic.elbereth_rest.
-# hypothesis: fewer Dlvl 1-4 grind deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: /refs/past_runs/20261008-213012/102.diff; https://nethackwiki.com/wiki/Rothe; NetHack 3.6.6 src/monst.c
-WEAK_FLOOR_BY_DAMAGE = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
