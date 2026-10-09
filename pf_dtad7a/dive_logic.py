@@ -78,14 +78,15 @@ ELBERETH_REST_UNTIL = 0.85
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
 # held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
 # a dwarf's mattock, speed-18+ kittens, little dogs, giant ants and giant bats hitting twice, weapon-using kobolds,
-# orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind and dive-start killers (parent: giant bat,
-# kitten, manes, dwarf zombie, hobbit, fox, sewer rat). Keep the exemption only while HP exceeds the monster's max
-# one-round damage, so one max round can't kill; below that, hide on Elbereth (all of these respect it) like against
-# any other monster. Unlisted weak monsters keep the old 6.
-# sources: https://nethackwiki.com/wiki/Rothe ('can hit quite hard', 'respect Elbereth'),
+# orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind and dive-start killers (parent: killed by a
+# kitten, a wererat x3, a dwarf zombie, manes, a giant bat, a giant ant on Dlvl 1-5 at XL 4-8). Keep the exemption
+# only while HP exceeds the monster's max one-round damage, so one max round can't kill; below that, hide on
+# Elbereth (all of these respect it) like against any other monster. Unlisted weak monsters keep the old 6.
+# sources: /refs/past_runs/20261008-213012/102.diff (#102: held-out 0.2627 -> 0.2933 on its chain; the same rule
+#          kept on six chains, #68 #86 #89 #93 #99: held-out +0.009..+0.045 on these two Tourists),
+#          https://nethackwiki.com/wiki/Rothe ('can hit quite hard', 'respect Elbereth'),
 #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Giant_ant,
-#          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku;
-#          /refs/past_runs/20261008-213012/102.diff (kept on 6 chains, held-out +0.009..+0.045)
+#          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku
 WEAK_ROUND_DAMAGE = {
     'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
