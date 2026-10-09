@@ -2578,11 +2578,30 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        for item in self.edible_carried_food():
+        food = self.edible_carried_food()
+        if food and not diving and self._keep_dive_food(food[0]):
+            yield False
+        for item in food:
             yield True
             self.inventory.eat(item)
             return
         yield False
+
+    def _keep_dive_food(self, item):
+        # hypothesis: hoard-and-pray eats a carried item on most ~1200-turn hunger cycles of the long grind, so the
+        # XL8 dive often starts with an empty pack and is Weak/Fainting a few hundred turns later on Dlvl 2-6, where
+        # an HP prayer may fix only the hunger (TROUBLE_STARVING outranks TROUBLE_HIT); keep the last
+        # jf_config.DIVE_FOOD_RESERVE nutrition for the dive while a faint cycle on Dlvl 1 is guarded and safe
+        # sources: NetHack 3.6.6 src/pray.c in_trouble()/pleased(), src/eat.c newuhs();
+        #          https://nethackwiki.com/wiki/Nutrition ; /refs/past_runs/20261008-213012/74.diff (public +0.028)
+        bl = self.blstats
+        if not jf_config.DIVE_FOOD_RESERVE or self.prayer_failed or \
+                bl.experience_level < jf_config.DIVE_FOOD_RESERVE_XL:
+            return False
+        if self.carried_food_nutrition() - self._food_item_nutrition(item, 1) >= jf_config.DIVE_FOOD_RESERVE:
+            return False
+        return self.is_safe_to_pray(500) and bl.hitpoints >= 0.5 * bl.max_hitpoints and \
+            not self._starvation_near() and self._hunger_threat() is None
 
     @Strategy.wrap
     def summon_were_allies(self):
@@ -2666,13 +2685,15 @@ class Agent:
 
     def carried_food_nutrition(self):
         """Nutrition of edible_carried_food (corpses by their monster, unidentified items as 0)."""
-        total = 0
-        for item in self.edible_carried_food():
-            if item.is_corpse():
-                total += getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * item.count
-            elif item.is_unambiguous():
-                total += getattr(item.object, 'nutrition', 0) * item.count
-        return total
+        return sum(self._food_item_nutrition(item) for item in self.edible_carried_food())
+
+    def _food_item_nutrition(self, item, count=None):
+        count = item.count if count is None else count
+        if item.is_corpse():
+            return getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0) * count
+        if item.is_unambiguous():
+            return getattr(item.object, 'nutrition', 0) * count
+        return 0
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""
