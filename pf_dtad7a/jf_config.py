@@ -194,16 +194,14 @@ DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
 # hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8,
-# and on this chain the PICK_DETOUR walk through Mines levels 1-2: dwarves with mattocks d12, gnome lords, hill
-# orcs) come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready
-# and HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
+# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
+# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
 # monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
 # sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
-# makemon.c monmax_difficulty; https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Prayer;
-# https://nethackwiki.com/wiki/Tourist ("descend slowly"); https://nethackwiki.com/wiki/Standard_strategy;
-# /refs/history/4.diff, /refs/history/16.diff, /refs/history/59.diff, /refs/history/65.diff (tree nodes #4: held-out
-# 0.1792 -> 0.2112, #16: 0.1873 -> 0.2200, #65 on #18: 0.1875 -> 0.2158; #59 = pick-detour + dive-prayer 0.2385)
+# makemon.c monmax_difficulty; https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist
+# ("descend slowly"); https://nethackwiki.com/wiki/Standard_strategy; /refs/history/4.diff and /refs/history/16.diff
+# (tree nodes #4: held-out 0.1792 -> 0.2112, #16: 0.1873 -> 0.2200); node #65 stacks it on #18 (darts+wands+mold)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -333,6 +331,16 @@ MISSILES_NOT_MELEE = True
 #          https://nethackwiki.com/wiki/Passive_attack, https://nethackwiki.com/wiki/Tourist,
 #          /refs/past_runs/20261008-132537/6.diff (kept, held-out 0.1517 -> 0.2146), NetHack 3.6.6 uhitm.c passive()
 MOLD_NO_MELEE = True
+
+# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
+# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
+# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
+# hypothesis: homunculi are common in the Dlvl 1-4 grind and their sleeps chain free bites on the AC 10 Tourist;
+# a homunculus respects Elbereth, so hiding at < 40% HP turns those sleeps into a rest. Nothing else changes.
+# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
+# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ; /refs/history/60.diff
+# (#60 held-out 0.2200 -> 0.2442, #71 0.2385 -> 0.2627)
+SLEEP_BITER_REST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
