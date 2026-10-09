@@ -25,7 +25,7 @@ from scipy import ndimage
 
 from . import objects as O
 
-from . import jf_config, jf_log, mondata, power, utils, valley
+from . import jf_config, jf_log, power, utils, valley
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -71,28 +71,17 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the AC10 Tourist (no armour, d2 punches / point-blank darts) enters the Elbereth rest only below 40% HP
-# or after a 30% drop, so a group takes it from above the trigger to death in the turn or two after it -- on this
-# chain (#12, 30 fem games) a pair of rothes (bite 1d3/1d3/1d8, 8.5 a round each, always hitting AC10) took seed 1's
-# XL7 from 67 to 2 HP before the rest began, and hill orc / hobgoblin groups and the XL8 dive's fire/soldier ants do
-# the same. Start (and keep) the Elbereth rest once HP is within two rounds of the near (radius 2) hostiles' expected
-# melee damage (speed over 12 as extra attacks), at most THREAT_REST_TURNS turns in a row. Unlike #7 / past #42 the
-# level 1-2 pack monsters (rothe, coyote, hill orc, hobgoblin, giant rat) count too -- the grind's killers; the
-# lone-weak rule below still fights a single one, and level-0 fodder (jackal, newt, sewer rat, kobold) never counts.
-# sources: https://nethackwiki.com/wiki/Rothe ("can hit quite hard and appear in groups", respects Elbereth),
-#          https://nethackwiki.com/wiki/Elbereth ("must not wait until you are one turn from death", rest on it),
-#          https://nethackwiki.com/wiki/Tourist (10 HP, no armour, "quickly overwhelmed"),
-#          https://nethackwiki.com/wiki/Orc_(monster_class) (groups: engrave Elbereth, heal, then pick them off),
-#          https://gamefaqs.gamespot.com/boards/582497-nethack/59019565?page=10 (surrounded by gnomes and a rothe),
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (hill orcs "come in numbers"),
-#          /refs/past_runs/20261008-132537/42.diff (THREAT_REST, kept), board node #7 (held-out 0.1157 -> 0.1319),
-#          NetHack 3.6.6 src/monst.c attacks (mondata.py, from 42.diff), mhitu.c to-hit
-THREAT_REST = True
-THREAT_REST_TURNS = 300
-THREAT_MIN_MLEVEL = 1
-# include/monattk.h attack types that hit an adjacent hero (no passive, spit, engulf, breath, explosion, gaze, spell)
-MELEE_ATTACK_TYPES = frozenset((1, 2, 3, 4, 5, 6, 7, 16, 254))
-AT_WEAP = 254
+# hypothesis: the lone-weak-monster exemption in elbereth_rest fights on down to 6 HP, counting on the low-HP
+# prayer (emergency_strategy: is_safe_to_pray(500) and low_hp). Within 500 turns of the last prayer (the grind's
+# Weak hunger prayers come every ~1150-1300 turns) or after a failed one there is no such prayer, and the AC 10
+# Tourist trades d2 punches at 6-15 HP with a jackal / sewer rat / kobold / newt / wererat until a desperate
+# too-soon prayer fails ('You begin praying... The jackal bites!'). Without a safe HP prayer, hide on Elbereth
+# below 40% HP from a lone weak monster too (PRAYERLESS_GUARD): fewer Dlvl 1-4 grind deaths at XL 1-7.
+# sources: /refs/past_runs/20261008-132537/4.diff and 39.diff (kept twice on this engine, held-out
+#          0.1517->0.2196 and 0.0887->0.0940), https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Prayer_timeout, https://nethackwiki.com/wiki/Elbereth,
+#          https://nethackwiki.com/wiki/Tourist
+PRAYERLESS_GUARD = True
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -509,8 +498,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._threat_since = 0             # THREAT_REST: first and last turn of the current threat streak
-        self._threat_last = -10 ** 9
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1276,8 +1263,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if THREAT_REST and self._threat_rest():
-            falling = True
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1289,7 +1274,9 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        # (PRAYERLESS_GUARD: only while the low-HP prayer would be safe -- the same test emergency_strategy uses)
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not (PRAYERLESS_GUARD and not agent.is_safe_to_pray(500)):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1540,31 +1527,6 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
-
-    def _near_melee_damage(self):
-        """Expected damage of one turn if every near hostile of level THREAT_MIN_MLEVEL+ lands all its melee attacks
-        (speed over 12 counted as extra attacks)."""
-        total = 0.0
-        for m in self._near_hostiles():
-            if getattr(m[3], 'mlevel', 0) < THREAT_MIN_MLEVEL:
-                continue
-            data = mondata.MONS.get(getattr(m[3], 'mname', ''))
-            if data is None:
-                continue
-            dmg = sum(3.5 if aatyp == AT_WEAP and damn == 0 else damn * (damd + 1) / 2
-                      for aatyp, _, damn, damd in data[5] if aatyp in MELEE_ATTACK_TYPES)
-            total += dmg * max(1.0, data[1] / 12)
-        return total
-
-    def _threat_rest(self):
-        """THREAT_REST: HP within two rounds of the near hostiles' melee damage, for at most THREAT_REST_TURNS in a row."""
-        bl = self.agent.blstats
-        if bl.hitpoints > 2 * self._near_melee_damage():
-            return False
-        if bl.time - self._threat_last > 5:
-            self._threat_since = bl.time
-        self._threat_last = bl.time
-        return bl.time - self._threat_since <= THREAT_REST_TURNS
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats

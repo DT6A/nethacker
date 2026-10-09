@@ -101,6 +101,11 @@ def missiles_risk_the_watch(agent):
 # node #12 (tree round 1): the same dart chain stacked on #3 (HOSTILE_RECHECK): an attacker no longer ignored as
 # "peaceful" is now also met with point-blank +2 darts instead of bare fists, so the two fixes act on the same
 # Dlvl 1-4 grind fights. sources (#12): /refs/history/2.diff (held-out 0.1454 -> 0.1792), /refs/history/3.diff
+# node #35 (tree round 1): the same dart chain stacked on #10 ({HOSTILE_RECHECK, PRAYERLESS_GUARD}): the lone
+# weak monster that PRAYERLESS_GUARD still lets the Tourist fight (while the prayer is ready) dies faster to +2 darts
+# than to d2 punches, so fewer of those fights reach the 6 HP floor. sources (#35): /refs/history/12.diff (held-out
+# 0.1652 -> 0.1792 on #3), /refs/history/22.diff, /refs/history/27.diff, https://nethackwiki.com/wiki/Tourist,
+# https://nethackwiki.com/wiki/Dart
 POINT_BLANK_THROW = True
 
 
