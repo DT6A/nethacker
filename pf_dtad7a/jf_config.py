@@ -336,16 +336,6 @@ HOSTILE_RECHECK = True
 #          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS
 WEAR_UNKNOWN_MUNDANE = True
 
-# the Elbereth rest's lone-weak-monster exemption (dive_logic.elbereth_rest: fight on down to 6 HP when the only
-# hostile near is mlevel <= 2) skips sleep biters (dive_logic.SLEEP_BITERS: the homunculus): each bite may put a
-# sleep-unresistant hero to sleep for 1-10 turns of free bites, so below 40% HP we hide from it instead
-# hypothesis: public seed 12 (both identities) dies at XL5 on Dlvl 1 to a lone homunculus; #60/#71 measured the same
-# change at +0.024/+0.024 held-out on sibling chains. A homunculus respects Elbereth, so hiding turns sleeps into a rest
-# sources: mhitu.c AD_SLEE (1 in 5 hits: fall_asleep(-rnd(10)) unless Sleep_resistance); monmove.c onscary();
-# https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Sleep ; https://nethackwiki.com/wiki/Elbereth ;
-# /refs/history/60.diff ; /refs/history/71.diff
-SLEEP_BITER_REST = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
