@@ -208,14 +208,6 @@ DIVE_FED_MAX_WAIT = 2000
 # makes the saved prayer count at the dive start, where the grind's XL 7-8 losses on Dlvl 2-8 happen.
 # sources (#14): /refs/history/4.diff, /refs/past_runs/20261008-132537/75.diff, NetHack 3.6.6 src/pray.c
 #          (critically_low_hp, can_pray: p_trouble > 0 needs u.ublesscnt <= 200), https://nethackwiki.com/wiki/Prayer
-# node #51 (tree round 2): DIVE_PRAYER_READY on #13's darts+LOWHP+PRAYERLESS_GUARD chain. PRAYERLESS_GUARD makes the
-# lone-weak-monster exemption depend on the same HP prayer; starting the XL8 dive with it ready keeps both the
-# exemption and the critically_low_hp backstop for the dive start. Parent seeds 0, 9-12 (both identities) die at XL8
-# on Dlvl 2-8 at T~24.7-26.7k -- right at the dive start. Readiness uses the HP prayer's own is_safe_to_pray test.
-# sources (#51): /refs/history/4.diff, /refs/history/14.diff, https://nethackwiki.com/wiki/Prayer_timeout (95% safe
-#          only after ~1229 turns), https://nethackwiki.com/wiki/Tourist ('go down slowly'),
-#          https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F (power curves; plan for the worst),
-#          https://gamefaqs.gamespot.com/boards/582497-nethack/55423151 (dying right after praying)
 DIVE_PRAYER_READY = True
 DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
@@ -351,6 +343,29 @@ WAND_STAIRS_FIX = True
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
 MISSILES_NOT_MELEE = True
+
+# hypothesis: the Dlvl-1 grind eats every corpse it kills, so the starting pet (which ate nothing) starves at ~T1500:
+# dogmove.c dog_hunger sets mconf and prints '<pet> is confused from hunger.' ('You feel worried about <pet>.' out
+# of sight) 500 turns past its hungrytime (it starves 250 turns later); mon.c mfndpos gives a confused monster
+# ALLOW_ALL (ALLOW_U included), and dog_move then mattacku()s us from the square it picks. fight2 never answers a pet (and killing it is -15 alignment, Luck -1),
+# so an XL 1-2 Tourist can be bitten to death by its own kitten in the Dlvl 1-2 grind where most unseen-seed games
+# are lost, and the pet -- a Tourist's main early fighter (wiki: Tourist) -- starves. A meal ends the confusion
+# (dog_eat: mconf = 0), so for PET_HUNGER_TURNS turns after the message, or until the pet is seen eating, we eat
+# no corpse off the floor ourselves unless Weak. Port of past run 20261008-132537 #68/#72/#73/#79 (held-out
+# 0.2105->0.2191, 0.2070->0.2226, 0.2127->0.2283, 0.1883->0.2096); this run's root port #1 scored below its parent
+# (0.1157 vs 0.1454 held-out, 15 seeds); node #42 (+PRAYERLESS_GUARD chain) gained 0.1183->0.1402 held-out. Node #52
+# ports it onto darts+LOWHP_EXACT+DIVE_PRAYER_READY (#14): with the HP prayer held for critically_low_hp the pet is
+# the grind's other defence; parent extra seed 480660 dies to a kitten on Dlvl 3 at T2290 (XL3), and 12/15 public
+# games per character are lost in the Dlvl 1-5 grind.
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger (mconf, 'confused from hunger') + dog_move (ALLOW_U -> mattacku)
+#          + dog_eat (mconf = 0), src/mon.c mfndpos (mconf -> ALLOW_ALL), include/mfndpos.h (ALLOW_ALL has ALLOW_U),
+#          https://nethackwiki.com/wiki/Pet ('avoid attacking the hero ... unless they are confused'),
+#          https://nethackwiki.com/wiki/Tourist (rely on the pet early), https://nethack.fandom.com/wiki/Pet,
+#          rec.games.roguelike.nethack 'why does my pet attack me?' (groups.google.com/g/rec.games.roguelike.nethack/c/Qa_OqtmQZ8A),
+#          https://nethackwiki.com/wiki/Kitten, /refs/history/42.diff, /refs/history/45.diff,
+#          /refs/past_runs/20261008-132537/79.diff
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
