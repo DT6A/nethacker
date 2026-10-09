@@ -360,12 +360,17 @@ WAND_STAIRS_FIX = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption held down to a flat 6 HP -- below one
-# round of a rothe (14), dwarf or a fast dog/kitten/bat. On: it holds only while HP exceeds that monster's max
-# one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep 6.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: /refs/history/18.diff; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c
-WEAK_FLOOR_BY_DAMAGE = True
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# sources: /refs/past_runs/20261008-213012/8.diff (kept on darts chain; chain {darts,weak,chokepoint} = best node #27),
+#          https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-132537/65.diff
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
