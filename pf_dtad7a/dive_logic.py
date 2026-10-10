@@ -85,6 +85,7 @@ ELBERETH_REST_UNTIL = 0.85
 #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Giant_ant,
 #          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku;
 #          /refs/past_runs/20261008-213012/102.diff, /refs/history/53.diff (kept on many chains)
+SLEEP_BITERS = frozenset(('homunculus',))
 WEAK_ROUND_DAMAGE = {
     'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
@@ -1287,8 +1288,14 @@ class DiveLogic:
         weak_floor = 6
         if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
+        # hypothesis: a lone homunculus's sleep bite (1 in 5 hits, 1-10 helpless turns, no sleep resistance) makes it no
+        # 'lone weak monster' to fight down to 6 HP; below 40% HP hide on Elbereth (it respects it) instead -- three
+        # parent games die to a homunculus at XL6 on Dlvl 1 (seed 11 fem/mal, extra seed 7)
+        # sources: NetHack 3.6.6 mhitu.c AD_SLEE; https://nethackwiki.com/wiki/Homunculus ; https://nethackwiki.com/wiki/Elbereth ;
+        # /refs/past_runs/20261008-213012/60.diff (kept on several chains, held-out +0.024)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
-                not infectious_were(agent, near[0][3]):
+                not infectious_were(agent, near[0][3]) and \
+                not (jf_config.SLEEP_BITER_REST and getattr(near[0][3], 'mname', '') in SLEEP_BITERS):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
