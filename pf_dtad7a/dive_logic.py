@@ -75,8 +75,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-PACK_FLOOR_BELOW = 0.7
-PACK_DEFAULT_DAMAGE = 4
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
 # is held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe
 # 1d3/1d3/1d8, a dwarf's mattock, speed-18+ kittens, little dogs and giant bats hitting twice, giant ants, weapon-using
@@ -261,6 +259,17 @@ TOOL_RUN_XL = None
 # hunting dwarves on the way, digging in the main dungeon if it gets a pick-axe. Fires only in games
 # that are otherwise lost.
 RESCUE_DIVE = True
+# hypothesis: a failed prayer in the Dlvl-1 grind (a too-soon HP prayer at XL 1-4, or a hunger prayer after a pet kill)
+# starts the rescue dive at once, and the XL 1-4 Tourist (AC 10, 12-30 HP, no working prayer, Luck -3) dies within a few
+# hundred turns on Dlvl 3-5 (my traces: s733393 XL1 prayer at gap 302 -> 'Thou hast angered me' -> Dlvl 4 death;
+# s733389 XL4 -> Dlvl 4 death to a gnome lord's darts). The rescue exists for starvation (an angry god ends the hunger
+# prayers), but a Tourist with its starting food is not starving: eat_from_inventory eats carried food at Hungry once
+# prayer_failed, and corpses nearby are walked to. Random monsters are capped at difficulty (depth + XL) / 2, so Dlvl 1
+# is the safest place to gain XP; dive only when Weak with nothing edible carried (the LATE_RESCUE case) or at DIVE_XL.
+# sources: https://nethackwiki.com/wiki/Prayer (p_type 0: Luck -3, god anger), NetHack 3.6.6 src/pray.c (can_pray,
+#          prayer_done, angrygods -- fetched this session), https://nethackwiki.com/wiki/Monster_difficulty,
+#          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-213012/40.diff (the same idea, kept there)
+RESCUE_DEFER = True
 # The same later in the tour: a prayer failed (the god is angry or Luck < 0, so no more hunger prayers)
 # and the character is Weak with nothing to eat. The tour would starve on the spot (a clock-jf6 XL8
 # starved in the Mines 1700 turns after an unlucky prayer); the dive at least banks depth on the way.
@@ -902,6 +911,10 @@ class DiveLogic:
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
+        if rescue and RESCUE_DEFER:
+            # dive only once the angry god leaves the grind starving (Weak, nothing edible carried) or the grind is done
+            rescue = xl >= DIVE_XL or \
+                (agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food())
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
         rescue = rescue or (EARLY_DIVE and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and
@@ -1273,18 +1286,6 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        # hypothesis: the Elbereth rest starts only below 40% HP, but engraving gives every adjacent monster one free
-        # round, and a pack (4 hill orcs 22/47 -> 4 HP in the engrave turn; jackals/rats around a were 37 -> 16 -> 0)
-        # deals more than the 40% reserve in that round; hide as soon as HP no longer exceeds the pack's summed max
-        # one-round damage (below 70% HP), the pack analogue of WEAK_FLOOR_BY_DAMAGE's lone-monster floor.
-        # sources: https://nethackwiki.com/wiki/Elbereth (engrave when swarmed, early; a free round while writing),
-        #          https://nethackwiki.com/wiki/Hill_orc (groups of 2-11, weapon d6), https://nethackwiki.com/wiki/Jackal,
-        #          https://forums.civfanatics.com/threads/nethack.256120/page-5, NetHack 3.6.6 src/mhitu.c mattacku
-        if not falling and not resting and jf_config.PACK_ROUND_FLOOR and \
-                bl.hitpoints < PACK_FLOOR_BELOW * bl.max_hitpoints:
-            pack = self._near_hostiles()
-            falling = len(pack) >= 2 and bl.hitpoints <= sum(
-                WEAK_ROUND_DAMAGE.get(getattr(m[3], 'mname', ''), PACK_DEFAULT_DAMAGE) for m in pack)
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
