@@ -369,8 +369,15 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# WERE_UNLOAD_BUDGET: were_unload keeps only the food that fits the were form's carrying capacity (agent.were_unload)
-WERE_UNLOAD_BUDGET = True
+# ELBERETH_VS_BLINDED: never hide on Elbereth from a monster our own camera flash blinded (it ignores the engraving),
+# and stop a rest once we were hurt twice within 15 turns while standing on an intact Elbereth (dive_logic.elbereth_rest)
+# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed an adjacent monster (permanent blindness), engraved at
+#   low HP and was bitten to death through the "Elbereth" (replays: giant ant 21 -> 0 HP while searching on it)
+# sources: https://nethackwiki.com/wiki/Elbereth (blind monsters are not scared), NetHack 3.6.6 src/monmove.c
+#   onscary()/distfleeck(), src/apply.c use_camera() + zap.c flash_hits_mon() (adjacent flash: mblinded = 0 = permanent),
+#   /refs/history/109.diff (#109 report: 6 of 10 replayed early losses)
+ELBERETH_VS_BLINDED = True
+ELBERETH_BLINDED_TURNS = 300
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
