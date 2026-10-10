@@ -184,7 +184,7 @@ THREAT_HP_FRAC = 0.5
 # pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
 # left to it while it is starving.
 # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/217.diff, /refs/history/195.diff (kept)
+#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
 CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
 CLAIM_CORPSES = True
@@ -285,13 +285,6 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
-# hypothesis: were_unload keeps every edible stack, but a wererat form (cwt 40, weight_cap ~16) is Overtaxed from
-# ~2.5x that (calc_cap), where the command loop refuses eating ('You can't do that while carrying so much stuff'):
-# public s4 dropped 18 items yet stayed Overtaxed 250 turns, fainted and died. Keep dropping the heaviest food
-# stack (then all but one of the last, then gold) until below Overtaxed so the form can eat
-# sources: NetHack 3.6.6 hack.c weight_cap()/calc_cap() (Upolyd: carrcap * cwt / WT_HUMAN), cmd.c rhack;
-# https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, /refs/history.md (LYCAN_FIXES)
-LYCAN_UNLOAD_FOOD = True
 # hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
 # cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
 # max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
@@ -388,21 +381,29 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# PACK_ROUND_FLOOR: with 2+ hostiles within 2 squares and HP under 70%, the Elbereth rest starts once HP is at or
-# below their summed max one-round damage (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones), not only below 40%
-# hypothesis: engraving gives a pack a free round, so a 40% reserve is too small against 4 hill orcs / jackals + were
-# sources: https://nethackwiki.com/wiki/Elbereth ; NetHack 3.6.6 src/mhitu.c; /refs/history/110.diff
-PACK_ROUND_FLOOR = True
-
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
 
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
+
 # hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
 # CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/217.diff
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
@@ -414,6 +415,19 @@ if _raw:
 
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
+
+# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
+# (0: off)
+# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
+# XL1-4 grind, but the first Weak spell (turn ~850-1500) spends it on hunger although a Tourist carries 7+ food items
+# (seeds 6/7/13: Weak prayers at T1250-1580 with 3-4 rations in the pack); the next HP crisis then comes at a 600-1000
+# turn gap, where rnz(350) leaves ~35% failure ('Thou must relearn thy lessons', Luck -3) and a Dlvl-1 death follows.
+# Eating keeps the prayer for HP. Threshold 5, not 8: the XL8 variant (#131) lost held-out.
+# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
+#          https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Tourist (food is rarely an early
+#          worry; rely on healing items); rec.games.roguelike.nethack 'Eating' thread (pray for hunger only in dire
+#          emergency); /refs/history/112.diff (kept, held-out 0.1427 vs 0.1198)
+EAT_BEFORE_PRAY_XL = 5
 
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
