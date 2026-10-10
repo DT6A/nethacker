@@ -214,10 +214,6 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
-# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
-PRAY_FIRST_SURE = True
-PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -363,15 +359,20 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
-# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
+# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
+# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
+# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
+# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# a hostile domestic animal (kitten/dog/pony family) in a clear throwing line gets a carried food item thrown at it
-# instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
-TAME_DOMESTIC = True
+# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
+# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
+# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
+# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
+# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
+ELBERETH_VS_BLINDED = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
