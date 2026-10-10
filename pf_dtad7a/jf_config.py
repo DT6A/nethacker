@@ -264,6 +264,13 @@ UNSQUEEZE = False
 # menu that never matched was retried 45,453 times in one game)
 # ON (train 2): the take-out loop (robustness B004) hit jf14 s0 in the train-2 smoke: 11399 panics and 317k steps; with the fix 152 and 36k
 CONTAINER_LOOP_FIX = True
+# go_to_unchecked_containers skips squares check_containers marked (multi_container_squares) and squares it already
+# walked to 3 times: the walk ping-ponged between two such squares for ~1500 turns (public s11, XL4)
+# hypothesis: marked/failed container squares keep their 'possible container' item, so the nearest-unchecked-container
+# walk never ends; excluding them returns ~1500 grind turns per affected game to levelling (fewer hunger prayers,
+# less pack exposure) with no loot lost (those squares are never opened anyway)
+# sources: https://nethackwiki.com/wiki/Chest, https://nethackwiki.com/wiki/Container_trap, /refs/top/1c4099e80253
+CONTAINER_SQUARE_MEMORY = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
 CLIMB_NO_FALL = False
@@ -309,11 +316,6 @@ WERE_KEEP_AWAY = True
 WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# a lycanthrope eats its carried food when Hungry instead of waiting for a Weak hunger prayer, so the cure prayer is the
-# only major trouble pray.c has to fix (see Agent.eat_from_inventory)
-# hypothesis: at Luck 0 a prayer with two major troubles fixes both only half the time (starving is fixed first)
-# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Trouble, https://nethackwiki.com/wiki/Lycanthropy
-LYCAN_EAT_FIRST = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
