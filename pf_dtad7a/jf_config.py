@@ -184,7 +184,7 @@ THREAT_HP_FRAC = 0.5
 # pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
 # left to it while it is starving.
 # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
+#          https://nethackwiki.com/wiki/Prayer, /refs/history/242.diff (+ /refs/history/195.diff, kept)
 CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
 CLAIM_CORPSES = True
@@ -202,16 +202,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
-# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
-# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
-# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://nethackwiki.com/wiki/Standard_strategy; /refs/history/221.diff (kept on ~10 chains, held-out +0.02-0.03)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -396,8 +386,6 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-# FLASH_ONCE: never re-flash a monster the camera already blinded / that resisted a flash (fight_heur.blind_flashed_positions)
-FLASH_ONCE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -413,9 +401,12 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
+
 # hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
 # CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/242.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
@@ -432,3 +423,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+# hypothesis: standing on Elbereth with an adjacent @-form were / elf / minotaur (they ignore it) the bot only
+# searched while being killed (public s11); fight2 should attack such a monster instead (grind only).
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          NetHack 3.6.6 src/monmove.c onscary()
+IGNORER_FIGHTS = True

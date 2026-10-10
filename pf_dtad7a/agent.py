@@ -2100,11 +2100,6 @@ class Agent:
             if not hasattr(self, '_camera_flashed'):
                 self._camera_flashed = {}
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
-            _flash_target = None
-            if jf_config.FLASH_ONCE and max(abs(dy), abs(dx)) == 1:
-                for _m in self.get_visible_monsters():
-                    if (_m[1], _m[2]) == (self.blstats.y + dy, self.blstats.x + dx):
-                        _flash_target = getattr(_m[3], 'mname', '').lower()
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
             with self.atom_operation():
@@ -2119,14 +2114,6 @@ class Agent:
                     # monster only a 1 in 3 chance of the right one), so remember its name for elbereth_rest.
                     # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
                     #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth
-                    # FLASH_ONCE: the monster hit (or that resisted: already blind) is never flashed again
-                    # (fight_heur.blind_flashed_positions)
-                    if _flash_target and 'burns' not in self.message:
-                        if not hasattr(self, '_blind_marks'):
-                            self._blind_marks = []
-                        self._blind_marks.append(dict(
-                            y=self.blstats.y + dy, x=self.blstats.x + dx, name=_flash_target,
-                            t=self.blstats.time, seen=self.blstats.time, level=self.current_level().key()))
                     for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
                         if not hasattr(self, '_flash_blinded'):
                             self._flash_blinded = {}
