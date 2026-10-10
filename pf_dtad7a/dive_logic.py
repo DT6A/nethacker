@@ -71,12 +71,7 @@ PICK_DETOUR = True
 PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
-# hypothesis: GRIND_END_XL7 -- the Dlvl-1 grind ends at XL 7 (640 XP), not XL 8 (1280 XP): XL7->8 is half of all grind XP
-# (random spawns on Dlvl 1 are capped at difficulty (1+XL)/2, so the kills are small) and ~20% of the XL7 Tourists die
-# there (hunger-prayer failures, were bites, hill orc/rothe packs; score ~0.05) where a dive scores ~0.38
-# sources: /refs/parent-eval.json + parent-eval-extra.json (grind deaths at Xp:5-8 on Dlvl 1, T8-33k); makemon.c (difficulty cap);
-#          https://nethackwiki.com/wiki/Experience_level (XL7=640, XL8=1280); /refs/history/189.diff (kept, +0.089, held-out +0.068)
-DIVE_XL = 7
+DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
@@ -2491,7 +2486,7 @@ class DiveLogic:
     def first_level_done(self):
         """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= DIVE_XL or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
