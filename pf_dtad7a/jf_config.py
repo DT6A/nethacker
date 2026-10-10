@@ -202,16 +202,6 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
-# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
-# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
-# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
-# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
-# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
-# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
-# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
-# https://nethackwiki.com/wiki/Standard_strategy; /refs/history/221.diff, /refs/history/98.diff (kept on ~10 chains)
-DIVE_PRAYER_READY = True
-DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -396,6 +386,8 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+# FLASH_ONCE: never re-flash a monster the camera already blinded / that resisted a flash (fight_heur.blind_flashed_positions)
+FLASH_ONCE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -417,6 +409,16 @@ CHOKEPOINT_HOLD_TURNS = 5
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
+# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included ('It yelps! You
+# kill it! ... rumble of distant thunder': dev seed 733389 T374, public seed 12), so the first hunger prayer is
+# 'displeased' (Luck/alignment loss) and the XL3 Tourist dies in the rescue dive. With a pet seen in the last
+# PET_LINE_MEMORY turns and none in view, never throw at a target 3+ squares away across an unlit square
+# (combat/fight_heur.ranged_priority).
+# sources: NetHack 3.6.6 src/dothrow.c (bhit), src/mon.c (xkilled), src/pray.c (can_pray),
+#          https://nethackwiki.com/wiki/Pet#Killing_your_pet, /refs/history/234.diff
+PET_LINE_GUARD = True
+PET_LINE_MEMORY = 100
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -425,19 +427,6 @@ if _raw:
 
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
-
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850-1500) spends it on hunger although a Tourist carries 7+ food items
-# (seeds 6/7/13: Weak prayers at T1250-1580 with 3-4 rations in the pack); the next HP crisis then comes at a 600-1000
-# turn gap, where rnz(350) leaves ~35% failure ('Thou must relearn thy lessons', Luck -3) and a Dlvl-1 death follows.
-# Eating keeps the prayer for HP. Threshold 5, not 8: the XL8 variant (#131) lost held-out.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Tourist (food is rarely an early
-#          worry; rely on healing items); rec.games.roguelike.nethack 'Eating' thread (pray for hunger only in dire
-#          emergency); /refs/history/112.diff (kept, held-out 0.1427 vs 0.1198)
-EAT_BEFORE_PRAY_XL = 5
 
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
