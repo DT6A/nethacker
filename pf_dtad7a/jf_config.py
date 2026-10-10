@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -377,38 +368,38 @@ WEAK_FLOOR_BY_DAMAGE = True
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
+# never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
+ELBERETH_VS_BLINDED = True
 
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
+# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
+# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
+# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
+# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
+# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
+# melee / potions / prayer within two bites.
+# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
+#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
+#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
+ELBERETH_FAIL_DETECT = True
+ELBERETH_FAIL_HITS = 2
+ELBERETH_FAIL_WINDOW = 6
+ELBERETH_FAIL_HOLD = 25
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
-# bat, giant ant, Woodland-elf, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then mostly
-# -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
-# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
-# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment), gives AC, is not a shield (a stuck
-# shield blocks the dive's two-handed mattock) and is not unpaid. Known items keep priority on ties; lower AC ->
-# fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
-#          /refs/past_runs/20261008-132537/71.diff, /refs/history/147.diff, /refs/history/132.diff
-WEAR_UNKNOWN_MUNDANE = True
-# hypothesis: a failed first-level prayer (a hunger prayer displeased by a pet kill: Luck -5, alignment -15) must not start
-# the XL<8 rescue dive while the hero still carries food. The rescue exists for starvation (an angry god ends hunger
-# prayers), but eat_from_inventory eats the pack at Hungry once prayer_failed and corpses are walked to, so the Tourist
-# (10-20 starting comestibles) is not starving; the dive instead sends an XL3-4, AC 10 hero to Dlvl 3-5 where it dies.
-# Diagnosed: public seed 12 (kitten killed by an unseen dart T422 -> displeased hunger prayer T1250 -> pack eaten ->
-# rescue dive at XL3 -> hobbit death), extra seeds 733389 (T2042, XL4, died Dlvl 4) and 733399 (XL4, died Dlvl 10) --
-# ~3 of 30 games. Dive only when Weak with nothing edible carried (the late_rescue test) or the grind is done (DIVE_XL).
-# sources: https://nethackwiki.com/wiki/Prayer (too-soon / negative Luck -> god smites), https://nethackwiki.com/wiki/Luck
-#          (pet kill, Luck times out 1 per 600 turns), https://nethackwiki.com/wiki/Prayer_timeout ('God is displeased'
-#          row), https://nethackwiki.com/wiki/Tourist (10-20 comestibles), https://nethackwiki.com/wiki/Forum:Piously_Aligned_but_god_displeased_when_praying%3F
-#          (player thread: displeased = too-soon/Luck, eat what you carry), NetHack 3.6.6 src/pray.c can_pray/angrygods,
-#          /refs/history/111.diff (RESCUE_DEFER, same guard, held-out neutral on a different chain), /refs/history/155.diff
-RESCUE_ONLY_STARVING = True
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of /refs/history/154.diff (this round: #154 0.1646 -> 0.2150, held-out 0.1462 -> 0.2310) onto the #118/#148 chain.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://www.melankolia.net/nethack/nethack.guide.html (Tourists: retreat into a corridor so one monster
+#          attacks at a time), https://github.com/krajj7/BotHack (lures monsters into corridors),
+#          /refs/history/154.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
