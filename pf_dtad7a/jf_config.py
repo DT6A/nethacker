@@ -386,6 +386,8 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+# FLASH_ONCE: never re-flash a monster the camera already blinded / that resisted a flash (fight_heur.blind_flashed_positions)
+FLASH_ONCE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -407,16 +409,10 @@ CHOKEPOINT_HOLD_TURNS = 5
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
-UNSKILLED_DAMAGE_SIGN = True
-
-# PRAYER_DOWN_CAUTION: in the levelling grind (not diving) with no HP prayer available (is_safe_to_pray(PRAYER_DOWN_GAP)
-# false), the Elbereth rest starts below PRAYER_DOWN_BELOW of max HP and the lone-weak-monster exemption is off
-# (dive_logic.elbereth_rest)
-PRAYER_DOWN_CAUTION = True
-PRAYER_DOWN_GAP = 800
-PRAYER_DOWN_BELOW = 0.5
-PRAYER_DOWN_REST_TURNS = 300
+# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
+# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
+PRAY_FIRST_SURE = True
+PRAY_FIRST_GAP = 1000
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
