@@ -1922,11 +1922,11 @@ class Agent:
                 # TT_PIT check): a digger in its own pit tried to walk out 4 times with a Grey-elf and a
                 # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11). The camera flash works
                 # from a pit too (the Elbereth-ignorer flash in fight_heur.camera_actions)
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera', 'tame')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera')]
                 if attack_actions:
                     actions = attack_actions
             if allow_attack_all:
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'tame')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
                 if attack_actions:
                     actions = attack_actions
 
@@ -2083,26 +2083,18 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # ELBERETH_VS_BLINDED: remember which species our flash blinded (flash_hits_mon message)
+                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
+                    if _m:
+                        if not hasattr(self, '_blinded_mons'):
+                            self._blinded_mons = {}
+                        self._blinded_mons[_m.group(1).lower()] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
                         self.inventory.empty_wands.add(camera.text)
                     if 'What do you want to use or apply' in self.single_message:
                         self.step(A.Command.ESC)
-            return wait_counter
-
-        elif best_action[0] == 'tame':
-            # TAME_DOMESTIC (combat/fight_heur.tame_actions): food thrown at a hostile domestic animal
-            _, dy, dx, food = best_action
-            glyph = self.glyphs[self.blstats.y + dy, self.blstats.x + dx]
-            self._tame_tries.setdefault((self.current_level().key(), glyph), []).append(self.blstats.time)
-            dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx,
-                                      allow_nonunit_distance=True)
-            name = food.object.name
-            self.fire(food, dir)
-            self.log(f'TAME_DOMESTIC: threw a {name} at {MON.permonst(glyph).mname} {dy},{dx}: {self.message!r}')
-            # a pacified one keeps its glyph: have the monster tracker look again to see it peaceful
-            self.monster_tracker._last_glyphs = None
             return wait_counter
 
         elif best_action[0] == 'pickup':

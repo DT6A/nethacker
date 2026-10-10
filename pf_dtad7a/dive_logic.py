@@ -506,8 +506,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._elb_window = None            # ELBERETH_STALL: (first rest turn, its HP, last rest turn)
-        self._elb_stalled_until = -1
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -577,6 +575,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._hurt_elbereth_turns = []     # recent such turns (ELBERETH_VS_BLINDED)
+        self._elbereth_off_until = -1      # no Elbereth rest before this turn (ELBERETH_VS_BLINDED)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -596,6 +596,7 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._hurt_elbereth_turns = [t for t in self._hurt_elbereth_turns if turn - t <= 15] + [turn]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1263,10 +1264,6 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
-    def elbereth_stalled(self):
-        """ELBERETH_STALL: a stalled Elbereth rest handed the next turns to the fight."""
-        return jf_config.ELBERETH_STALL and self.agent.blstats.time < self._elb_stalled_until
-
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1287,6 +1284,19 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
+        if jf_config.ELBERETH_VS_BLINDED:
+            # a monster our flash blinded ignores Elbereth (onscary: mcansee), and so does whatever hurt us twice
+            # while we stood on an intact one: fight instead of searching on a useless engraving
+            turn = bl.time
+            blinded = getattr(agent, '_blinded_mons', {})
+            if resting and len([t for t in self._hurt_elbereth_turns if turn - t <= 15]) >= 2:
+                self._elbereth_off_until = turn + 40
+                agent.log('ELBERETH rest abandoned: hurt twice on an intact engraving')
+            if turn < self._elbereth_off_until or \
+                    any(turn - blinded.get(getattr(m[3], 'mname', ''), -10 ** 9) <= jf_config.ELBERETH_BLINDED_TURNS
+                        for m in near):
+                self._elbereth_resting = False
+                yield False
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
         # WEAK_FLOOR_BY_DAMAGE: and only while HP exceeds that monster's max one-round damage (else hide)
@@ -1305,27 +1315,6 @@ class DiveLogic:
         if engraving != 'elbereth' and not agent.can_engrave():
             self._elbereth_resting = False
             yield False
-        if jf_config.ELBERETH_STALL:
-            now = bl.time
-            if self.elbereth_stalled():
-                self._elbereth_resting = False
-                yield False
-            w = self._elb_window
-            if w is None or now - w[2] > 100:
-                w = (now, bl.hitpoints, now)
-            w = (w[0], w[1], now)
-            self._elb_window = w
-            if now - w[0] >= jf_config.ELBERETH_STALL_TURNS:
-                # natural regeneration below XL 10: 1 HP per 42 / (XL + 2) + 1 turns
-                expected = (now - w[0]) / (42 // (bl.experience_level + 2) + 1)
-                if bl.hitpoints - w[1] < 0.4 * expected and bl.hitpoints >= 0.25 * bl.max_hitpoints:
-                    agent.log(f'ELBERETH rest stalled: {w[1]} -> {bl.hitpoints}/{bl.max_hitpoints} HP in '
-                              f'{now - w[0]} turns beside {[m[3].mname for m in near]}: fighting')
-                    self._elb_stalled_until = now + jf_config.ELBERETH_STALL_FIGHT_TURNS
-                    self._elb_window = None
-                    self._elbereth_resting = False
-                    yield False
-                self._elb_window = (now, bl.hitpoints, now)
         yield True
         if not self._elbereth_resting:
             agent.log(f'ELBERETH rest start: {[m[3].mname for m in near]}')

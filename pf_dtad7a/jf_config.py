@@ -369,23 +369,19 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# a hostile domestic animal (kitten/dog/pony family) in a clear throwing line gets a carried food item thrown at it
-# instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
-TAME_DOMESTIC = True
+# ELBERETH_VS_BLINDED: never hide on Elbereth from a monster our own camera flash blinded (it ignores the engraving),
+# and stop a rest once we were hurt twice within 15 turns while standing on an intact Elbereth (dive_logic.elbereth_rest)
+# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed an adjacent monster (permanent blindness), engraved at
+#   low HP and was bitten to death through the "Elbereth" (replays: giant ant 21 -> 0 HP while searching on it)
+# sources: https://nethackwiki.com/wiki/Elbereth (blind monsters are not scared), NetHack 3.6.6 src/monmove.c
+#   onscary()/distfleeck(), src/apply.c use_camera() + zap.c flash_hits_mon() (adjacent flash: mblinded = 0 = permanent),
+#   /refs/history/109.diff (#109 report: 6 of 10 replayed early losses)
+ELBERETH_VS_BLINDED = True
+ELBERETH_BLINDED_TURNS = 300
 
-# hypothesis: a stalled Elbereth rest -- 250 turns on the engraving without regaining the HP natural regeneration
-# should have given -- is a lost attrition war (3.6 erases the dust engraving 1 time in 7 each time it scares a
-# monster; zombies, which respect it but never leave, kept 2 of 6 XL8 dive starts at 22-31/79 HP for 700 turns until
-# the god and the potions ran out). After such a stall (HP still >= 25% of max) hand the next ELBERETH_STALL_FIGHT
-# turns to the fight, which neither re-engraves nor waits on the square (combat/fight_heur elbereth/wait actions).
-# sources: https://nethackwiki.com/wiki/Elbereth (3.6: a scared monster smudges the engraving, 1 in 7 in 3.6.1+; attacking
-#          from it erases it), https://groups.google.com/g/rec.games.roguelike.nethack/c/f-fJyixH3vM (3.6.0 and Elbereth),
-#          https://nethack.fandom.com/wiki/Tourist (Elbereth rest, then scuff it and resume attacking), https://nethackwiki.com/wiki/Tourist,
-#          https://nethackwiki.com/wiki/Zombie, https://nethackwiki.com/wiki/Hit_points (regeneration at XL < 10),
-#          NetHack 3.6.6 src/monmove.c onscary/m_move, src/allmain.c u_regen (heal 1 per 42/(XL+2)+1 turns)
-ELBERETH_STALL = True
-ELBERETH_STALL_TURNS = 250
-ELBERETH_STALL_FIGHT_TURNS = 120
+# DART_SKILL_FIRST: #enhance advances a Tourist's dart skill before any other skill, and nothing else while the darts are not
+# Expert (character.select_skill_to_upgrade)
+DART_SKILL_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
