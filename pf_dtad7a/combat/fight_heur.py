@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G, MON
+from ..glyph import G, MON, SS
 from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
@@ -25,6 +25,39 @@ def spore_blast_hits_friend(agent, y, x):
     # record that starts at 0, so the first grind prayer failed at T1364)
     seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
     return seen is not None and agent.blstats.time - seen < 100 and not utils.any_in(agent.glyphs, G.PETS)
+
+
+# hypothesis: the Tourist's own darts kill its kitten/little dog when it stands unseen in the throw line (dark corridor
+# or dark room squares past the adjacent ring are not displayed, so the pet glyph check in ranged_priority cannot see it):
+# "It yelps! You kill it!" + "You hear the rumble of distant thunder..." = Luck -5 and alignment -15 (mon.c xkilled
+# you_feel_guilty / adjalign(-15) for a tame victim). The next prayers then end "You feel that The Lady is displeased"
+# (pray.c: Luck < 0 / negative alignment, angrygods), so prayer_failed starts the rescue dive at XL3-5 (dev seed 733389:
+# pet killed T374 at a kobold 5 squares down a corridor, first prayer T1132 displeased, rescue dive, dead on Dlvl 5;
+# public seed 12 the same). Do not throw along a line whose unseen squares (past the adjacent ring, up to the dart range)
+# could hide a pet seen on this level in the last PET_LINE_MEMORY turns that is not in view now.
+# sources: https://nethackwiki.com/wiki/Pet#Killing_your_pet , https://nethackwiki.com/wiki/Luck , https://nethackwiki.com/wiki/Prayer ,
+#          NetHack 3.6.6 src/mon.c xkilled (tame: adjalign(-15), change_luck(-5)), src/pray.c can_pray / angrygods
+HIDING_SQUARES = frozenset({SS.S_corr, SS.S_darkroom})
+
+
+def unseen_pet_may_be_in_line(agent, y0, x0, dy, dx, reach):
+    """True when a pet seen lately and not in view might stand on an undisplayed square of the throw line."""
+    try:
+        if not jf_config.PET_LINE_GUARD or utils.any_in(agent.glyphs, G.PETS):
+            return False
+        seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
+        if seen is None or agent.blstats.time - seen > jf_config.PET_LINE_MEMORY:
+            return False
+        for k in range(2, max(reach, 2) + 1):
+            y, x = y0 + dy * k, x0 + dx * k
+            if not 0 <= y < agent.glyphs.shape[0] or not 0 <= x < agent.glyphs.shape[1] or \
+                    not agent.current_level().walkable[y, x]:
+                break
+            if agent.glyphs[y, x] in HIDING_SQUARES:
+                return True
+        return False
+    except Exception:
+        return False
 
 
 def melee_monster_priority(agent, monsters, monster):
@@ -110,33 +143,10 @@ def point_blank_throw(agent, launcher, ammo):
             return False
         main = agent.inventory.items.main_hand
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-                main.objs[0].name in ('dart', 'shuriken'):
-            return True
-        return jf_config.POINT_BLANK_WIELDED and _dart_beats_wielded(agent, ammo, main)
+        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+            main.objs[0].name in ('dart', 'shuriken')
     except Exception:
         return False
-
-
-# hypothesis: the Tourist wields any found dagger (get_best_melee_weapon allows unknown BUC), which switched
-# point-blank dart throwing off, so the XL1-5 Tourist stabbed Unskilled (-4 to hit, -2 damage) with 14-35 +2 darts
-# at the ready: replay dev s733402 (XL3, 29 HP): a runed dagger missed a mace-wielding hobbit 5 of 7 swings and
-# the hobbit's 2-13 damage hits took 29 -> 0 HP; s733390 / public s7, s12, s14 died the same way. A +2 dart thrown
-# at distance 1 hits at base +2 (throwing weapon) +2 (3 - distance) +2 enchantment and does d3+2, so keep
-# throwing while its expected damage per swing beats the wielded weapon's (the same calc_dps the weapon choice
-# uses); a skilled / enchanted weapon still wins and is used in melee.
-# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
-#          NetHack 3.6.6 src/dothrow.c thitmonst (+2 throwing weapon, +(3 - distance), omon_adj), src/weapon.c
-#          weapon_hit_bonus (Unskilled -4, Basic 0), /refs/history/129.diff, /refs/history/171.diff
-def _dart_beats_wielded(agent, ammo, main):
-    ch = agent.character
-    w_hit, w_dmg = ch.get_melee_bonus(main, large_monster=False)
-    base = 1 + ch._get_str_dex_to_hit_bonus() + agent.blstats.experience_level
-    s_hit, s_dmg = ch._get_weapon_skill_bonus(ammo)
-    a_hit, a_dmg = ch.get_ranged_bonus(None, ammo)
-    # thitmonst starts from -1 (melee from +1), +2 throwing weapon, +2 at distance 1
-    dart_hit = base - 2 + 2 + 2 + s_hit + a_hit
-    return utils.calc_dps(dart_hit, a_dmg + s_dmg) > utils.calc_dps(w_hit, w_dmg)
 
 
 def point_blank_priority(agent, monster, default):
@@ -198,6 +208,9 @@ def ranged_priority(agent, dy, dx, monsters):
             _, _, _, mon, _ = monster[0]
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
+                return None
+            if dis >= 2 and unseen_pet_may_be_in_line(agent, agent.blstats.y, agent.blstats.x, dy, dx,
+                                                      agent.character.get_range(launcher, ammo)):
                 return None
             if dis in (1, 2):
                 ret -= 5
