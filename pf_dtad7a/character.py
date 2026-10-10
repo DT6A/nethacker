@@ -221,9 +221,18 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
+    # hypothesis: the Unskilled/Restricted damage bonus was +2 (it is -2: weapon.c weapon_dam_bonus), so the bot priced
+    # an Unskilled found dagger (d4+2) far above bare hands (d2) and wielded it blind (unknown-BUC items count as
+    # uncursed): the Tourist then stabbed at -4 to hit with point-blank dart throwing off (a weapon in hand) instead of
+    # throwing its +2 darts (d3+2, ~90% to hit). Replay of dev s733399 (XL5, 40/40 HP): "u - 3 daggers (wielded)", a
+    # trident hobgoblin took it 34 -> 0 in 5 turns while it hit the hobgoblin twice for ~1 damage, no dart thrown.
+    # With -2 bare hands win the melee choice, so the darts are thrown point blank.
+    # sources: NetHack 3.6.6 src/weapon.c weapon_hit_bonus / weapon_dam_bonus (P_UNSKILLED: -4 hit, -2 damage),
+    #          https://nethackwiki.com/wiki/Weapon_skill , https://nethackwiki.com/wiki/Tourist ,
+    #          /refs/history/178.diff (same sign fix on another chain)
     weapon_bonus = {
-        SKILL_LEVEL_RESTRICTED: (-4, 2),
-        SKILL_LEVEL_UNSKILLED: (-4, 2),
+        SKILL_LEVEL_RESTRICTED: (-4, -2),
+        SKILL_LEVEL_UNSKILLED: (-4, -2),
         SKILL_LEVEL_BASIC: (0, 0),
         SKILL_LEVEL_SKILLED: (2, 1),
         SKILL_LEVEL_EXPERT: (3, 2),

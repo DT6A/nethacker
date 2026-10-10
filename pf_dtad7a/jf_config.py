@@ -214,10 +214,6 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
-# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
-PRAY_FIRST_SURE = True
-PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -268,6 +264,13 @@ UNSQUEEZE = False
 # menu that never matched was retried 45,453 times in one game)
 # ON (train 2): the take-out loop (robustness B004) hit jf14 s0 in the train-2 smoke: 11399 panics and 317k steps; with the fix 152 and 36k
 CONTAINER_LOOP_FIX = True
+# go_to_unchecked_containers skips squares check_containers marked (multi_container_squares) and squares it already
+# walked to 3 times: the walk ping-ponged between two such squares for ~1500 turns (public s11, XL4)
+# hypothesis: marked/failed container squares keep their 'possible container' item, so the nearest-unchecked-container
+# walk never ends; excluding them returns ~1500 grind turns per affected game to levelling (fewer hunger prayers,
+# less pack exposure) with no loot lost (those squares are never opened anyway)
+# sources: https://nethackwiki.com/wiki/Chest, https://nethackwiki.com/wiki/Container_trap, /refs/top/1c4099e80253
+CONTAINER_SQUARE_MEMORY = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
 CLIMB_NO_FALL = False
@@ -389,21 +392,6 @@ ELBERETH_FAIL_DETECT = True
 ELBERETH_FAIL_HITS = 2
 ELBERETH_FAIL_WINDOW = 6
 ELBERETH_FAIL_HOLD = 25
-
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of /refs/history/154.diff (this round: #154 0.1646 -> 0.2150, held-out 0.1462 -> 0.2310) onto the #118/#148 chain.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://www.melankolia.net/nethack/nethack.guide.html (Tourists: retreat into a corridor so one monster
-#          attacks at a time), https://github.com/krajj7/BotHack (lures monsters into corridors),
-#          /refs/history/154.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
