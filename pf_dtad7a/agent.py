@@ -2062,11 +2062,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2667,29 +2662,6 @@ class Agent:
                    if id(item) not in keep and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
-        if not to_drop and jf_config.LYCAN_UNLOAD_FOOD:
-            # everything but food is on the floor and the form is still Overtaxed (eat.c doeat check_capacity
-            # refuses at Overtaxed = 2.5x weight_cap): keep ONE unit of the most nutritious food, drop the rest
-            stacks = [i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()]
-
-            def nutrition(i):
-                return getattr(i.object, 'nutrition', 0) if i.is_unambiguous() else 0
-
-            best = max(stacks, key=lambda i: (nutrition(i), -i.unit_weight()), default=None)
-            drops = [(i, int(i.count) - (1 if i is best else 0)) for i in stacks]
-            drops = [(i, c) for i, c in drops if c > 0]
-            if drops:
-                yield True
-                self.log(f'LYCAN were form still Overtaxed: keeping 1 x {best.text!r}, dropping '
-                         f'{[(i.text, c) for i, c in drops]}')
-                self.inventory.drop([i for i, _ in drops], [c for _, c in drops], smart=False)
-                return
-            coins = [i for i in self.inventory.items if i.category == nh.COIN_CLASS]
-            if coins:
-                yield True
-                self.log('LYCAN were form still Overtaxed: dropping gold')
-                self.inventory.drop(coins, smart=False)
-                return
         if not to_drop:
             yield False
         yield True
@@ -2731,14 +2703,8 @@ class Agent:
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""
-        # hypothesis: a were form (wererat/werejackal: no hands) cannot open a tin ('You cannot handle the tin
-        # properly to open it'), yet eat_from_inventory retried it every turn while Fainting (public s4: 100+
-        # EAT attempts at the tins while the rations lay on the floor), so tins are not food in that form
-        # sources: NetHack 3.6.6 src/eat.c start_tin() (nohands), src/polyself.c; /tmp trace of public s4
         return [item for item in flatten_items(self.inventory.items)
                 if item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
-                not (jf_config.LYCAN_UNLOAD_FOOD and item.objs[0].name == 'tin' and
-                     self.character.prop.polymorph) and
                 (not item.is_corpse() or
                  item.monster_id in [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'lichen']])]
 
