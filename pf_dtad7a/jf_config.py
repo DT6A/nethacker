@@ -374,9 +374,6 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# SLEEP_BITER_REST: dive_logic.elbereth_rest skips its lone-weak-monster fight-on exemption for sleep biters (homunculus)
-SLEEP_BITER_REST = True
-
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
@@ -399,6 +396,19 @@ PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_
 #          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
 #          /refs/past_runs/20261008-132537/71.diff, /refs/history/147.diff, /refs/history/132.diff
 WEAR_UNKNOWN_MUNDANE = True
+# hypothesis: a failed first-level prayer (a hunger prayer displeased by a pet kill: Luck -5, alignment -15) must not start
+# the XL<8 rescue dive while the hero still carries food. The rescue exists for starvation (an angry god ends hunger
+# prayers), but eat_from_inventory eats the pack at Hungry once prayer_failed and corpses are walked to, so the Tourist
+# (10-20 starting comestibles) is not starving; the dive instead sends an XL3-4, AC 10 hero to Dlvl 3-5 where it dies.
+# Diagnosed: public seed 12 (kitten killed by an unseen dart T422 -> displeased hunger prayer T1250 -> pack eaten ->
+# rescue dive at XL3 -> hobbit death), extra seeds 733389 (T2042, XL4, died Dlvl 4) and 733399 (XL4, died Dlvl 10) --
+# ~3 of 30 games. Dive only when Weak with nothing edible carried (the late_rescue test) or the grind is done (DIVE_XL).
+# sources: https://nethackwiki.com/wiki/Prayer (too-soon / negative Luck -> god smites), https://nethackwiki.com/wiki/Luck
+#          (pet kill, Luck times out 1 per 600 turns), https://nethackwiki.com/wiki/Prayer_timeout ('God is displeased'
+#          row), https://nethackwiki.com/wiki/Tourist (10-20 comestibles), https://nethackwiki.com/wiki/Forum:Piously_Aligned_but_god_displeased_when_praying%3F
+#          (player thread: displeased = too-soon/Luck, eat what you carry), NetHack 3.6.6 src/pray.c can_pray/angrygods,
+#          /refs/history/111.diff (RESCUE_DEFER, same guard, held-out neutral on a different chain), /refs/history/155.diff
+RESCUE_ONLY_STARVING = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
