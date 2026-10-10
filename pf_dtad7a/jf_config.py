@@ -176,9 +176,20 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-CORPSE_TRACK = False
+# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
+# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
+# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
+# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
+# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
+# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
+# left to it while it is starving.
+# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
+#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
+#          https://nethackwiki.com/wiki/Nutrition + groups.google.com/g/rec.games.roguelike.nethack/c/4VA8WK5e_fM ('Eating': pets get to
+#          corpses first; eat safe fresh kills at once), /refs/history/177.diff (#177 kept, held-out 0.2440 vs 0.2124)
+CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = False
+CLAIM_CORPSES = True
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -264,6 +275,13 @@ UNSQUEEZE = False
 # menu that never matched was retried 45,453 times in one game)
 # ON (train 2): the take-out loop (robustness B004) hit jf14 s0 in the train-2 smoke: 11399 panics and 317k steps; with the fix 152 and 36k
 CONTAINER_LOOP_FIX = True
+# go_to_unchecked_containers skips squares check_containers marked (multi_container_squares) and squares it already
+# walked to 3 times: the walk ping-ponged between two such squares for ~1500 turns (public s11, XL4)
+# hypothesis: marked/failed container squares keep their 'possible container' item, so the nearest-unchecked-container
+# walk never ends; excluding them returns ~1500 grind turns per affected game to levelling (fewer hunger prayers,
+# less pack exposure) with no loot lost (those squares are never opened anyway)
+# sources: https://nethackwiki.com/wiki/Chest, https://nethackwiki.com/wiki/Container_trap, /refs/top/1c4099e80253
+CONTAINER_SQUARE_MEMORY = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
 CLIMB_NO_FALL = False
@@ -309,11 +327,6 @@ WERE_KEEP_AWAY = True
 WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# a lycanthrope eats its carried food when Hungry instead of waiting for a Weak hunger prayer, so the cure prayer is the
-# only major trouble pray.c has to fix (see Agent.eat_from_inventory)
-# hypothesis: at Luck 0 a prayer with two major troubles fixes both only half the time (starving is fixed first)
-# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Trouble, https://nethackwiki.com/wiki/Lycanthropy
-LYCAN_EAT_FIRST = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
@@ -391,20 +404,8 @@ ELBERETH_FAIL_HITS = 2
 ELBERETH_FAIL_WINDOW = 6
 ELBERETH_FAIL_HOLD = 25
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of /refs/history/154.diff (this round: #154 0.1646 -> 0.2150, held-out 0.1462 -> 0.2310) onto the #118/#148/#167 chain.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://www.melankolia.net/nethack/nethack.guide.html (Tourists: retreat into a corridor so one monster
-#          attacks at a time), https://github.com/krajj7/BotHack (lures monsters into corridors),
-#          /refs/history/154.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
