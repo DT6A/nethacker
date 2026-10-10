@@ -498,6 +498,7 @@ class DiveLogic:
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level
         self.level_first_turn = {}     # level key -> turn first seen
+        self.level_arrival_turn = 0    # turn of the latest arrival on the current level
         self._mapped = set()           # level keys a scroll of magic mapping was read on (MAP_WHEN_STUCK)
         self.fully_explored = set()    # level keys explored to exhaustion
         self.sweep_started = None      # turn the current portal sweep began
@@ -706,6 +707,7 @@ class DiveLogic:
         if key != self._last_key:
             agent.log(f'DIVE level {key} depth {agent.blstats.depth}')
             self._last_key = key
+            self.level_arrival_turn = turn
             # diagnostics (power.py): what the character would bring to the Castle
             mark = 20 if agent.blstats.depth >= 20 else 10 if agent.blstats.depth >= 10 else None
             if mark is not None and mark not in getattr(self, '_kit_logged', set()):
@@ -1260,51 +1262,6 @@ class DiveLogic:
         y0, x0 = agent.blstats.y, agent.blstats.x
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
-
-    # hypothesis: the Dlvl-1 levelling grind never rests when hurt (only the dive does, plan_step 'rest'; the grind's
-    # Elbereth rest needs a hostile within 2 squares), so with nothing in view the AC10 Tourist explores on at 10-50%
-    # HP and the next jackal/rothe/giant bat/hill orc finds it at 6-14 HP. XL<10 regen is 1 HP per 42/(XL+2)+1 turns,
-    # and the grind's XP is paced by the random-spawn rate, not by exploring, so a rest of ~100-250 turns costs
-    # almost no XP and restores a fight's worth of HP. Below GRIND_IDLE_REST_BELOW of max HP with no hostile in view,
-    # engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL (capped, with a cooldown).
-    # sources: https://nethackwiki.com/wiki/Hit_points (regeneration below XL10), https://nethackwiki.com/wiki/Elbereth,
-    #          https://nethackwiki.com/wiki/Tourist, /refs/history/137.diff (GRIND_IDLE_REST, kept on its chain),
-    #          NetHack 3.6.6 src/allmain.c (u.ulevel < 10: heal 1 every (42 / (ulevel + 2) + 1) moves)
-    @Strategy.wrap
-    def tour_idle_rest(self):
-        agent = self.agent
-        bl = agent.blstats
-        turn = bl.time
-        resting = getattr(self, '_idle_resting', False)
-        level = agent.current_level()
-        if not jf_config.GRIND_IDLE_REST or self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
-                bl.hunger_state >= Hunger.WEAK or agent.character.prop.blind or agent.character.prop.polymorph or \
-                agent.prayer_failed:
-            self._idle_resting = False
-            yield False
-        threshold = jf_config.GRIND_IDLE_REST_UNTIL if resting else jf_config.GRIND_IDLE_REST_BELOW
-        if bl.hitpoints >= threshold * bl.max_hitpoints or agent.get_visible_monsters() or \
-                utils.isin(agent.glyphs, G.GUARD).any() or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
-            if resting:
-                self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        if not resting:
-            if turn < getattr(self, '_idle_rest_cooldown', 0) or agent._hurt_recently(3):
-                yield False
-            self._idle_rest_start = turn
-        elif turn - self._idle_rest_start > jf_config.GRIND_IDLE_REST_MAX_TURNS:
-            self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        yield True
-        if not resting:
-            agent.log(f'GRIND idle rest start at {bl.hitpoints}/{bl.max_hitpoints} HP')
-        self._idle_resting = True
-        if self._rest_elbereth():
-            return
-        agent.search(10)
-
 
     @Strategy.wrap
     @_hold_loop
@@ -3039,6 +2996,11 @@ class DiveLogic:
         # a square always covered by objects (a leprechaun hall is gold wall to wall) never shows its
         # floor: an s12 digger found no 'floor' there and explored the hall until it starved
         terrain = level.objects[py, px]
+        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) goods under the hero's own square fall through the hole with us ('You owe ... for goods lost')
+        # sources: https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop)
+        if jf_config.SHOP_DIG_CLEAR and level.shop[py, px] and level.item_count[py, px] and \
+                (py, px) == (agent.blstats.y, agent.blstats.x):
+            return False
         if not (terrain in PLAIN_FLOOR or (terrain == -1 and level.walkable[py, px]) or
                 (DIG_IN_PITS and terrain in PITS)) or \
                 (level.shop[py, px] and not self._trapped_in_shop(py, px)) or \
@@ -3067,7 +3029,10 @@ class DiveLogic:
         # only when trapped: no floor outside the shop reachable, for a while (the s4 dive walked out of a Dlvl 2
         # shop 140 turns after landing) -- at once when Weak or Fainting: each faint is turns lost to hunger
         hungry = agent.blstats.hunger_state >= Hunger.WEAK
-        if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
+        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) the wait counts from this visit's arrival, not the level's first sighting
+        # sources: https://nethackwiki.com/wiki/Shopkeeper, https://nethackwiki.com/wiki/Shop#Digging_in_a_shop
+        waited = agent.blstats.time - self.level_arrival_turn if jf_config.SHOP_DIG_CLEAR else self.turns_on_level()
+        if (waited < SHOP_DIG_WAIT and not hungry) or \
                 ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
             return False
         return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
