@@ -378,6 +378,9 @@ WEAK_FLOOR_BY_DAMAGE = True
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
 
+# PET_LINE_GUARD (combat.fight_heur.ranged_priority): see the hypothesis there
+PET_LINE_GUARD = True
+
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
@@ -386,21 +389,14 @@ PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_
 # fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
 # corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
 # hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
+# Port of /refs/history/154.diff (kept on chain #120: held-out 0.1462 -> 0.2310) onto chain {#120, #155}.
 # sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
 #          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
 #          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+#          /refs/history/154.diff, /refs/past_runs/20261008-213012/8.diff
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-# CHOKEPOINT_FIGHT's sibling in fight_heur.kite_actions: an adjacent awake non-weak melee monster slower than 12 is
-# answered with a step away (it cannot close and hit in one move, mon.c mcalcmove / monmove.c dochug) and a dart
-# on the turns it lags, instead of a point-blank stab. Tour only; at most KITE_MAX_STEPS steps per 40 turns
-KITE_SLOW = True
-KITE_MAX_STEPS = 30
-# above melee (16) and the point-blank throw (17)
-KITE_PRIORITY = 18
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
