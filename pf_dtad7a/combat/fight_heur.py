@@ -176,22 +176,6 @@ def ranged_priority(agent, dy, dx, monsters):
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
                 return None
-            # hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included:
-            # 'It yelps! You kill it!' (dev seed 733389 T374: Luck -5 and alignment -15), so the first (hunger) prayer
-            # is displeased and the XL3 hero dies in a rescue dive. With a pet seen lately and none in view, never
-            # throw across squares that are not lit visible floor.
-            # sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15),
-            #          src/pray.c (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer
-            if jf_config.PET_LINE_GUARD and dis >= 3:
-                seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
-                if seen is not None and agent.blstats.time - seen < 100 and \
-                        not utils.any_in(agent.glyphs, G.PETS):
-                    cy, cx = agent.blstats.y + dy, agent.blstats.x + dx
-                    for _ in range(dis - 2):
-                        cy += dy
-                        cx += dx
-                        if agent.glyphs[cy, cx] not in G.VISIBLE_FLOOR:
-                            return None
             if dis in (1, 2):
                 ret -= 5
             if dis == 1:
@@ -325,7 +309,7 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         if targeted_monsters:
             # priority = priority * (1 - player_hp_ratio) - 10
             priority = priority - 15
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                 priority -= 100
             ret.append((priority, ('zap', dy, dx, item, targeted_monsters)))
     return ret
@@ -383,7 +367,24 @@ def elbereth_action(agent, monsters):
     return []
 
 
+# hypothesis: on an Elbereth square fight2 gave every attack -100 and 'wait' (search) priority >= -10, so with an
+# adjacent monster that ignores Elbereth in melee (@-form werejackal/wererat, elf, minotaur) the Tourist just
+# searched while being beaten to death (public s11 T23449-23451: HP 21 -> 14 -> 2 -> dead next to a werejackal @,
+# level 2 / AC10 / 2d4 weapon -- an easy kill). While grinding, drop the penalty and the wait when one is adjacent.
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Werecreature, NetHack 3.6.6 src/monmove.c onscary(), s11 replay
+def elbereth_futile_here(agent, monsters):
+    if not jf_config.IGNORER_FIGHTS or agent.global_logic.dive.diving or in_gehennom(agent):
+        return False
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    dive = agent.global_logic.dive
+    return any(adjacent((my, mx), (y0, x0)) and dive._melee_ignores_elbereth(mon)
+               for _, my, mx, mon, _ in monsters)
+
+
 def wait_action(agent, monsters):
+    if elbereth_futile_here(agent, monsters):
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
@@ -519,6 +520,7 @@ def camera_actions(agent, monsters):
 
 def get_available_actions(agent, monsters):
     actions = []
+    futile = elbereth_futile_here(agent, monsters)
 
     # melee attack actions
     for monster in monsters:
@@ -547,7 +549,7 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                     pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10
@@ -613,27 +615,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -654,26 +635,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions

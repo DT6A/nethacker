@@ -193,6 +193,17 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
+# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
+# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
+# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://nethackwiki.com/wiki/Standard_strategy; /refs/past_runs/20261008-213012/92.diff (kept on the armour chain:
+# held-out 0.1875 -> 0.2158), /refs/past_runs/20261008-213012/65.diff, 61.diff, 16.diff (held-out +0.03 each)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
@@ -276,6 +287,13 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# hypothesis: were_unload keeps every edible stack, but a wererat form (cwt 40, weight_cap ~16) is Overtaxed from
+# ~2.5x that (calc_cap), where the command loop refuses eating ('You can't do that while carrying so much stuff'):
+# public s4 dropped 18 items yet stayed Overtaxed 250 turns, fainted and died. Keep dropping the heaviest food
+# stack (then all but one of the last, then gold) until below Overtaxed so the form can eat
+# sources: NetHack 3.6.6 hack.c weight_cap()/calc_cap() (Upolyd: carrcap * cwt / WT_HUMAN), cmd.c rhack;
+# https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, /refs/history.md (LYCAN_FIXES)
+LYCAN_UNLOAD_FOOD = True
 # hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
 # cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
 # max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
@@ -377,31 +395,6 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-# ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
-ELBERETH_EAT = True
-
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
-
-# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included: 'It yelps! You
-# kill it! ... rumble of distant thunder' (dev seed 733389, T374: the pet was between the hero and a grid bug 5 squares
-# away) is Luck -5 and alignment -15, so the first hunger prayer is 'displeased' (ugangr), the XL3 Tourist starts the
-# rescue dive and dies on Dlvl 5. With a pet seen lately and none in view, never throw at a target 3+ squares away
-# unless every square between is lit visible floor (combat/fight_heur.ranged_priority).
-# sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15), src/pray.c
-#          (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer, /refs/history/155.diff
-PET_LINE_GUARD = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -416,3 +409,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+# hypothesis: standing on Elbereth with an adjacent @-form were / elf / minotaur (they ignore it) the bot only
+# searched while being killed (public s11); fight2 should attack such a monster instead (grind only).
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          NetHack 3.6.6 src/monmove.c onscary()
+IGNORER_FIGHTS = True
