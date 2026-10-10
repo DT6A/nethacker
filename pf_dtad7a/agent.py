@@ -2047,11 +2047,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2090,6 +2085,17 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # hypothesis: a monster our own adjacent flash blinded (flash_hits_mon: mblinded = 0 with
+                    # mcansee = 0 when dist2 < 3, i.e. blind for good) no longer respects the Elbereth we engrave next
+                    # (monmove.c m_move/onscary need mcansee; set_apparxy gives a blind monster only a 1 in 3 chance
+                    # of the right square), so remember its name for elbereth_rest.
+                    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c dochug/set_apparxy,
+                    #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth,
+                    #          /refs/history/118.diff
+                    for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
+                        if not hasattr(self, '_flash_blinded'):
+                            self._flash_blinded = {}
+                        self._flash_blinded[_name.lower()] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
