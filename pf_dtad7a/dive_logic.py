@@ -75,26 +75,6 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
-# hypothesis: the Elbereth rest (below 40% HP) and its lone-weak-monster exemption (fight a lone mlevel <= 2 hostile
-# down to a flat 6 HP) ignore how hard the monster actually hits: a hobgoblin with a trident (attack d6 PLUS the
-# weapon's d6+1, mhitu.c mattacku AT_WEAP) hit a 34/40-HP XL5 Tourist 7, 7, 7, 9 and killed it in 4 turns while the
-# exemption kept it fighting, and the engraving turn itself gives every adjacent monster one more round. Hide as soon
-# as HP no longer exceeds twice the biggest one-turn HP loss of the last 12 turns (capped at 60% of max HP) -- it
-# covers weapon wielders and packs (the observed loss is the sum over all attackers) with no monster table -- and end
-# the exemption at that observed floor, or at the static one-round table (WEAK_ROUND_DAMAGE) for monsters not yet seen
-# hitting. Elbereth-ignoring monsters (@, minotaurs) and blind characters stay with the fight as before.
-# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Hobgoblin,
-#          https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/mhitu.c
-#          mattacku (weapon damage added to the attack dice), /refs/history/95.diff (WEAK_FLOOR_BY_DAMAGE table, kept on
-#          ~11 chains), /refs/history/110.diff (PACK_ROUND_FLOOR)
-ADAPTIVE_ROUND_FLOOR_WINDOW = 12
-ADAPTIVE_ROUND_FLOOR_MAX = 0.6
-ADAPTIVE_ROUND_FLOOR_MAX_DEPTH = 10
-WEAK_ROUND_DAMAGE = {
-    'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
-    'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
-    'wererat': 8, 'werejackal': 8, 'dwarf zombie': 7, 'gnome zombie': 6,
-}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1276,8 +1256,7 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        round_floor = 0 if resting or not jf_config.ADAPTIVE_ROUND_FLOOR else self._observed_round_floor()
-        if (bl.hitpoints >= max(threshold * bl.max_hitpoints, round_floor) and not falling) or \
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False
@@ -1289,12 +1268,14 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
-        weak_floor = 6
-        if jf_config.ADAPTIVE_ROUND_FLOOR and len(near) == 1:
-            weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1,
-                             self._observed_round_floor())
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
                 not infectious_were(agent, near[0][3]):
+            self._elbereth_resting = False
+            yield False
+        # ELBERETH_VS_BLINDED (jf_config): a monster our own camera flash blinded ignores the engraving
+        blinded = getattr(agent, '_flash_blinded', {})
+        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
+                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1545,18 +1526,6 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
-
-    def _observed_round_floor(self):
-        """ADAPTIVE_ROUND_FLOOR: twice the biggest one-turn HP loss recorded in the last
-        ADAPTIVE_ROUND_FLOOR_WINDOW turns (0: none), capped at ADAPTIVE_ROUND_FLOOR_MAX of max HP."""
-        bl = self.agent.blstats
-        if bl.depth > ADAPTIVE_ROUND_FLOOR_MAX_DEPTH:
-            return 0
-        hist = [(t, hp) for t, hp in self._hp_history if t >= bl.time - ADAPTIVE_ROUND_FLOOR_WINDOW]
-        worst = max((a[1] - b[1] for a, b in zip(hist, hist[1:])), default=0)
-        if worst <= 0:
-            return 0
-        return min(2 * worst, ADAPTIVE_ROUND_FLOOR_MAX * bl.max_hitpoints)
 
     def _fast_hp_loss(self):
         bl = self.agent.blstats

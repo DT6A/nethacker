@@ -436,24 +436,6 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
     #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
     if not agent.global_logic.dive.diving:
-        # hypothesis: a were in @ form that stands next to us shapeshifts with 1/5 per attack round (1/3 at night) and
-        # bites in the same call; each animal-form bite infects an MC0 Tourist 1 in 4, and uncured lycanthropy killed
-        # the Tourist in public s4, s9, s11 (hundreds of turns as a 4-12 HP rat). Flashing the @ form first blinds it
-        # for good and makes it flee 3 times in 4, so few attack rounds follow; at any HP, but only while we are not
-        # yet a lycanthrope, and only if it can still see (an already-blinded one is skipped by the cooldown).
-        # sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Wererat,
-        #          https://nethackwiki.com/wiki/Expensive_camera, NetHack 3.6.6 src/mhitu.c mattacku (is_were: new_were
-        #          1/5 in @ form, then AD_WERE), src/apply.c use_camera
-        if jf_config.WERE_FLASH_FIRST and jf_config.GRIND_CAMERA and not in_gehennom(agent) and \
-                not agent.character.is_lycanthrope and not agent.character.prop.hallu and \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) >= 10:
-            for monster in monsters:
-                _, y, x, mon, _ = monster
-                if 'were' in getattr(mon, 'mname', '') and ord(mon.mlet) == MON.S_HUMAN and \
-                        adjacent((y, x), (agent.blstats.y, agent.blstats.x)) and \
-                        not getattr(mon, 'mflags1', 0) & 0x00001000:
-                    agent._grind_flash_turn = agent.blstats.time
-                    return [(40, ('camera', y - agent.blstats.y, x - agent.blstats.x, camera))]
         if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
                 (agent.inventory.engraving_below_me or '').lower() == 'elbereth':

@@ -292,10 +292,6 @@ LYCAN_FIXES = True
 #          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
 #          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
 WERE_KEEP_AWAY = True
-# hypothesis: an adjacent were in @ form shapeshifts and bites in one call (1/5 per round), 1 in 4 bites infects; flash it
-# at once at any HP in the grind so it is blinded and flees (combat.fight_heur.camera_actions)
-# sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Expensive_camera
-WERE_FLASH_FIRST = True
 # hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon, and
 # get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist had NO ranged
 # attack at all. With WERE_KEEP_AWAY it hides on Elbereth from an animal-form were and with MOLD_NO_MELEE it never
@@ -363,12 +359,6 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# ADAPTIVE_ROUND_FLOOR: the Elbereth rest starts when HP <= twice the biggest one-turn HP loss of the last 12 turns
-# (capped at 60% of max HP, Dlvl <= 10), and the lone-weak-monster exemption ends there (see dive_logic.elbereth_rest)
-# hypothesis: fewer Dlvl 1-8 deaths to weapon wielders and packs that hit harder than the fixed 40% / 6-HP floors assume
-# sources: https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/mhitu.c mattacku, /refs/history/95.diff
-ADAPTIVE_ROUND_FLOOR = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -391,3 +381,14 @@ if LATE_FIXES:
 # /refs/past_runs/20261008-213012/74.diff
 DIVE_FOOD_RESERVE = 800
 DIVE_FOOD_RESERVE_XL = 6
+
+# were_unload keeps only the food a were form can carry (weight_cap() of the tiny form), not every edible item
+WERE_UNLOAD_BUDGET = True
+
+# hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (blind for good), hides on Elbereth at low HP and is bitten
+# to death by the blind rat/hobbit/ant on the "intact" engraving (my replay of seed 12 at XL4: two flashed giant rats
+# and a hobbit took 13 HP to 0 during an ELBERETH rest); keep fighting and let potion/prayer logic act instead.
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
+#          https://www.steelypips.org/nethack/elbereth_faq.html (players: any externally blinded monster ignores it),
+#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c onscary, /refs/history/118.diff
+ELBERETH_VS_BLINDED = True

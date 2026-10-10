@@ -2083,6 +2083,16 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # hypothesis: a monster our own adjacent flash blinded (flash_hits_mon: mblinded = 0 with
+                    # mcansee = 0 when dist2 < 3, i.e. blind for good) no longer respects the Elbereth we engrave next
+                    # (monmove.c onscary/m_move need mcansee), so remember its name for elbereth_rest.
+                    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c onscary,
+                    #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth,
+                    #          https://www.steelypips.org/nethack/elbereth_faq.html (players: blind monsters ignore it)
+                    for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
+                        if not hasattr(self, '_flash_blinded'):
+                            self._flash_blinded = {}
+                        self._flash_blinded[_name.lower()] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
@@ -2645,20 +2655,71 @@ class Agent:
         then the usual pickup logic collects the pile."""
         if not jf_config.LYCAN_FIXES or not self.character.prop.polymorph or \
                 self.blstats.carrying_capacity < 4 or self.blstats.hunger_state < Hunger.WEAK:
+            if not self.character.prop.polymorph:
+                self._were_unload_tries = 0
             yield False
         food = self.edible_carried_food()
         if not food:
             yield False
-        keep = set(id(i) for i in food)
-        to_drop = [item for item in self.inventory.items
-                   if id(item) not in keep and item.can_be_dropped_from_inventory() and
-                   item.category != nh.COIN_CLASS and
-                   not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
+        counts = {}
+        if jf_config.WERE_UNLOAD_BUDGET:
+            # hypothesis: keeping every food item left the form Overtaxed (public s4 and s11: ~91 weight kept
+            # against a wererat form's ~19), so eat.c check_capacity refused 100+ times ("You can't do that
+            # while carrying so much stuff"), the bot fainted and a giant bat / rothe killed it in the grind
+            # (0.029 / 0.051); keep only the food the form can carry -- eating works up to Strained, i.e. a
+            # total below ~2.5 x weight_cap() -- and drop more on every retry
+            # sources: https://nethackwiki.com/wiki/Lycanthropy , https://nethackwiki.com/wiki/Encumbrance ,
+            #          https://nethackwiki.com/wiki/Weight_capacity , NetHack 3.6.6 src/hack.c weight_cap() and
+            #          near_capacity(), src/eat.c doeat() check_capacity(), wiki Talk:Werecreature and
+            #          NetHackWiki:Ask_an_expert/Archive4 (were-form carrying advice), step traces of seeds 4 and 11
+            tries = getattr(self, '_were_unload_tries', 0)
+            bl = self.blstats
+            try:
+                cwt = int(MON.permonst(self.glyphs[bl.y, bl.x]).cwt) or 40
+            except Exception:
+                cwt = 40
+            st = int(bl.strength)
+            st = st if st <= 18 else min(25, 19 + st // 50)
+            wc = (25 * (st + int(bl.constitution)) + 50) * cwt // 1450
+            coins = sum(int(i.count) for i in self.inventory.items if i.category == nh.COIN_CLASS)
+            budget = wc * (2.0, 1.0, 0.4)[min(tries, 2)] - (coins + 50) // 100
+            fed = sorted(food, key=lambda i: -(self._food_item_nutrition(i, 1) / max(i.weight() / max(i.count, 1), 1)))
+            used = 0
+            keep_units = {}
+            for item in fed:
+                unit = max(item.weight() / max(item.count, 1), 1)
+                n = int(min(item.count, max(budget - used, 0) // unit))
+                if n:
+                    keep_units[id(item)] = n
+                    used += n * unit
+            if not keep_units:
+                lightest = min(fed, key=lambda i: i.weight() / max(i.count, 1))
+                keep_units[id(lightest)] = 1
+            to_drop = []
+            for item in self.inventory.items:
+                if not item.can_be_dropped_from_inventory() or item.category == nh.COIN_CLASS:
+                    continue
+                if item.is_container() and any(id(i) in keep_units for i in flatten_items([item])):
+                    continue
+                n = item.count - keep_units.get(id(item), 0)
+                if n > 0:
+                    to_drop.append(item)
+                    counts[id(item)] = n
+        else:
+            keep = set(id(i) for i in food)
+            to_drop = [item for item in self.inventory.items
+                       if id(item) not in keep and item.can_be_dropped_from_inventory() and
+                       item.category != nh.COIN_CLASS and
+                       not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
         if not to_drop:
             yield False
         yield True
+        self._were_unload_tries = getattr(self, '_were_unload_tries', 0) + 1
         self.log(f'LYCAN were form Overloaded while hungry: dropping {len(to_drop)} items to eat')
-        self.inventory.drop(to_drop, smart=False)
+        if counts:
+            self.inventory.drop(to_drop, [counts[id(i)] for i in to_drop], smart=False)
+        else:
+            self.inventory.drop(to_drop, smart=False)
 
     _TIN_SMELL = re.compile(r'It smells like (?:the )?([A-Za-z -]+?)\.')
     _BAD_TIN_WORDS = ('cockatrice', 'chickatrice', 'Medusa', 'green slime', 'were', 'little dog', 'large dog',
