@@ -176,6 +176,23 @@ def ranged_priority(agent, dy, dx, monsters):
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
                 return None
+            # hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included:
+            # 'It yelps! You kill it!' (dev seed 733389 T374: Luck -5 and alignment -15), so the first (hunger) prayer
+            # is displeased and the XL3 hero dies in a rescue dive. With a pet seen lately and none in view, never
+            # throw across squares that are not lit visible floor.
+            # sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15),
+            #          src/pray.c (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer,
+            #          /refs/history/226.diff, /refs/history/232.diff
+            if jf_config.PET_LINE_GUARD and dis >= 3:
+                seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
+                if seen is not None and agent.blstats.time - seen < 100 and \
+                        not utils.any_in(agent.glyphs, G.PETS):
+                    cy, cx = agent.blstats.y + dy, agent.blstats.x + dx
+                    for _ in range(dis - 2):
+                        cy += dy
+                        cx += dx
+                        if agent.glyphs[cy, cx] not in G.VISIBLE_FLOOR:
+                            return None
             if dis in (1, 2):
                 ret -= 5
             if dis == 1:
