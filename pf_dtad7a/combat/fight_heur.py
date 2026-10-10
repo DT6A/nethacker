@@ -400,9 +400,10 @@ def distant_flash_directions(agent, monsters):
     level = agent.current_level()
     y0, x0 = agent.blstats.y, agent.blstats.x
     dirs = []
+    blind = blind_flashed_positions(agent, monsters)
     for monster in monsters:
         y, x, mon = monster[1], monster[2], monster[3]
-        if getattr(mon, 'mname', '') != 'minotaur':
+        if getattr(mon, 'mname', '') != 'minotaur' or (y, x) in blind:
             continue
         dy, dx = y - y0, x - x0
         if max(abs(dy), abs(dx)) != 2 or dy not in (-2, 0, 2) or dx not in (-2, 0, 2):
@@ -411,6 +412,43 @@ def distant_flash_directions(agent, monsters):
             continue
         dirs.append((dy // 2, dx // 2))
     return dirs
+
+
+def blind_flashed_positions(agent, monsters):
+    """Squares of monsters our camera already flashed (or that resisted a flash), followed as they move."""
+    # hypothesis: FLASH_ONCE -- a flash at a monster that is already blind does nothing (mondata.c resists_blnd:
+    # mon->mblinded || !mon->mcansee), and an adjacent flash blinds for good (uhitm.c flash_hits_mon: mblinded = 0
+    # with mcansee = 0 when dist2 < 3), yet camera_actions re-flashed the same rat/gnome/hobbit every few turns:
+    # replays of public s13 / dev 733389 show 10-15 flashes in a row with an empty message while the monsters bit
+    # a 6-9 HP Tourist (733389 died on Dlvl 4 at XL 4 that way). Follow each flashed monster (same name, nearest
+    # square, a few squares of slack for the turns it was out of sight) and never spend a turn on it again.
+    # sources: NetHack 3.6.6 src/mondata.c resists_blnd, src/uhitm.c flash_hits_mon, src/apply.c use_camera,
+    #          https://nethackwiki.com/wiki/Expensive_camera
+    if not jf_config.FLASH_ONCE:
+        return set()
+    marks = getattr(agent, '_blind_marks', None)
+    if not marks:
+        return set()
+    now = agent.blstats.time
+    key = agent.current_level().key()
+    kept, used = [], set()
+    for mark in marks:
+        if mark['level'] != key or now - mark['seen'] > 40 or now - mark['t'] > 600:
+            continue
+        radius = 1 + min(now - mark['seen'], 4)
+        best = None
+        for _, y, x, mon, _ in monsters:
+            if (y, x) in used or getattr(mon, 'mname', '').lower() != mark['name']:
+                continue
+            d = max(abs(y - mark['y']), abs(x - mark['x']))
+            if d <= radius and (best is None or d < best[0]):
+                best = (d, y, x)
+        if best is not None:
+            mark['y'], mark['x'], mark['seen'] = best[1], best[2], now
+            used.add((best[1], best[2]))
+        kept.append(mark)
+    agent._blind_marks = kept
+    return used
 
 
 def camera_actions(agent, monsters):
@@ -429,6 +467,7 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
+    blind = blind_flashed_positions(agent, monsters)
     # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
     # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
     # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
@@ -443,7 +482,8 @@ def camera_actions(agent, monsters):
         actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
-            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
+            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000 or \
+                    (y, x) in blind:
                 continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
@@ -478,7 +518,7 @@ def camera_actions(agent, monsters):
     #          /refs/top/47a6c840a4cf (Elbereth-first faint guard)
     # Only once the dive proper has begun (XL 8+): an early fall-dive at XL 1-3 lives on its flashes (s0 flashed a
     # grid bug at 6/14 HP on Dlvl 2 and went on to Dlvl 17; without the flash a bat killed it on Dlvl 3)
-    if agent.blstats.experience_level >= _dive_xl() and not on_elbereth and not in_gehennom(agent) and \
+    if agent.blstats.experience_level >= 8 and not on_elbereth and not in_gehennom(agent) and \
             dive._elbereth_possible():
         on_elbereth = True
     actions = []
@@ -487,7 +527,7 @@ def camera_actions(agent, monsters):
         agent._distant_flash_turn = agent.blstats.time
     for monster in monsters:
         _, y, x, mon, _ = monster
-        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or (y, x) in blind:
             continue
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
@@ -597,27 +637,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -638,26 +657,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
@@ -676,8 +679,3 @@ def get_move_actions(agent, dis, move_priority_heatmap):
         if not np.isnan(move_priority_heatmap[y, x]):
             ret.append((move_priority_heatmap[y, x], ('move', dy, dx)))
     return ret
-
-
-def _dive_xl():
-    from ..dive_logic import DIVE_XL
-    return DIVE_XL
