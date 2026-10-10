@@ -922,7 +922,12 @@ class Agent:
     def wield_best_melee_weapon(self):
         # TODO: move to inventory
         item = self.inventory.get_best_melee_weapon()
-        if item != self.inventory.items.main_hand:
+        main = self.inventory.items.main_hand
+        # a wielded dwarvish mattock (the dig-dive's tool) stays in hand as before; with the corrected Unskilled
+        # damage sign bare hands win over it at low XL and each fight would unwield it
+        if main is not None and main.is_weapon() and main.objs[0].name == 'dwarvish mattock':
+            return False
+        if item != main:
             return self.inventory.wield(item)
         return False
 
@@ -2062,6 +2067,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2482,7 +2492,7 @@ class Agent:
                 close = dive._near_hostiles(radius=3)
                 engraving = (self.inventory.engraving_below_me or '').lower()
                 if not any(dive._ignores_elbereth(m[3]) for m in close) and not self.character.prop.blind and \
-                        (engraving == 'elbereth' or self.can_engrave()) and not dive.elbereth_futile():
+                        (engraving == 'elbereth' or self.can_engrave()):
                     adjacent = []
             if adjacent:
                 level = self.current_level()
@@ -2601,20 +2611,7 @@ class Agent:
         # the dive eats what it carries as soon as it is Hungry: its prayers are for HP emergencies
         # (a dive fainted at Dlvl 6 and died fighting); the tour keeps DT6A's hoard-and-pray policy
         diving = self.global_logic.dive.diving
-        # hypothesis: a lycanthrope that hoards its food for a Weak hunger prayer meets pray.c pleased() with two
-        # major troubles (TROUBLE_STARVING above TROUBLE_LYCANTHROPE); at Luck 0 action = rn1(2,1) fixes only the
-        # worst one half the time, so hunger is fed, the lycanthropy stays, and the next safe prayer is ~1000
-        # turns away (public s4/s9/s11: hundreds of turns as a 4-12 HP rat, fainting, dead). Eating the carried
-        # food while merely Hungry leaves the cure prayer (cure_disease, gap 1200) as the only trouble: it works
-        # every time the timeout allows.
-        # sources: https://nethackwiki.com/wiki/Prayer (Luck 0: 1d2 -> one or all major troubles),
-        #          https://nethackwiki.com/wiki/Trouble (weak hunger listed above lycanthropy),
-        #          https://nethackwiki.com/wiki/Lycanthropy (prayer cures it as a major trouble),
-        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/bITTR3R7q3A (Wererats: pray),
-        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/Od34jOzi7sQ (Lycanthropy cure),
-        #          NetHack 3.6.6 src/pray.c in_trouble()/pleased()
-        lycan_eat = jf_config.LYCAN_EAT_FIRST and self.character.is_lycanthrope
-        if not diving and not lycan_eat and not self.prayer_failed and self.blstats.hunger_state < Hunger.FAINTING and \
+        if not diving and not self.prayer_failed and self.blstats.hunger_state < Hunger.FAINTING and \
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False

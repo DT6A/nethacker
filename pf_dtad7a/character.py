@@ -221,11 +221,14 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
-    # hypothesis: weapon.c weapon_dam_bonus gives Restricted/Unskilled -2 damage, not +2: with the sign wrong an Unskilled
-    # found dagger (d4, -4 to hit) scored 4.5 damage and beat bare hands and thrown darts in get_best_melee_weapon /
-    # thrown_beats_wielded, so the Tourist wielded (and welded) cursed daggers it should never have touched
-    # sources: https://nethackwiki.com/wiki/Weapon_skill (Unskilled: -4 to hit, -2 damage), NetHack 3.6.6 src/weapon.c
-    #          weapon_dam_bonus (P_ISRESTRICTED / P_UNSKILLED: bonus = -2)
+    # hypothesis: the Unskilled/Restricted damage bonus was +2 (weapon.c weapon_dam_bonus gives -2), so the bot priced an
+    # Unskilled found dagger (d4+2, hit +2-4) at ~4x bare hands and wielded it blind; 8 of 21 replayed Dlvl-1 grind
+    # deaths had a CURSED (welded) dagger/bow in hand and 19 of 21 some wielded weapon, often with 12-39 +2 darts
+    # unthrown in the pack (dev s733391: welded crude dagger, giant bat 41 -> 0 HP in 12 turns, no dart thrown).
+    # With -2 bare hands beat the unskilled dagger, so the Tourist stays bare-handed and throws darts point blank.
+    # sources: NetHack 3.6.6 src/weapon.c weapon_hit_bonus / weapon_dam_bonus (P_UNSKILLED: -4 hit, -2 damage),
+    #          https://nethackwiki.com/wiki/Weapon_skill, https://nethackwiki.com/wiki/Tourist,
+    #          /refs/history/199.diff and /refs/history/178.diff (same sign fix on other chains)
     weapon_bonus = {
         SKILL_LEVEL_RESTRICTED: (-4, -2),
         SKILL_LEVEL_UNSKILLED: (-4, -2),

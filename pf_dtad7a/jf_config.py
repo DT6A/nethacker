@@ -309,11 +309,6 @@ WERE_KEEP_AWAY = True
 WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# a lycanthrope eats its carried food when Hungry instead of waiting for a Weak hunger prayer, so the cure prayer is the
-# only major trouble pray.c has to fix (see Agent.eat_from_inventory)
-# hypothesis: at Luck 0 a prayer with two major troubles fixes both only half the time (starving is fixed first)
-# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Trouble, https://nethackwiki.com/wiki/Lycanthropy
-LYCAN_EAT_FIRST = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
@@ -364,6 +359,12 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# WERE_AT_FLASH: the grind also flashes an adjacent hostile were-creature in @ form (ignores Elbereth) below this ratio
+# hypothesis: fewer Dlvl 1-4 grind deaths to wererat/werejackal @-form melee plus their summoned packs
+# sources: https://nethackwiki.com/wiki/Werecreature ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/apply.c
+WERE_AT_FLASH = True
+WERE_AT_FLASH_RATIO = 0.7
+
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
@@ -376,20 +377,19 @@ PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
 
-# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
-# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
-# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
-# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
-# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
-# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
-# melee / potions / prayer within two bites.
-# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
-#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
-#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
-ELBERETH_FAIL_DETECT = True
-ELBERETH_FAIL_HITS = 2
-ELBERETH_FAIL_WINDOW = 6
-ELBERETH_FAIL_HOLD = 25
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
