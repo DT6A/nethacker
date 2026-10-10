@@ -210,6 +210,8 @@ class Character:
         "riding": O.P_RIDING,
     }
 
+    skill_type_to_name = {v: k for k, v in name_to_skill_type.items()}
+
     possible_skill_types = ['Fighting Skills', 'Weapon Skills', 'Spellcasting Skills']
     possible_skill_levels = ['Unskilled', 'Basic', 'Skilled', 'Expert', 'Master', 'Grand Master']
 
@@ -221,17 +223,9 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
-    # hypothesis: the Unskilled/Restricted damage bonus was +2 (weapon.c weapon_dam_bonus gives -2), so the bot priced an
-    # Unskilled found dagger (d4+2, hit +2-4) at ~4x bare hands and wielded it blind; 8 of 21 replayed Dlvl-1 grind
-    # deaths had a CURSED (welded) dagger/bow in hand and 19 of 21 some wielded weapon, often with 12-39 +2 darts
-    # unthrown in the pack (dev s733391: welded crude dagger, giant bat 41 -> 0 HP in 12 turns, no dart thrown).
-    # With -2 bare hands beat the unskilled dagger, so the Tourist stays bare-handed and throws darts point blank.
-    # sources: NetHack 3.6.6 src/weapon.c weapon_hit_bonus / weapon_dam_bonus (P_UNSKILLED: -4 hit, -2 damage),
-    #          https://nethackwiki.com/wiki/Weapon_skill, https://nethackwiki.com/wiki/Tourist,
-    #          /refs/history/199.diff and /refs/history/178.diff (same sign fix on other chains)
     weapon_bonus = {
-        SKILL_LEVEL_RESTRICTED: (-4, -2),
-        SKILL_LEVEL_UNSKILLED: (-4, -2),
+        SKILL_LEVEL_RESTRICTED: (-4, 2),
+        SKILL_LEVEL_UNSKILLED: (-4, 2),
         SKILL_LEVEL_BASIC: (0, 0),
         SKILL_LEVEL_SKILLED: (2, 1),
         SKILL_LEVEL_EXPERT: (3, 2),
@@ -284,6 +278,7 @@ class Character:
         self.gender = None
         self.self_glyph = None
         self.skill_levels = np.zeros(max(self.name_to_skill_type.values()) + 1, dtype=int)
+        self.upgradable_letters = dict()
         self.upgradable_skills = dict()
 
         self.is_lycanthrope = False
@@ -452,29 +447,58 @@ class Character:
             self._parse_enhance_view()
             while self.upgradable_skills:
                 to_upgrade = self.select_skill_to_upgrade()
+                if to_upgrade is None:
+                    # DART_SKILL_FIRST: nothing to spend the slots on yet (the popup reader already closed the
+                    # menu); the next fight start looks again
+                    break
                 old_skill_level = self.skill_levels.copy()
-                letter = self.upgradable_skills[to_upgrade]
+                letter = self.upgradable_letters.get(to_upgrade, self.upgradable_skills[to_upgrade])
+                skill_name = self.skill_type_to_name.get(to_upgrade, '')
 
                 def type_letter():
-                    while f'{letter} - ' not in '\n'.join(self.agent.single_popup):
+                    # tty menus restart their letters at 'a' on every page, so the letter alone can match another
+                    # skill's line on an earlier page: look for this skill's own line on the page shown
+                    for _ in range(8):
+                        if any(l.startswith(f'{letter} - ') and skill_name in l for l in self.agent.single_popup):
+                            break
                         yield A.TextCharacters.SPACE
+                    else:
+                        return
                     yield letter
 
                 self.agent.step(A.Command.ENHANCE, type_letter())
 
                 self.agent.step(A.Command.ENHANCE)
                 self._parse_enhance_view()
-                assert (old_skill_level != self.skill_levels).any(), (old_skill_level, self.skill_levels)
+                if (old_skill_level == self.skill_levels).all():
+                    # the keypress selected nothing (menu paging): give up for now rather than crash or loop
+                    break
 
     def select_skill_to_upgrade(self):
         assert self.upgradable_skills
-        # TODO: logic
+        # hypothesis: #enhance took the first advanceable skill in menu order (bare handed combat is listed first,
+        # then dagger, ... dart far down the list), so a Tourist's skill slots (one per experience level) went to
+        # bare hands (it punches), a found dagger or scimitar (Unskilled->Basic->Skilled->Expert = 6 slots) while the
+        # dart skill -- the Tourist's only real attack -- waited: Skilled throws rnd(2) darts with +2 to-hit/+1 dmg,
+        # Expert rnd(3) with +3/+2 (about 1.9x and 3x the damage per throw of Basic). Every slot goes to darts until
+        # they are Expert (5 slots, XL 6); other skills wait. (#160 tried this and scored far lower: its page counter
+        # guessed page 0 when the dart letter was the only lettered line on menu page 2, so the keypress selected
+        # nothing and the assert killed the game; here the page is found by matching the skill's own line.)
+        # sources: NetHack 3.6.6 src/weapon.c (slots_required, can_advance, practice_needed_to_advance, weapon_hit_bonus,
+        #          weapon_dam_bonus), src/dothrow.c throw_obj (multishot by skill; a Tourist gets the volley bonus
+        #          only for darts), win/tty/wintty.c (menu letters restart per page),
+        #          https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Tourist
+        from . import jf_config
+        if jf_config.DART_SKILL_FIRST and self.role == self.TOURIST and \
+                self.skill_levels[O.P_DART] < self.SKILL_LEVEL_EXPERT:
+            return O.P_DART if O.P_DART in self.upgradable_letters else None
         return next(iter(self.upgradable_skills.keys()))
 
     def _parse_enhance_view(self):
         if self.agent.popup[0] not in ('Current skills:', 'Pick a skill to advance:'):
             raise ValueError('Invalid ehance popup text format.' + str(self.agent.popup))
         self.upgradable_skills = dict()
+        self.upgradable_letters = dict()
         for line in self.agent.popup[1:]:
             if line.strip() in self.possible_skill_types or \
                     line.strip() == '(Skill flagged by "#" cannot be enhanced any further.)' or \
@@ -494,6 +518,7 @@ class Character:
                 # panicked the caller. Keep the first page's skill; once it is advanced the list is re-read.
                 # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() (menu_ch reset to 'a' per page),
                 #          /refs/history/54.diff (same fix, kept as a proven neutral fix)
+                self.upgradable_letters[self.name_to_skill_type[skill_type]] = letter
                 if letter not in self.upgradable_skills.values():
                     self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]

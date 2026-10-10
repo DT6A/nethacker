@@ -101,31 +101,6 @@ def missiles_risk_the_watch(agent):
 POINT_BLANK_THROW = True
 
 
-# hypothesis: a weapon already in hand (a found dagger that welded itself, an unknown-BUC stick wielded blind) turned
-# point_blank_throw off for good: the XL1-8 Tourist then stabbed Unskilled (-4 to hit, -2 damage) while 12-39 +2 darts
-# sat unthrown in its pack (dev s733391 giant bat, s733396 giant bat, s733390/s733403 werejackal: all with a welded
-# cursed dagger in hand). A point-blank +2 dart hits at base +1 +2 (throwing weapon) +2 (3 - distance) +2 enchantment
-# and does d3+2: keep throwing whenever its expected damage per swing beats the wielded weapon's (same calc_dps
-# formulas the bot picks weapons with); a skilled/enchanted weapon still wins and is used in melee.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Multishot,
-#          NetHack 3.6.6 src/dothrow.c thitmonst (+2 throwing weapon, +(3 - distance)), throw_obj (a welded wielded
-#          weapon does not stop a throw: only the thrown object's canletgo), src/uhitm.c find_roll_to_hit,
-#          /refs/history/22.diff (the same port, kept on an earlier chain)
-POINT_BLANK_WIELDED = True
-
-
-def thrown_beats_wielded(agent, main, ammo):
-    ch = agent.character
-    melee_hit, melee_dmg = ch.get_melee_bonus(main)
-    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
-    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
-    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
-    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
-    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
-    dart_dmg = max(0, ammo_dmg + skill_dmg)
-    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
-
-
 def point_blank_throw(agent, launcher, ammo):
     """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
     try:
@@ -135,10 +110,8 @@ def point_blank_throw(agent, launcher, ammo):
             return False
         main = agent.inventory.items.main_hand
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-                main.objs[0].name in ('dart', 'shuriken'):
-            return True
-        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
+        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+            main.objs[0].name in ('dart', 'shuriken')
     except Exception:
         return False
 

@@ -922,12 +922,7 @@ class Agent:
     def wield_best_melee_weapon(self):
         # TODO: move to inventory
         item = self.inventory.get_best_melee_weapon()
-        main = self.inventory.items.main_hand
-        # a wielded dwarvish mattock (the dig-dive's tool) stays in hand as before; with the corrected Unskilled
-        # damage sign bare hands win over it at low XL and each fight would unwield it
-        if main is not None and main.is_weapon() and main.objs[0].name == 'dwarvish mattock':
-            return False
-        if item != main:
+        if item != self.inventory.items.main_hand:
             return self.inventory.wield(item)
         return False
 

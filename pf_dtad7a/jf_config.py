@@ -390,6 +390,8 @@ ELBERETH_VS_BLINDED = True
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
+# #enhance spends a Tourist's skill slots on darts (up to Expert) before any other skill
+DART_SKILL_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
