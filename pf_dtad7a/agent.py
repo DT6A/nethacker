@@ -56,6 +56,7 @@ class Agent:
         self._last_pet_seen = 0
         self._corpse_debug_pos = None
         self._attack_ctx = None       # (turn, melee target, throw direction, origin, glyphs before) CORPSE_TRACK
+        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
 
         self.inventory = Inventory(self)
         self.character = Character(self)
@@ -430,6 +431,8 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        if jf_config.PET_HUNGER_FIX:
+            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -2100,22 +2103,6 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    # hypothesis: an adjacent flash blinds the monster for good (apply.c use_camera ->
-                    # uhitm.c flash_hits_mon: dist2 < 3 -> mblinded 0), and a blind monster ignores Elbereth
-                    # (monmove.c onscary / m_move: it can't see the engraving): remember who we blinded so the
-                    # Elbereth rest (dive_logic._ignores_elbereth) stops hiding from it. Fem s12 (XL4) lost
-                    # 13 -> 1 HP searching on an intact Elbereth beside two flash-blinded giant rats and a hobbit.
-                    # sources: https://nethackwiki.com/wiki/Elbereth ("A blinded monster that can ordinarily see
-                    #          will not respect Elbereth while it is blind"), https://nethackwiki.com/wiki/Expensive_camera,
-                    #          NetHack 3.6.6 src/uhitm.c flash_hits_mon, https://nethackwiki.com/wiki/Tourist
-                    if jf_config.ELBERETH_VS_BLINDED:
-                        blinded = re.search(r'(?:The |the )?([A-Za-z\- ]+?) is blinded by the flash',
-                                            self.message or '')
-                        if blinded:
-                            if not hasattr(self, '_flash_blinded'):
-                                self._flash_blinded = {}
-                            self._flash_blinded[blinded.group(1).strip().lower()] = \
-                                self.blstats.time + (jf_config.BLINDED_MEMORY if max(abs(dy), abs(dx)) <= 1 else 20)
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
@@ -2269,10 +2256,25 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
+    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
+
+    def _note_pet_hunger(self):
+        bl = getattr(self, 'blstats', None)
+        if bl is None:
+            return
+        msg = self.message or ''
+        if 'is confused from hunger' in msg:
+            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
+            self._pet_starving_until = -1
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
+        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
+                self.blstats.hunger_state < Hunger.WEAK:
+            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
