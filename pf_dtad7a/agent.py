@@ -2062,6 +2062,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2100,16 +2105,22 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    # hypothesis: a monster our own adjacent flash blinded (flash_hits_mon: mblinded = 0 with
-                    # mcansee = 0 when dist2 < 3, i.e. blind for good) no longer respects the Elbereth we engrave next
-                    # (monmove.c distfleeck/onscary use the square it *thinks* we are on; set_apparxy gives a blind
-                    # monster only a 1 in 3 chance of the right one), so remember its name for elbereth_rest.
-                    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
-                    #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth
-                    for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
-                        if not hasattr(self, '_flash_blinded'):
-                            self._flash_blinded = {}
-                        self._flash_blinded[_name.lower()] = self.blstats.time
+                    # hypothesis: an adjacent flash blinds the monster for good (apply.c use_camera ->
+                    # uhitm.c flash_hits_mon: dist2 < 3 -> mblinded 0), and a blind monster ignores Elbereth
+                    # (monmove.c onscary / m_move: it can't see the engraving): remember who we blinded so the
+                    # Elbereth rest (dive_logic._ignores_elbereth) stops hiding from it. Fem s12 (XL4) lost
+                    # 13 -> 1 HP searching on an intact Elbereth beside two flash-blinded giant rats and a hobbit.
+                    # sources: https://nethackwiki.com/wiki/Elbereth ("A blinded monster that can ordinarily see
+                    #          will not respect Elbereth while it is blind"), https://nethackwiki.com/wiki/Expensive_camera,
+                    #          NetHack 3.6.6 src/uhitm.c flash_hits_mon, https://nethackwiki.com/wiki/Tourist
+                    if jf_config.ELBERETH_VS_BLINDED:
+                        blinded = re.search(r'(?:The |the )?([A-Za-z\- ]+?) is blinded by the flash',
+                                            self.message or '')
+                        if blinded:
+                            if not hasattr(self, '_flash_blinded'):
+                                self._flash_blinded = {}
+                            self._flash_blinded[blinded.group(1).strip().lower()] = \
+                                self.blstats.time + (jf_config.BLINDED_MEMORY if max(abs(dy), abs(dx)) <= 1 else 20)
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
@@ -2732,7 +2743,6 @@ class Agent:
             # (7), above TROUBLE_LYCANTHROPE (6), and with Luck 0 only half the prayers fix more than one
             # trouble -- wait until the form's HP is back up, or it dies and we rehumanize
             if jf_config.LYCAN_FIXES and self.character.prop.polymorph and \
-                    not (jf_config.LYCAN_FORM_PRAY and self.blstats.max_hitpoints <= 5) and \
                     (self.blstats.hitpoints <= 5 or self.blstats.hitpoints * 7 <= self.blstats.max_hitpoints):
                 yield False
             # Hungry (minor trouble, not fixed at Luck 0): a cure prayer now restarts the prayer timeout just
