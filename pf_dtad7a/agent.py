@@ -1238,12 +1238,7 @@ class Agent:
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
-        # hypothesis: below EAT_BEFORE_PRAY_XL a Weak Tourist with carried food keeps its first (near-certain) prayer
-        # for HP: the hunger prayer at ~T860 left the next HP prayer at a ~900 gap that failed (dev s733390)
-        # sources: NetHack 3.6.6 pray.c can_pray (trouble needs prayer timeout <= 200, rnz(350) after a prayer),
-        #          https://nethackwiki.com/wiki/Prayer, /refs/history/112.diff
-        if self.blstats.experience_level >= 5 or not (jf_config.EARLY_FIXES or (
-                jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL)):
+        if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
             return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))

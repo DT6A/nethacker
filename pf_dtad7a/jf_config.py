@@ -359,6 +359,12 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# FLASH_WORST_NEIGHBOUR (fight_heur.camera_actions grind branch): the low-HP flash goes to the adjacent monster with the
+# highest damage per turn rather than the first one listed
+# hypothesis: a flash wasted on a giant rat beside a giant bat is a Dlvl 1-4 grind death the camera should have prevented
+# sources: https://nethackwiki.com/wiki/Expensive_camera ; https://nethackwiki.com/wiki/Giant_bat ; replay public s5
+FLASH_WORST_NEIGHBOUR = True
+
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
@@ -379,20 +385,15 @@ PRAYER_RECORD_FIX = True
 ELBERETH_VS_BLINDED = True
 BLINDED_MEMORY = 300
 
-# PET_LINE_GUARD (combat/fight_heur.unseen_pet_may_be_in_line, used by ranged_priority): no dart throw along a line with
-# undisplayed (dark corridor / dark room) squares while a pet seen on this level in the last PET_LINE_MEMORY turns is out
-# of view -- an unseen pet hit by our dart is Luck -5 / alignment -15 and the next prayers fail
-PET_LINE_GUARD = True
-PET_LINE_MEMORY = 100
-
-# EAT_BEFORE_PRAY_XL: below this XL (max 5) a Weak grind character with food in the pack eats it instead of praying for
-# hunger (0: off; EARLY_FIXES also turns this on)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the XL1-4
-# grind; the first Weak spell (~T850) spends it on hunger although a Tourist carries 7+ food items, and the HP prayer
-# that follows at a ~900-turn gap can fail (rnz(350) tail: dev s733390, XL2 -> XL1, killed by a grid bug at T1774)
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased(); https://nethackwiki.com/wiki/Prayer;
-#          https://nethackwiki.com/wiki/Tourist; /refs/history/112.diff
-EAT_BEFORE_PRAY_XL = 5
+# GRIND_IDLE_REST: the Dlvl-1 levelling grind engraves Elbereth and searches in place when below
+# GRIND_IDLE_REST_BELOW of max HP with no hostile in view, until GRIND_IDLE_REST_UNTIL (see dive_logic.tour_idle_rest)
+# hypothesis: the grind never rests when hurt, so the next fight starts at 10-50% HP; resting costs no XP (spawn-paced)
+# sources: https://nethackwiki.com/wiki/Hit_points, https://nethackwiki.com/wiki/Elbereth, /refs/history/137.diff
+GRIND_IDLE_REST = True
+GRIND_IDLE_REST_BELOW = 0.7
+GRIND_IDLE_REST_UNTIL = 0.95
+GRIND_IDLE_REST_MAX_TURNS = 600
+GRIND_IDLE_REST_COOLDOWN = 200
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
