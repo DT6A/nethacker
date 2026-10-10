@@ -2062,11 +2062,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2656,22 +2651,52 @@ class Agent:
         can't do that while carrying so much stuff'). Public s4 (5 food items) and jf16 s11 starved that
         way. arrange_items() is off while polymorphed, so nothing is picked up again until we change back;
         then the usual pickup logic collects the pile."""
+        # hypothesis: an Overloaded were form (encumbrance 5 = total weight >= 3x its weight_cap) can neither move nor
+        # attack ("You collapse under your load"), so it idles helpless for hundreds of turns under any bite (dev s0:
+        # wererat T17438, 500 turns at 10 HP beside a grid bug/cave spider, then fainted and died) and were_unload
+        # only woke once Weak; unload at ANY hunger when Overloaded, and keep only the best-nutrition food that
+        # fits ~1.5x the form's weight_cap (below Overtaxed, where eating is allowed again)
+        # sources: https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy,
+        #          NetHack 3.6.6 hack.c calc_cap()/domove(), eat.c, weight_cap() in polyself form scaling cwt/1450
+        overloaded = jf_config.WERE_OVERLOAD_UNLOAD and self.blstats.carrying_capacity >= 5
         if not jf_config.LYCAN_FIXES or not self.character.prop.polymorph or \
-                self.blstats.carrying_capacity < 4 or self.blstats.hunger_state < Hunger.WEAK:
+                (not overloaded and (self.blstats.carrying_capacity < 4 or self.blstats.hunger_state < Hunger.WEAK)):
             yield False
         food = self.edible_carried_food()
-        if not food:
+        if not food and not overloaded:
             yield False
         keep = set(id(i) for i in food)
+        surplus = {}
+        if overloaded:
+            bl = self.blstats
+            form = MON.permonst(self.glyphs[bl.y, bl.x])
+            budget = self.character.carrying_capacity * form.cwt * 3 // (1450 * 2) if form.cwt > 0 else 0
+            for i in self.inventory.items:
+                if id(i) not in keep and not i.can_be_dropped_from_inventory():
+                    budget -= i.weight()
+                elif i.category == nh.COIN_CLASS:
+                    budget -= (i.count + 50) // 100
+            top = [i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()]
+            top.sort(key=lambda i: -i.nutrition_per_weight())
+            kept_any = False
+            for i in top:
+                units = min(i.count, max(0, budget) // max(i.unit_weight(), 1))
+                if units == 0 and not kept_any:
+                    units = 1
+                kept_any = kept_any or units > 0
+                budget -= units * i.unit_weight()
+                if units < i.count:
+                    surplus[id(i)] = i.count - units
         to_drop = [item for item in self.inventory.items
-                   if id(item) not in keep and item.can_be_dropped_from_inventory() and
+                   if (id(item) not in keep or id(item) in surplus) and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
         if not to_drop:
             yield False
         yield True
-        self.log(f'LYCAN were form Overloaded while hungry: dropping {len(to_drop)} items to eat')
-        self.inventory.drop(to_drop, smart=False)
+        self.log(f'LYCAN were form Overloaded (enc {self.blstats.carrying_capacity}): dropping '
+                 f'{len(to_drop)} items')
+        self.inventory.drop(to_drop, [surplus.get(id(i), i.count) for i in to_drop], smart=False)
 
     _TIN_SMELL = re.compile(r'It smells like (?:the )?([A-Za-z -]+?)\.')
     _BAD_TIN_WORDS = ('cockatrice', 'chickatrice', 'Medusa', 'green slime', 'were', 'little dog', 'large dog',
