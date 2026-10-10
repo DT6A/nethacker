@@ -481,8 +481,8 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                assert letter not in self.upgradable_skills.values()
-                self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
+                if letter not in self.upgradable_skills.values():
+                    self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):

@@ -1760,6 +1760,8 @@ class Agent:
         again once adjacent (unless passive), after FIGHT_IGNORE_TURNS, or when something hurts us (only those
         within 3 when any is: a sleeping zoo further off stays let go)."""
         monsters = self.get_visible_monsters()
+        if jf_config.GHOST_IGNORE and self.blstats.experience_level < jf_config.GHOST_IGNORE_XL:
+            monsters = [m for m in monsters if m[3].mname != 'ghost']
         if self._fight_stall_turns() <= 0 or not self._fight_ignored:
             return monsters
         bl = self.blstats
@@ -2083,11 +2085,6 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
-                    if _m:
-                        if not hasattr(self, '_flash_blinded'):
-                            self._flash_blinded = {}
-                        self._flash_blinded[_m.group(1)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():

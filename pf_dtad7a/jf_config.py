@@ -359,20 +359,27 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6.
+# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
+# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
+# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
+# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
+# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
+IGNORER_FLASH = True
+IGNORER_FLASH_RATIO = 0.7
+
+# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
+# max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
+# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
-# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
-# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
-# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
-# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
-ELBERETH_VS_BLINDED = True
+# GHOST_IGNORE: below GHOST_IGNORE_XL fight2 (Agent.fight_monsters) does not see ghosts, so it neither chases nor stands
+# fighting one (speed 3, AC -5, 1d1 touch); the explorer outwalks it
+# hypothesis: a Dlvl-1 ghost (public/dev seed 733393) is unhittable at XL1-7, fight2 stood swinging at it for ~1000 turns
+# while the grind (and the hunger clock) stalled and it nibbled HP, which fed the failed-prayer -> rescue-dive deaths
+# sources: https://nethackwiki.com/wiki/Ghost (speed 3, AC -5, 1d1; walk away), https://nethackwiki.com/wiki/Tourist
+GHOST_IGNORE = True
+GHOST_IGNORE_XL = 8
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
