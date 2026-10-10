@@ -575,8 +575,6 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
-        self._hurt_elbereth_turns = []     # recent such turns (ELBERETH_VS_BLINDED)
-        self._elbereth_off_until = -1      # no Elbereth rest before this turn (ELBERETH_VS_BLINDED)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -596,7 +594,6 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
-                self._hurt_elbereth_turns = [t for t in self._hurt_elbereth_turns if turn - t <= 15] + [turn]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1284,19 +1281,6 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
-        if jf_config.ELBERETH_VS_BLINDED:
-            # a monster our flash blinded ignores Elbereth (onscary: mcansee), and so does whatever hurt us twice
-            # while we stood on an intact one: fight instead of searching on a useless engraving
-            turn = bl.time
-            blinded = getattr(agent, '_blinded_mons', {})
-            if resting and len([t for t in self._hurt_elbereth_turns if turn - t <= 15]) >= 2:
-                self._elbereth_off_until = turn + 40
-                agent.log('ELBERETH rest abandoned: hurt twice on an intact engraving')
-            if turn < self._elbereth_off_until or \
-                    any(turn - blinded.get(getattr(m[3], 'mname', ''), -10 ** 9) <= jf_config.ELBERETH_BLINDED_TURNS
-                        for m in near):
-                self._elbereth_resting = False
-                yield False
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
         # WEAK_FLOOR_BY_DAMAGE: and only while HP exceeds that monster's max one-round damage (else hide)
@@ -1305,6 +1289,17 @@ class DiveLogic:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
                 not infectious_were(agent, near[0][3]):
+            self._elbereth_resting = False
+            yield False
+        # hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (permanent blindness), then hides on Elbereth
+        # from it at low HP and is bitten to death by the blind rat/hobbit/ant on the "intact" engraving (replay of
+        # seed 12 at XL4: two flashed giant rats and a hobbit took 13 HP to 0 during ELBERETH rest); keep fighting
+        # and let the emergency potion/prayer/flee logic act instead of waiting on a square that does not protect.
+        # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
+        #          https://nethackwiki.com/wiki/Elbereth, /refs/history/109 (same idea, kept in the #71 subtree)
+        blinded = getattr(agent, '_flash_blinded', {})
+        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
+                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
