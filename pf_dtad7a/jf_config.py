@@ -214,6 +214,10 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
+# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
+# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
+PRAY_FIRST_SURE = True
+PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -359,33 +363,14 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
-# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
-# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
-# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
-# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
-IGNORER_FLASH = True
-IGNORER_FLASH_RATIO = 0.7
-
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# WERE_UNLOAD_BUDGET: were_unload keeps only the food that fits the were form's carrying capacity (agent.were_unload)
+WERE_UNLOAD_BUDGET = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
