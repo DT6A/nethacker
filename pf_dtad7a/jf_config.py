@@ -378,26 +378,11 @@ WEAK_FLOOR_BY_DAMAGE = True
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
 
+# PET_LINE_GUARD (combat.fight_heur.ranged_priority): see the hypothesis there
+PET_LINE_GUARD = True
+
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
-
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
-
-# hypothesis: a digger that lands in a shop (trap door / hole above) must wait SHOP_DIG_WAIT turns *of this visit* before digging out, and must dig from an object-free square -- the wait ran from the level's first-ever sighting (so it never waited on a revisited level: public s5 dug at once on landing in Dlvl 2's general store and the goods under the hero fell with it: shopkeeper + Kops killed the XL8 hero on Dlvl 3) and the hero's own square (its glyph hides the floor goods) was never checked
-# sources: https://nethackwiki.com/wiki/Shopkeeper (a customer who falls through a hole owing for the goods that fell with them: the shopkeeper follows and is angry), https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop: objects on the hole square fall too -- 'You owe X for goods lost')
-SHOP_DIG_CLEAR = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

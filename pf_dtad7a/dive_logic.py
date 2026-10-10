@@ -71,7 +71,12 @@ PICK_DETOUR = True
 PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
-DIVE_XL = 8
+# hypothesis: GRIND_END_XL7 -- the Dlvl-1 grind ends at XL 7 (640 XP), not XL 8 (1280 XP): XL7->8 is half of all grind XP
+# (random spawns on Dlvl 1 are capped at difficulty (1+XL)/2, so the kills are small) and ~20% of the XL7 Tourists die
+# there (hunger-prayer failures, were bites, rothe/pony packs; score ~0.05) where a dive scores ~0.38
+# sources: /refs/parent-eval.json + parent-eval-extra.json (deaths at Xp:7 on Dlvl 1, T15-21k); makemon.c (difficulty cap);
+#          https://nethackwiki.com/wiki/Experience_level (XL7=640, XL8=1280); /refs/history.md #182 (unmeasured port source)
+DIVE_XL = 7
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
@@ -498,7 +503,6 @@ class DiveLogic:
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level
         self.level_first_turn = {}     # level key -> turn first seen
-        self.level_arrival_turn = 0    # turn of the latest arrival on the current level
         self._mapped = set()           # level keys a scroll of magic mapping was read on (MAP_WHEN_STUCK)
         self.fully_explored = set()    # level keys explored to exhaustion
         self.sweep_started = None      # turn the current portal sweep began
@@ -707,7 +711,6 @@ class DiveLogic:
         if key != self._last_key:
             agent.log(f'DIVE level {key} depth {agent.blstats.depth}')
             self._last_key = key
-            self.level_arrival_turn = turn
             # diagnostics (power.py): what the character would bring to the Castle
             mark = 20 if agent.blstats.depth >= 20 else 10 if agent.blstats.depth >= 10 else None
             if mark is not None and mark not in getattr(self, '_kit_logged', set()):
@@ -2452,9 +2455,9 @@ class DiveLogic:
         self.tool_spots.discard((key, spot))
 
     def first_level_done(self):
-        """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
+        """The tour's Dlvl 1 grind ends at XL DIVE_XL, or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= DIVE_XL or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
@@ -2996,11 +2999,6 @@ class DiveLogic:
         # a square always covered by objects (a leprechaun hall is gold wall to wall) never shows its
         # floor: an s12 digger found no 'floor' there and explored the hall until it starved
         terrain = level.objects[py, px]
-        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) goods under the hero's own square fall through the hole with us ('You owe ... for goods lost')
-        # sources: https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop)
-        if jf_config.SHOP_DIG_CLEAR and level.shop[py, px] and level.item_count[py, px] and \
-                (py, px) == (agent.blstats.y, agent.blstats.x):
-            return False
         if not (terrain in PLAIN_FLOOR or (terrain == -1 and level.walkable[py, px]) or
                 (DIG_IN_PITS and terrain in PITS)) or \
                 (level.shop[py, px] and not self._trapped_in_shop(py, px)) or \
@@ -3029,10 +3027,7 @@ class DiveLogic:
         # only when trapped: no floor outside the shop reachable, for a while (the s4 dive walked out of a Dlvl 2
         # shop 140 turns after landing) -- at once when Weak or Fainting: each faint is turns lost to hunger
         hungry = agent.blstats.hunger_state >= Hunger.WEAK
-        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) the wait counts from this visit's arrival, not the level's first sighting
-        # sources: https://nethackwiki.com/wiki/Shopkeeper, https://nethackwiki.com/wiki/Shop#Digging_in_a_shop
-        waited = agent.blstats.time - self.level_arrival_turn if jf_config.SHOP_DIG_CLEAR else self.turns_on_level()
-        if (waited < SHOP_DIG_WAIT and not hungry) or \
+        if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
                 ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
             return False
         return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
