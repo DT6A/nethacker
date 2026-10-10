@@ -575,6 +575,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._elb_hurt_turns = []          # turns HP fell on an intact Elbereth (ELBERETH_VS_BLINDED)
+        self._elbereth_block_until = -1    # no Elbereth rest before this turn (it kept failing)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -594,8 +596,14 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._elb_hurt_turns = (self._elb_hurt_turns + [turn])[-6:]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
+            blinded = getattr(agent, '_flash_blinded', None)
+            if blinded:
+                for dead in re.findall(r'You (?:kill|destroy) (?:the )?([a-z\- ]+?)[!.]|The ([a-z\- ]+?) is (?:killed|destroyed)',
+                                       agent.message or ''):
+                    blinded.pop((dead[0] or dead[1]).strip().lower(), None)
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
             self._pit_at = None
         if self.medusa_level is None and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
@@ -1201,6 +1209,9 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
+        if jf_config.ELBERETH_VS_BLINDED and \
+                getattr(self.agent, '_flash_blinded', {}).get(name, -1) >= self.agent.blstats.time:
+            return True   # our own flash blinded it: a blind monster doesn't see the engraving
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
@@ -1280,6 +1291,17 @@ class DiveLogic:
             # behind (base-public s0 rested among Medusa-4's snakes, then fought them from the square)
             self._elbereth_resting = False
             yield False
+        if jf_config.ELBERETH_VS_BLINDED:
+            if bl.time < self._elbereth_block_until:
+                self._elbereth_resting = False
+                yield False
+            if resting and len([t for t in self._elb_hurt_turns if bl.time - t <= 15]) >= 2:
+                # hit twice on an intact Elbereth within 15 turns: whatever bites ignores it
+                agent.log(f'ELBERETH rest abandoned: hurt twice on an intact engraving hp={bl.hitpoints}/{bl.max_hitpoints}')
+                self._elbereth_block_until = bl.time + 40
+                self._elb_hurt_turns = []
+                self._elbereth_resting = False
+                yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
