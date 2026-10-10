@@ -2062,6 +2062,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2732,6 +2737,7 @@ class Agent:
             # (7), above TROUBLE_LYCANTHROPE (6), and with Luck 0 only half the prayers fix more than one
             # trouble -- wait until the form's HP is back up, or it dies and we rehumanize
             if jf_config.LYCAN_FIXES and self.character.prop.polymorph and \
+                    not (jf_config.LYCAN_FORM_PRAY and self.blstats.max_hitpoints <= 5) and \
                     (self.blstats.hitpoints <= 5 or self.blstats.hitpoints * 7 <= self.blstats.max_hitpoints):
                 yield False
             # Hungry (minor trouble, not fixed at Luck 0): a cure prayer now restarts the prayer timeout just
