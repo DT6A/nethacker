@@ -367,23 +367,20 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
-# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
-# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
-# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
-# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
-ELBERETH_VS_BLINDED = True
+# PACK_ROUND_FLOOR: elbereth_rest also starts below 70% HP when HP <= the summed max one-round damage of the 2+ hostiles
+# within 2 squares (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones)
+PACK_ROUND_FLOOR = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
 # fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
 # corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
 # hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
 # sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
 #          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
 #          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/history/117.diff and /refs/history/31.diff (kept on 4 chains: +0.076..+0.097 public),
-#          AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5

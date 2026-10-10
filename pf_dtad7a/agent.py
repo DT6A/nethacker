@@ -2088,11 +2088,6 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
-                    if _m:
-                        if not hasattr(self, '_flash_blinded'):
-                            self._flash_blinded = {}
-                        self._flash_blinded[_m.group(1)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
