@@ -387,22 +387,10 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
-# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then
-# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
-# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
-# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so
-# no AC-0 cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is
-# not unpaid. Known items keep priority on ties; lower AC -> fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
-#          /refs/past_runs/20261008-132537/71.diff, /refs/history/101.diff
-WEAR_UNKNOWN_MUNDANE = True
+# hypothesis: record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy interrupts the PRAY
+# step, so the next prayer isn't believed to be 1200+ turns later (too-soon prayer after a lycanthropy-cure prayer).
+# sources: NetHack 3.6.6 src/pray.c can_pray/dopray; /refs/history/107.diff
+PRAYER_RECORD_FIX = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

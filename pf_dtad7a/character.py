@@ -481,8 +481,13 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                assert letter not in self.upgradable_skills.values()
-                self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
+                # hypothesis: (proven fix) tty menus restart their item letters at 'a' on every page, so a multi-page
+                # #enhance list can show the same letter twice when two skills are advanceable; the old assert then
+                # panicked the caller. Keep the first page's skill; once it is advanced the list is re-read.
+                # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() (menu_ch reset to 'a' per page),
+                #          /refs/history/54.diff (same fix, kept as a proven neutral fix)
+                if letter not in self.upgradable_skills.values():
+                    self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):

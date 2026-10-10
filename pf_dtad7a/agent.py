@@ -1249,15 +1249,33 @@ class Agent:
                  f'gap={gap} reason={self._pray_reason}')
         self._pray_reason = None
         history_len = len(self._message_history)
-        self.step(A.Command.PRAY)
+        # hypothesis: a prayer whose PRAY step is interrupted by a strategy preemption (the update callbacks raise
+        # AgentChangeStrategy, e.g. 'You return to human form!' after a lycanthropy-cure prayer, or a monster
+        # arriving mid-prayer) skipped the bookkeeping below, so last_prayer_turn / prayer_failed stayed stale and the
+        # next prayer came a few turns later at a believed gap of 1200+ -- too soon (prayer timeout ~50-1000 after
+        # every prayer, pray.c can_pray: 'You feel that X is displeased' / smiting). Record it before re-raising.
+        # sources: /refs/top/ac6a6251af7b nhbot/agent.py pray() PRAYER_RECORD_FIX (log study: 13 of 17 such losses,
+        #          among them tou-hum-neu-mal s211 'killed praying' at T12275/T12281), NetHack 3.6.6 src/pray.c
+        #          can_pray/dopray (prayer timeout is reset by every prayer, successful or not),
+        #          /refs/history/107.diff (kept, +0.0164 on #70)
+        try:
+            self.step(A.Command.PRAY)
+        except BaseException:
+            if jf_config.PRAYER_RECORD_FIX and \
+                    'You begin praying' in ' '.join(self._message_history[history_len:] + [self.message]):
+                self._record_prayer(history_len)
+            raise
+        self._record_prayer(history_len)
+        # TODO: return value
+        return True
+
+    def _record_prayer(self, history_len):
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
             self.prayer_failed = False  # pleased() only runs with the god appeased and Luck >= 0
-        # TODO: return value
-        return True
 
     def open_door(self, y, x):
         with self.panic_if_position_changes():
