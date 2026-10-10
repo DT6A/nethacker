@@ -1192,6 +1192,17 @@ class DiveLogic:
 
     # ------------------------------------------------------------- elbereth
 
+    def _is_flash_blinded(self, mon):
+        # hypothesis: a monster our adjacent flash blinded (flash_hits_mon: mcansee = 0, mblinded = 0, for good) ignores the
+        # Elbereth we engrave next (onscary), but only elbereth_rest knew: fight2 elbereth_action/wait_action still engraved
+        # and sat on it beside a blind giant bat (dev s733391, XL6: bat 41 -> 3 HP on a re-engraved Elbereth, then dead)
+        # sources: https://nethackwiki.com/wiki/Elbereth ('a blinded monster ... will not respect Elbereth'),
+        #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon, src/monmove.c onscary, /refs/history/128.diff
+        if not jf_config.BLINDED_NO_ELBERETH:
+            return False
+        t = getattr(self.agent, '_flash_blinded', {}).get(getattr(mon, 'mname', '').lower())
+        return t is not None and 0 <= self.agent.blstats.time - t <= jf_config.FLASH_BLINDED_TURNS
+
     def _ignores_elbereth(self, mon):
         # monmove.c onscary(): @ humans and elves (incl. shopkeepers, guards, priests), minotaurs,
         # peacefuls and blind monsters are not scared; nothing is in Gehennom. permonst.mlet is the
@@ -1201,7 +1212,8 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
-        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
+        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS or \
+            self._is_flash_blinded(mon)
 
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs
@@ -1214,7 +1226,7 @@ class DiveLogic:
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
         # lawful minions (is_lminion: Aleax, couatl, ki-rin, Archon) and Angels ignore it too (monmove.c onscary)
-        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS
+        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS or self._is_flash_blinded(mon)
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level

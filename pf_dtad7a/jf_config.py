@@ -376,6 +376,11 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+# BLINDED_NO_ELBERETH: the same flash-blinded test (DiveLogic._is_flash_blinded, same species flashed within
+# FLASH_BLINDED_TURNS) also feeds _ignores_elbereth/_melee_ignores_elbereth, fight2 elbereth_action/wait_action and
+# camera_actions (no second flash at a blind monster)
+BLINDED_NO_ELBERETH = True
+FLASH_BLINDED_TURNS = 150
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -390,8 +395,6 @@ ELBERETH_VS_BLINDED = True
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-# #enhance spends a Tourist's skill slots on darts (up to Expert) before any other skill
-DART_SKILL_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

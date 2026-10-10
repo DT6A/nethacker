@@ -351,6 +351,8 @@ def elbereth_action(agent, monsters):
             continue
         if not adjacent((my, mx), (agent.blstats.y, agent.blstats.x)):
             continue
+        if agent.global_logic.dive._is_flash_blinded(mon):
+            continue   # blind: it cannot read the engraving, engraving only costs a free round
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
@@ -369,6 +371,10 @@ def elbereth_action(agent, monsters):
 
 def wait_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
+        dive = agent.global_logic.dive
+        if any(adjacent((my, mx), (agent.blstats.y, agent.blstats.x)) and dive._is_flash_blinded(mon)
+               for _, my, mx, mon, _ in monsters):
+            return []   # it cannot read the engraving: waiting here only feeds it free rounds
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         if were_keep_away(agent, monsters, radius=2):
@@ -457,6 +463,8 @@ def camera_actions(agent, monsters):
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
                 continue
+            if agent.global_logic.dive._is_flash_blinded(mon):
+                continue   # already blind: resists_blnd, a second flash is wasted
             if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
                 continue
             if on_elb and not were_at(mon, y, x):
@@ -510,6 +518,8 @@ def camera_actions(agent, monsters):
         if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
+            continue
+        if dive._is_flash_blinded(mon):
             continue
         if agent.blstats.time - flashed.get((y, x), -100) < 8:
             continue
