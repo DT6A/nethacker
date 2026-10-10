@@ -249,7 +249,14 @@ TRAP_LAST_RESORT = True
 TRAP_RESORT_MIN_TURNS = 1000   # ...once the dive has spent this long on the level
 # remember where molds/jellies/floating eyes/gas spores sit and keep the BFS off those squares while they are out of
 # sight (a mold on an item pile looks like the pile from afar: check_items looped on it for thousands of turns)
-SESSILE_MEMORY = False
+# hypothesis: a mold seen only from next to it (dark corridor/doorway, or an item pile under it from afar) is forgotten when
+# we step back, so exploration re-plans through its square, panics 'Monster on a next tile when moving' and repeats: public
+# seed 5 (fem Tourist, XL5, no darts, yellow mold at the Dlvl 1 corridor (4,54)) panicked 3000+ times from T1777 and
+# starved at T14461 (score 0.029); remembering the square keeps the BFS off it so exploration/descent goes elsewhere
+# sources: /tmp bot log of public seed 5 (DBGB dis_at_mold=-1, sess=False); NetHack wiki Yellow_mold (passive stun, never
+#          move into it) https://nethackwiki.com/wiki/Yellow_mold ; the same flag is True in pf_hg/pf_hh/pf_pa/pf_v36/pf_v37
+#          (/refs/top/42ad773a1837/*/jf_config.py)
+SESSILE_MEMORY = True
 # go_to() re-plans to its real target after a path is blocked mid-way (its loop variables overwrote the target,
 # so the next round aimed at the blocked square: 'end point is no longer accessible' and a strategy restart)
 GOTO_TARGET_FIX = False
@@ -349,14 +356,6 @@ LR_ELBERETH = True
 # zapped there only says 'The beam bounces off the stairs' -- the dive zapped again until the wand was empty
 # (6 of 90 baseline games, up to 5 charges = 5 levels each; jf16/5, jf27/1).
 WAND_STAIRS_FIX = True
-
-# WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption (one mlevel <= 2 hostile near: fight it
-# instead of hiding) held down to a flat 6 HP -- below one round of a rothe (14), dwarf or a fast dog/kitten/bat.
-# With this on, the exemption holds only while HP exceeds that monster's max one-round damage
-# (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old 6. See dive_logic.elbereth_rest.
-# hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
-# sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/top/0bf2b83ce5e8.diff
-WEAK_FLOOR_BY_DAMAGE = True
 
 # darts, shuriken and ammo are never the 'best melee weapon' (item/inventory.get_best_melee_weapon): a wielded dart stack
 # could not be thrown, so the Tourist never used its starting ranged attack
