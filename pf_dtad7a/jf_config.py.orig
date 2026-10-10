@@ -276,14 +276,6 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
-# hypothesis: were_unload keeps every edible stack, but a wererat form (cwt 40, weight_cap ~16) is Overtaxed from
-# ~2.5x that (calc_cap), where the command loop refuses eating ('You can't do that while carrying so much stuff'):
-# public s0 ('You collapse under your load', fainted from hunger, killed by a grid bug) and s4 (fem+mal, 'carrying so
-# much stuff' x6, fainted, giant bat) died that way. Keep dropping the heaviest food stack (then all but one of the
-# last, then gold) until below Overtaxed so the form can eat
-# sources: NetHack 3.6.6 hack.c weight_cap()/calc_cap() (Upolyd: carrcap * cwt / WT_HUMAN), cmd.c rhack/eat.c doeat;
-# https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, /refs/history.md (#173)
-LYCAN_UNLOAD_FOOD = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,

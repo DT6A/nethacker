@@ -351,8 +351,6 @@ def elbereth_action(agent, monsters):
             continue
         if not adjacent((my, mx), (agent.blstats.y, agent.blstats.x)):
             continue
-        if agent.global_logic.dive._is_flash_blinded(mon):
-            continue   # blind: it cannot read the engraving, engraving only costs a free round
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
@@ -371,10 +369,6 @@ def elbereth_action(agent, monsters):
 
 def wait_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
-        dive = agent.global_logic.dive
-        if any(adjacent((my, mx), (agent.blstats.y, agent.blstats.x)) and dive._is_flash_blinded(mon)
-               for _, my, mx, mon, _ in monsters):
-            return []   # it cannot read the engraving: waiting here only feeds it free rounds
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         if were_keep_away(agent, monsters, radius=2):
@@ -454,21 +448,48 @@ def camera_actions(agent, monsters):
                 not agent.monster_tracker.peaceful_monster_mask[y, x]
         limit = max(jf_config.GRIND_CAMERA_RATIO, jf_config.WERE_AT_FLASH_RATIO) if jf_config.WERE_AT_FLASH \
             else jf_config.GRIND_CAMERA_RATIO
-        if not jf_config.GRIND_CAMERA or ratio >= limit or in_gehennom(agent) or \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10:
+        # hypothesis: the grind's melee deaths at XL 5-8 on Dlvl 1 are mostly one hard-hitting "weak" monster (rothe
+        # 1d3/1d3/1d8, dwarf, giant bat, kitten, little dog, killer bee: max one round >= FLASH_HARD_DAMAGE) that always
+        # hits an AC10 Tourist and needs ~5 turns of dart-stabbing to kill, i.e. ~30 HP per fight; the low-HP flash
+        # comes too late. Flashing it at the start of the melee (any HP) blinds it for good (adjacent: mblinded 0):
+        # set_apparxy gives a blind monster only ~40% of hitting our real square, and 3 in 4 flee, for the price of
+        # one turn. The elbereth_rest never trusts Elbereth against a flash-blinded monster (ELBERETH_VS_BLINDED).
+        # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Rothe,
+        #          https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mon.c
+        #          set_apparxy, src/monst.c (rothe attacks), src/mondata.h resists_blnd (re-flashing a blind monster is wasted)
+        from ..dive_logic import WEAK_ROUND_DAMAGE
+
+        def hard_hitter(mon):
+            return bool(jf_config.FLASH_HARD_HITTERS) and \
+                WEAK_ROUND_DAMAGE.get(getattr(mon, 'mname', ''), 0) >= jf_config.FLASH_HARD_DAMAGE
+
+        if not jf_config.GRIND_CAMERA or in_gehennom(agent):
             return []
+        since = agent.blstats.time - getattr(agent, '_grind_flash_turn', -100)
+        blinded = getattr(agent, '_flash_blinded', {})
         on_elb = (agent.inventory.engraving_below_me or '').lower() == 'elbereth'
         actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
                 continue
-            if agent.global_logic.dive._is_flash_blinded(mon):
-                continue   # already blind: resists_blnd, a second flash is wasted
-            if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
-                continue
-            if on_elb and not were_at(mon, y, x):
-                continue
+            hard = hard_hitter(mon)
+            if hard:
+                if on_elb or since < 3:
+                    continue
+                name = getattr(mon, 'mname', '')
+                same = [m for m in monsters if getattr(m[3], 'mname', '') == name]
+                if len(same) == 1 and agent.blstats.time - blinded.get(name, -10 ** 9) <= 60:
+                    continue   # the one we can see is already blind: a second flash has no effect
+                if since < 10 and len(same) == 1:
+                    continue
+            else:
+                if since < 10 or ratio >= limit:
+                    continue
+                if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
+                    continue
+                if on_elb and not were_at(mon, y, x):
+                    continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
             break
@@ -518,8 +539,6 @@ def camera_actions(agent, monsters):
         if ratio >= 0.5 and not dive._melee_ignores_elbereth(mon):
             continue
         if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
-            continue
-        if dive._is_flash_blinded(mon):
             continue
         if agent.blstats.time - flashed.get((y, x), -100) < 8:
             continue
@@ -623,27 +642,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -664,26 +662,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
