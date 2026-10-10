@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -378,22 +369,21 @@ WEAK_FLOOR_BY_DAMAGE = True
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
 
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+# ELBERETH_VS_BLINDED (agent camera branch, dive_logic._ignores_elbereth / elbereth_rest): a monster our own flash
+# blinded ignores Elbereth for BLINDED_MEMORY turns (an adjacent flash blinds for good, flash_hits_mon), and an
+# Elbereth rest ends (40-turn block) once HP fell twice within 15 turns while standing on an intact engraving
+# hypothesis: fewer Dlvl 1-4 grind deaths where the Tourist flashed a rat/hobbit/ant, hid on Elbereth at low HP and
+# was bitten to death by the blind monster that cannot see the engraving
+# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ;
+#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c onscary
+ELBERETH_VS_BLINDED = True
+BLINDED_MEMORY = 300
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# PET_LINE_GUARD (combat/fight_heur.unseen_pet_may_be_in_line, used by ranged_priority): no dart throw along a line with
+# undisplayed (dark corridor / dark room) squares while a pet seen on this level in the last PET_LINE_MEMORY turns is out
+# of view -- an unseen pet hit by our dart is Luck -5 / alignment -15 and the next prayers fail
+PET_LINE_GUARD = True
+PET_LINE_MEMORY = 100
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

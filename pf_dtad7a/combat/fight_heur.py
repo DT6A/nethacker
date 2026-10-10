@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G, MON
+from ..glyph import G, MON, SS
 from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
@@ -25,6 +25,39 @@ def spore_blast_hits_friend(agent, y, x):
     # record that starts at 0, so the first grind prayer failed at T1364)
     seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
     return seen is not None and agent.blstats.time - seen < 100 and not utils.any_in(agent.glyphs, G.PETS)
+
+
+# hypothesis: the Tourist's own darts kill its kitten/little dog when it stands unseen in the throw line (dark corridor
+# or dark room squares past the adjacent ring are not displayed, so the pet glyph check in ranged_priority cannot see it):
+# "It yelps! You kill it!" + "You hear the rumble of distant thunder..." = Luck -5 and alignment -15 (mon.c xkilled
+# you_feel_guilty / adjalign(-15) for a tame victim). The next prayers then end "You feel that The Lady is displeased"
+# (pray.c: Luck < 0 / negative alignment, angrygods), so prayer_failed starts the rescue dive at XL3-5 (dev seed 733389:
+# pet killed T374 at a kobold 5 squares down a corridor, first prayer T1132 displeased, rescue dive, dead on Dlvl 5;
+# public seed 12 the same). Do not throw along a line whose unseen squares (past the adjacent ring, up to the dart range)
+# could hide a pet seen on this level in the last PET_LINE_MEMORY turns that is not in view now.
+# sources: https://nethackwiki.com/wiki/Pet#Killing_your_pet , https://nethackwiki.com/wiki/Luck , https://nethackwiki.com/wiki/Prayer ,
+#          NetHack 3.6.6 src/mon.c xkilled (tame: adjalign(-15), change_luck(-5)), src/pray.c can_pray / angrygods
+HIDING_SQUARES = frozenset({SS.S_corr, SS.S_darkroom})
+
+
+def unseen_pet_may_be_in_line(agent, y0, x0, dy, dx, reach):
+    """True when a pet seen lately and not in view might stand on an undisplayed square of the throw line."""
+    try:
+        if not jf_config.PET_LINE_GUARD or utils.any_in(agent.glyphs, G.PETS):
+            return False
+        seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
+        if seen is None or agent.blstats.time - seen > jf_config.PET_LINE_MEMORY:
+            return False
+        for k in range(2, max(reach, 2) + 1):
+            y, x = y0 + dy * k, x0 + dx * k
+            if not 0 <= y < agent.glyphs.shape[0] or not 0 <= x < agent.glyphs.shape[1] or \
+                    not agent.current_level().walkable[y, x]:
+                break
+            if agent.glyphs[y, x] in HIDING_SQUARES:
+                return True
+        return False
+    except Exception:
+        return False
 
 
 def melee_monster_priority(agent, monsters, monster):
@@ -175,6 +208,9 @@ def ranged_priority(agent, dy, dx, monsters):
             _, _, _, mon, _ = monster[0]
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
+                return None
+            if dis >= 2 and unseen_pet_may_be_in_line(agent, agent.blstats.y, agent.blstats.x, dy, dx,
+                                                      agent.character.get_range(launcher, ammo)):
                 return None
             if dis in (1, 2):
                 ret -= 5
@@ -597,27 +633,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -638,26 +653,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
