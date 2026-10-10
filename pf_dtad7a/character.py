@@ -4,7 +4,6 @@ import nle.nethack as nh
 import numpy as np
 from nle.nethack import actions as A
 
-from . import jf_config
 from . import objects as O
 
 ALL_SPELL_NAMES = [
@@ -445,17 +444,11 @@ class Character:
             self._parse_enhance_view()
             while self.upgradable_skills:
                 to_upgrade = self.select_skill_to_upgrade()
-                if to_upgrade is None:
-                    self.agent.step(A.Command.ESC)   # close the 'Pick a skill to advance' menu, advance nothing
-                    break
                 old_skill_level = self.skill_levels.copy()
                 letter = self.upgradable_skills[to_upgrade]
-                self.agent.log(f'ENHANCE {to_upgrade} (advanceable: {list(self.upgradable_skills)})')
-
-                page = self.upgradable_pages[to_upgrade]
 
                 def type_letter():
-                    for _ in range(page):   # tty menu letters restart at 'a' on every page
+                    while f'{letter} - ' not in '\n'.join(self.agent.single_popup):
                         yield A.TextCharacters.SPACE
                     yield letter
 
@@ -467,24 +460,13 @@ class Character:
 
     def select_skill_to_upgrade(self):
         assert self.upgradable_skills
-        # hypothesis: #enhance took the first advanceable skill in menu order, so a Tourist that wields a found dagger or
-        # scimitar spent 3-6 skill slots on them (dagger Unskilled->Basic->Skilled->Expert) while the dart skill -- the
-        # Tourist's only real attack: Skilled throws rnd(2) darts, Expert rnd(3), +hit/+dmg -- stayed at Skilled for
-        # lack of the 3 slots Expert costs. Every Tourist slot goes to darts until they are Expert; other skills wait.
-        # sources: NetHack 3.6.6 src/weapon.c (slots_required, can_advance, practice_needed_to_advance), src/dothrow.c
-        #          throw_obj (multishot by skill; Tourist is a weak-multishot role for everything but darts),
-        #          https://nethackwiki.com/wiki/Dart, https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Tourist
-        if jf_config.DART_SKILL_FIRST and self.role == self.TOURIST and \
-                self.skill_levels[O.P_DART] < self.SKILL_LEVEL_EXPERT:
-            return O.P_DART if O.P_DART in self.upgradable_skills else None
+        # TODO: logic
         return next(iter(self.upgradable_skills.keys()))
 
     def _parse_enhance_view(self):
         if self.agent.popup[0] not in ('Current skills:', 'Pick a skill to advance:'):
             raise ValueError('Invalid ehance popup text format.' + str(self.agent.popup))
         self.upgradable_skills = dict()
-        self.upgradable_pages = dict()
-        page, last_order = 0, -1
         for line in self.agent.popup[1:]:
             if line.strip() in self.possible_skill_types or \
                     line.strip() == '(Skill flagged by "#" cannot be enhanced any further.)' or \
@@ -499,12 +481,8 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                order = ord(letter) - 97 if letter.islower() else ord(letter) - 65 + 26
-                if order <= last_order:
-                    page += 1
-                last_order = order
+                assert letter not in self.upgradable_skills.values()
                 self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
-                self.upgradable_pages[self.name_to_skill_type[skill_type]] = page
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):

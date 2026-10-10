@@ -379,9 +379,19 @@ WEAK_FLOOR_BY_DAMAGE = True
 ELBERETH_VS_BLINDED = True
 ELBERETH_BLINDED_TURNS = 300
 
-# DART_SKILL_FIRST: #enhance advances a Tourist's dart skill before any other skill, and nothing else while the darts are not
-# Expert (character.select_skill_to_upgrade)
-DART_SKILL_FIRST = True
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of /refs/history/117.diff (kept on several chains, held-out 0.1899 as #117, 0.1913 as #142).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/history/117.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
