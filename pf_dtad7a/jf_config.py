@@ -184,7 +184,7 @@ THREAT_HP_FRAC = 0.5
 # pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
 # left to it while it is starving.
 # sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/242.diff (+ /refs/history/195.diff, kept)
+#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
 CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
 CLAIM_CORPSES = True
@@ -386,6 +386,9 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+# fight2 stops treating an Elbereth square as protection against an adjacent monster that cannot respect it (see
+# fight_heur.elbereth_not_holding): one our camera flash blinded, or any that hurt us on two turns on an intact engraving
+ELBERETH_NOT_HOLDING = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -401,14 +404,14 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
-UNSKILLED_DAMAGE_SIGN = True
-
 # hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
 # CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/242.diff
+# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -423,8 +426,3 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
-# hypothesis: standing on Elbereth with an adjacent @-form were / elf / minotaur (they ignore it) the bot only
-# searched while being killed (public s11); fight2 should attack such a monster instead (grind only).
-# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
-#          NetHack 3.6.6 src/monmove.c onscary()
-IGNORER_FIGHTS = True
