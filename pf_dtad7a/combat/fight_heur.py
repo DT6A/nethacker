@@ -101,6 +101,31 @@ def missiles_risk_the_watch(agent):
 POINT_BLANK_THROW = True
 
 
+# hypothesis: the Tourist grind wields whatever unknown-BUC dagger/axe it picks up (get_best_melee_weapon allows unknown
+# status), and that turned point_blank_throw off: the XL1-5 Tourist then stabs adjacent jackals, foxes and grid bugs with
+# an Unskilled weapon (-4 to hit, -2 damage) while 14-35 +2 darts sit in its pack, and dies in melee (replayed dev seed
+# 733390: a welded cursed crude dagger, 15 'You miss' in a row against a fox and a grid bug, 32 +2 darts at the ready,
+# dead at XL2 on Dlvl 1). A thrown +2 dart at distance 1 hits at base +1 +2 (throwing weapon) +2 (3 - distance) +2
+# enchantment at Basic dart skill and does d3+2: keep throwing whenever the expected damage per swing beats the wielded
+# weapon's (calc_dps on the same formulas the bot already uses to pick weapons). A skilled/enchanted weapon still wins.
+# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Multishot, https://nethackwiki.com/wiki/Dart,
+#          /refs/history/22.diff (node #22 darts chain, kept), NetHack 3.6.6 src/dothrow.c thitmonst,
+#          src/uhitm.c find_roll_to_hit, src/weapon.c weapon_hit_bonus (Unskilled -4)
+POINT_BLANK_WIELDED = True
+
+
+def thrown_beats_wielded(agent, main, ammo):
+    ch = agent.character
+    melee_hit, melee_dmg = ch.get_melee_bonus(main)
+    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
+    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
+    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
+    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
+    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
+    dart_dmg = max(0, ammo_dmg + skill_dmg)
+    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
+
+
 def point_blank_throw(agent, launcher, ammo):
     """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
     try:
@@ -109,17 +134,11 @@ def point_blank_throw(agent, launcher, ammo):
                 ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
             return False
         main = agent.inventory.items.main_hand
-        # hypothesis: a found dagger that welded itself to the Tourist's hand (cursed, Unskilled -4 to hit) kept
-        # point-blank dart throwing off for the rest of the game; a welded one-handed weapon can't be put away and a
-        # throw needs no free hand (dothrow.c throw_obj checks only canletgo of the thrown object), so it counts as
-        # 'nothing to hit with'.
-        # sources: NetHack 3.6.6 src/wield.c welded(), src/dothrow.c throw_obj, https://nethackwiki.com/wiki/Cursed,
-        #          /refs/history/178.diff
-        if main is not None and main.is_weapon() and main.status == Item.CURSED and main.equipped:
-            return True
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-            main.objs[0].name in ('dart', 'shuriken')
+        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+                main.objs[0].name in ('dart', 'shuriken'):
+            return True
+        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
     except Exception:
         return False
 
