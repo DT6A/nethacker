@@ -394,16 +394,13 @@ PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-
-# GRIND_IDLE_REST: the Dlvl-1 levelling grind engraves Elbereth and searches in place when below
-# GRIND_IDLE_REST_BELOW of max HP with no hostile in view, until GRIND_IDLE_REST_UNTIL (see dive_logic.tour_idle_rest)
-# hypothesis: the grind never rests when hurt, so the next fight starts at 10-50% HP; resting costs no XP (spawn-paced)
-# sources: https://nethackwiki.com/wiki/Hit_points, https://nethackwiki.com/wiki/Elbereth, /refs/history/137.diff
-GRIND_IDLE_REST = True
-GRIND_IDLE_REST_BELOW = 0.7
-GRIND_IDLE_REST_UNTIL = 0.95
-GRIND_IDLE_REST_MAX_TURNS = 600
-GRIND_IDLE_REST_COOLDOWN = 200
+# CHOKEPOINT_FIGHT's sibling in fight_heur.kite_actions: an adjacent awake non-weak melee monster slower than 12 is
+# answered with a step away (it cannot close and hit in one move, mon.c mcalcmove / monmove.c dochug) and a dart
+# on the turns it lags, instead of a point-blank stab. Tour only; at most KITE_MAX_STEPS steps per 40 turns
+KITE_SLOW = True
+KITE_MAX_STEPS = 30
+# above melee (16) and the point-blank throw (17)
+KITE_PRIORITY = 18
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
