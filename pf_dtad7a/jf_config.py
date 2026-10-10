@@ -386,6 +386,8 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+# FLASH_ONCE: never re-flash a monster the camera already blinded / that resisted a flash (fight_heur.blind_flashed_positions)
+FLASH_ONCE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -406,9 +408,6 @@ CHOKEPOINT_HOLD_TURNS = 5
 # sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
-
-# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
-UNSKILLED_DAMAGE_SIGN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
