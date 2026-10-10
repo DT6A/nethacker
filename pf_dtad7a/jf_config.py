@@ -176,19 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive; replay of public s733390: hunger prayer T858, HP-crisis prayer T1770
-# at a 912 gap -> 'Thou art arrogant' + level loss -> dead at XL2), yet the bot eats only the corpse it stands on and
-# the pet (dogmove.c dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares
-# (CORPSE_TRACK) and walking <=3 steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition
-# (eat.c: corpse nutrition by cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is
-# the safety counterpart: a pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c
-# dog_hunger), so floor corpses are left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Corpse, https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
-#          https://nethackwiki.com/wiki/Pet, /refs/history/195.diff (port; held-out +0.055), /refs/history/177.diff
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -390,11 +380,13 @@ ELBERETH_VS_BLINDED = True
 # ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
 ELBERETH_EAT = True
 
-# hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
-# CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+# PRAYER_DOWN_CAUTION: in the levelling grind (not diving) with no HP prayer available (is_safe_to_pray(PRAYER_DOWN_GAP)
+# false), the Elbereth rest starts below PRAYER_DOWN_BELOW of max HP and the lone-weak-monster exemption is off
+# (dive_logic.elbereth_rest)
+PRAYER_DOWN_CAUTION = True
+PRAYER_DOWN_GAP = 800
+PRAYER_DOWN_BELOW = 0.5
+PRAYER_DOWN_REST_TURNS = 300
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
