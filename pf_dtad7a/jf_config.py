@@ -373,24 +373,23 @@ IGNORER_FLASH_RATIO = 0.7
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# GHOST_IGNORE: below GHOST_IGNORE_XL fight2 (Agent.fight_monsters) does not see ghosts, so it neither chases nor stands
+# fighting one (speed 3, AC -5, 1d1 touch); the explorer outwalks it
+# hypothesis: a Dlvl-1 ghost (public/dev seed 733393) is unhittable at XL1-7, fight2 stood swinging at it for ~1000 turns
+# while the grind (and the hunger clock) stalled and it nibbled HP, which fed the failed-prayer -> rescue-dive deaths
+# sources: https://nethackwiki.com/wiki/Ghost (speed 3, AC -5, 1d1; walk away), https://nethackwiki.com/wiki/Tourist
+GHOST_IGNORE = True
+GHOST_IGNORE_XL = 8
 
-# hypothesis: record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy interrupts the PRAY
-# step, so the next prayer isn't believed to be 1200+ turns later (too-soon prayer after a lycanthropy-cure prayer).
-# sources: NetHack 3.6.6 src/pray.c can_pray/dopray; /refs/history/107.diff
-PRAYER_RECORD_FIX = True
+# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
+# (0: off; EARLY_FIXES also turns this on, as before)
+# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
+# XL1-4 grind, but the first Weak spell (turn ~850) spends it on hunger although a Tourist carries 7+ food items;
+# is_safe_to_pray(500) then blocks the HP prayer for ~500 of every ~900 turns (dev 733390: HP prayer at a 909 gap
+# failed, XL2 -> XL1, grid bug kill; dev 733402: XL4 hunger prayer T2872, dead to a hobbit T2951 with no prayer left)
+# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
+#          https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist ; /refs/history/112.diff
+EAT_BEFORE_PRAY_XL = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

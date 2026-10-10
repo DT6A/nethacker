@@ -1238,8 +1238,11 @@ class Agent:
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
+        # hypothesis: see jf_config.EAT_BEFORE_PRAY_XL (keep the first prayer for HP emergencies at XL1-4)
+        # sources: NetHack 3.6.6 src/pray.c can_pray(); https://nethackwiki.com/wiki/Prayer; /refs/history/112.diff
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            return False
+            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
+                return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 
@@ -1249,33 +1252,15 @@ class Agent:
                  f'gap={gap} reason={self._pray_reason}')
         self._pray_reason = None
         history_len = len(self._message_history)
-        # hypothesis: a prayer whose PRAY step is interrupted by a strategy preemption (the update callbacks raise
-        # AgentChangeStrategy, e.g. 'You return to human form!' after a lycanthropy-cure prayer, or a monster
-        # arriving mid-prayer) skipped the bookkeeping below, so last_prayer_turn / prayer_failed stayed stale and the
-        # next prayer came a few turns later at a believed gap of 1200+ -- too soon (prayer timeout ~50-1000 after
-        # every prayer, pray.c can_pray: 'You feel that X is displeased' / smiting). Record it before re-raising.
-        # sources: /refs/top/ac6a6251af7b nhbot/agent.py pray() PRAYER_RECORD_FIX (log study: 13 of 17 such losses,
-        #          among them tou-hum-neu-mal s211 'killed praying' at T12275/T12281), NetHack 3.6.6 src/pray.c
-        #          can_pray/dopray (prayer timeout is reset by every prayer, successful or not),
-        #          /refs/history/107.diff (kept, +0.0164 on #70)
-        try:
-            self.step(A.Command.PRAY)
-        except BaseException:
-            if jf_config.PRAYER_RECORD_FIX and \
-                    'You begin praying' in ' '.join(self._message_history[history_len:] + [self.message]):
-                self._record_prayer(history_len)
-            raise
-        self._record_prayer(history_len)
-        # TODO: return value
-        return True
-
-    def _record_prayer(self, history_len):
+        self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
             self.prayer_failed = False  # pleased() only runs with the god appeased and Luck >= 0
+        # TODO: return value
+        return True
 
     def open_door(self, y, x):
         with self.panic_if_position_changes():
@@ -1778,6 +1763,8 @@ class Agent:
         again once adjacent (unless passive), after FIGHT_IGNORE_TURNS, or when something hurts us (only those
         within 3 when any is: a sleeping zoo further off stays let go)."""
         monsters = self.get_visible_monsters()
+        if jf_config.GHOST_IGNORE and self.blstats.experience_level < jf_config.GHOST_IGNORE_XL:
+            monsters = [m for m in monsters if m[3].mname != 'ghost']
         if self._fight_stall_turns() <= 0 or not self._fight_ignored:
             return monsters
         bl = self.blstats
@@ -2062,11 +2049,6 @@ class Agent:
         elif best_action[0] == 'elbereth':
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
-            return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
             return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
