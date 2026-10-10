@@ -5,6 +5,7 @@ import numpy as np
 from nle.nethack import actions as A
 
 from . import objects as O
+from . import jf_config
 
 ALL_SPELL_NAMES = [
     "force bolt",
@@ -221,9 +222,15 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
+    # hypothesis: weapon.c weapon_dam_bonus gives Restricted/Unskilled -2 damage, not +2: with the sign wrong an
+    # Unskilled Tourist priced a found dagger/axe (d4+2) above bare hands, wielded it (often cursed, welded) and
+    # stabbed at -4 to hit instead of throwing +2 darts point blank; with -2 only a Basic+ weapon beats bare hands.
+    # sources: https://nethackwiki.com/wiki/Weapon_skill (Unskilled/Restricted -4 hit, -2 damage), NetHack 3.6.6
+    #          src/weapon.c weapon_dam_bonus, https://nethackwiki.com/wiki/Tourist (throw darts early, no unskilled melee)
+    _unskilled_dmg = -2 if jf_config.UNSKILLED_DAMAGE_SIGN else 2
     weapon_bonus = {
-        SKILL_LEVEL_RESTRICTED: (-4, 2),
-        SKILL_LEVEL_UNSKILLED: (-4, 2),
+        SKILL_LEVEL_RESTRICTED: (-4, _unskilled_dmg),
+        SKILL_LEVEL_UNSKILLED: (-4, _unskilled_dmg),
         SKILL_LEVEL_BASIC: (0, 0),
         SKILL_LEVEL_SKILLED: (2, 1),
         SKILL_LEVEL_EXPERT: (3, 2),

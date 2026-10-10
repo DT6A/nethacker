@@ -276,12 +276,6 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
-# an Overloaded were form (encumbrance 5) cannot move or attack: drop its load at any hunger, keeping only the food
-# that fits 1.5x the form's weight_cap
-# hypothesis: weight_cap() scales with the form's cwt/1450 (wererat 40: ~16), so the Tourist's pack (>= 3x that) puts the
-# rat in 'You collapse under your load' where it can only be bitten (dev s0 sat 500 turns at 10 HP, fainted, died)
-# sources: https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, NetHack 3.6.6 hack.c calc_cap()
-WERE_OVERLOAD_UNLOAD = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
@@ -383,12 +377,11 @@ PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
 
-# FLASH_HARD_HITTERS: the grind flashes an adjacent monster whose max one-round damage (dive_logic.WEAK_ROUND_DAMAGE) is at
-# least FLASH_HARD_DAMAGE at any HP (see fight_heur.camera_actions)
-# hypothesis: fewer Dlvl 1-4 grind deaths to rothes / giant bats / dwarves / kittens, which always hit AC10 and out-damage the Tourist's darts
-# sources: https://nethackwiki.com/wiki/Expensive_camera ; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mon.c set_apparxy
-FLASH_HARD_HITTERS = True
-FLASH_HARD_DAMAGE = 12
+# WELDED_THROW: a cursed (welded) one-handed weapon in hand no longer turns point-blank dart throwing off (fight_heur.point_blank_throw)
+WELDED_THROW = True
+
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

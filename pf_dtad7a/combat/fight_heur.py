@@ -109,6 +109,18 @@ def point_blank_throw(agent, launcher, ammo):
                 ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
             return False
         main = agent.inventory.items.main_hand
+        # hypothesis: a found dagger the Tourist wielded blind welded itself to its hand ("The crude dagger welds
+        # itself to your hand!", dev s733390 T414: cursed, Unskilled -4 to hit): point blank throwing stayed off for
+        # any wielded weapon, so the XL2 Tourist stabbed a grid bug 11 times in 13 swings (23 -> 5 HP, a too-soon
+        # prayer, dead) with its +2 darts unused. A welded one-handed weapon can't be put away and a throw needs no
+        # free hand (dothrow.c throw_obj checks only canletgo(obj) of the thrown object), so it counts as 'nothing
+        # to hit with' and the darts are thrown point blank.
+        # sources: NetHack 3.6.6 src/wield.c ready_weapon/welded (bknown set, weapon stuck), src/dothrow.c throw_obj,
+        #          https://nethackwiki.com/wiki/Cursed (welded weapons), https://nethackwiki.com/wiki/Dart,
+        #          https://nethackwiki.com/wiki/Tourist, /refs/history/104.diff + 129.diff (welds seen in s7, s12, s733402)
+        if jf_config.WELDED_THROW and main is not None and main.is_weapon() and main.status == Item.CURSED and \
+                main.equipped and not getattr(main.objs[0], 'bi', False):
+            return True
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
         return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
             main.objs[0].name in ('dart', 'shuriken')
@@ -448,48 +460,19 @@ def camera_actions(agent, monsters):
                 not agent.monster_tracker.peaceful_monster_mask[y, x]
         limit = max(jf_config.GRIND_CAMERA_RATIO, jf_config.WERE_AT_FLASH_RATIO) if jf_config.WERE_AT_FLASH \
             else jf_config.GRIND_CAMERA_RATIO
-        # hypothesis: the grind's melee deaths at XL 5-8 on Dlvl 1 are mostly one hard-hitting "weak" monster (rothe
-        # 1d3/1d3/1d8, dwarf, giant bat, kitten, little dog, killer bee: max one round >= FLASH_HARD_DAMAGE) that always
-        # hits an AC10 Tourist and needs ~5 turns of dart-stabbing to kill, i.e. ~30 HP per fight; the low-HP flash
-        # comes too late. Flashing it at the start of the melee (any HP) blinds it for good (adjacent: mblinded 0):
-        # set_apparxy gives a blind monster only ~40% of hitting our real square, and 3 in 4 flee, for the price of
-        # one turn. The elbereth_rest never trusts Elbereth against a flash-blinded monster (ELBERETH_VS_BLINDED).
-        # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Rothe,
-        #          https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mon.c
-        #          set_apparxy, src/monst.c (rothe attacks), src/mondata.h resists_blnd (re-flashing a blind monster is wasted)
-        from ..dive_logic import WEAK_ROUND_DAMAGE
-
-        def hard_hitter(mon):
-            return bool(jf_config.FLASH_HARD_HITTERS) and \
-                WEAK_ROUND_DAMAGE.get(getattr(mon, 'mname', ''), 0) >= jf_config.FLASH_HARD_DAMAGE
-
-        if not jf_config.GRIND_CAMERA or in_gehennom(agent):
+        if not jf_config.GRIND_CAMERA or ratio >= limit or in_gehennom(agent) or \
+                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10:
             return []
-        since = agent.blstats.time - getattr(agent, '_grind_flash_turn', -100)
-        blinded = getattr(agent, '_flash_blinded', {})
         on_elb = (agent.inventory.engraving_below_me or '').lower() == 'elbereth'
         actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
                 continue
-            hard = hard_hitter(mon)
-            if hard:
-                if on_elb or since < 3:
-                    continue
-                name = getattr(mon, 'mname', '')
-                same = [m for m in monsters if getattr(m[3], 'mname', '') == name]
-                if len(same) == 1 and agent.blstats.time - blinded.get(name, -10 ** 9) <= 60:
-                    continue   # the one we can see is already blind: a second flash has no effect
-                if since < 10 and len(same) == 1:
-                    continue
-            else:
-                if since < 10 or ratio >= limit:
-                    continue
-                if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
-                    continue
-                if on_elb and not were_at(mon, y, x):
-                    continue
+            if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
+                continue
+            if on_elb and not were_at(mon, y, x):
+                continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
             break
