@@ -1261,50 +1261,6 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
-    # hypothesis: the Dlvl-1 levelling grind never rests when hurt (only the dive does, plan_step 'rest'; the grind's
-    # Elbereth rest needs a hostile within 2 squares), so with nothing in view the AC10 Tourist explores on at 10-50%
-    # HP and the next jackal/rothe/giant bat/hill orc finds it at 6-14 HP. XL<10 regen is 1 HP per 42/(XL+2)+1 turns,
-    # and the grind's XP is paced by the random-spawn rate, not by exploring, so a rest of ~100-250 turns costs
-    # almost no XP and restores a fight's worth of HP. Below GRIND_IDLE_REST_BELOW of max HP with no hostile in view,
-    # engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL (capped, with a cooldown).
-    # sources: https://nethackwiki.com/wiki/Hit_points (regeneration below XL10), https://nethackwiki.com/wiki/Elbereth,
-    #          https://nethackwiki.com/wiki/Tourist, /refs/history/137.diff (GRIND_IDLE_REST, kept on its chain),
-    #          NetHack 3.6.6 src/allmain.c (u.ulevel < 10: heal 1 every (42 / (ulevel + 2) + 1) moves)
-    @Strategy.wrap
-    def tour_idle_rest(self):
-        agent = self.agent
-        bl = agent.blstats
-        turn = bl.time
-        resting = getattr(self, '_idle_resting', False)
-        level = agent.current_level()
-        if not jf_config.GRIND_IDLE_REST or self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
-                bl.hunger_state >= Hunger.WEAK or agent.character.prop.blind or agent.character.prop.polymorph or \
-                agent.prayer_failed:
-            self._idle_resting = False
-            yield False
-        threshold = jf_config.GRIND_IDLE_REST_UNTIL if resting else jf_config.GRIND_IDLE_REST_BELOW
-        if bl.hitpoints >= threshold * bl.max_hitpoints or agent.get_visible_monsters() or \
-                utils.isin(agent.glyphs, G.GUARD).any() or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
-            if resting:
-                self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        if not resting:
-            if turn < getattr(self, '_idle_rest_cooldown', 0) or agent._hurt_recently(3):
-                yield False
-            self._idle_rest_start = turn
-        elif turn - self._idle_rest_start > jf_config.GRIND_IDLE_REST_MAX_TURNS:
-            self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        yield True
-        if not resting:
-            agent.log(f'GRIND idle rest start at {bl.hitpoints}/{bl.max_hitpoints} HP')
-        self._idle_resting = True
-        if self._rest_elbereth():
-            return
-        agent.search(10)
-
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1333,6 +1289,17 @@ class DiveLogic:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
                 not infectious_were(agent, near[0][3]):
+            self._elbereth_resting = False
+            yield False
+        # hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (permanent blindness), then hides on Elbereth
+        # from it at low HP and is bitten to death by the blind rat/hobbit/ant on the "intact" engraving (replay of
+        # seed 12 at XL4: two flashed giant rats and a hobbit took 13 HP to 0 during ELBERETH rest); keep fighting
+        # and let the emergency potion/prayer/flee logic act instead of waiting on a square that does not protect.
+        # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
+        #          https://nethackwiki.com/wiki/Elbereth, /refs/history/109 (same idea, kept in the #71 subtree)
+        blinded = getattr(agent, '_flash_blinded', {})
+        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
+                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \

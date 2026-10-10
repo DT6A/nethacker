@@ -359,13 +359,11 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# IGNORER_FLASH: the levelling grind flashes the expensive camera at an adjacent monster that melees through
-# Elbereth (a were in @ form, elves) below IGNORER_FLASH_RATIO of max HP (fight_heur.camera_actions)
-# hypothesis: public s8 died 50 -> 0 HP in 4 turns to a wererat in @ form (11-15 a hit) with an unused camera;
-# Elbereth cannot hold an @, the camera blinds it and scares it 3 times in 4 (use_camera -> flash_hits_mon)
-# sources: https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Expensive_camera, monmove.c onscary()
-IGNORER_FLASH = True
-IGNORER_FLASH_RATIO = 0.7
+# WERE_AT_FLASH: the grind also flashes an adjacent hostile were-creature in @ form (ignores Elbereth) below this ratio
+# hypothesis: fewer Dlvl 1-4 grind deaths to wererat/werejackal @-form melee plus their summoned packs
+# sources: https://nethackwiki.com/wiki/Werecreature ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/apply.c
+WERE_AT_FLASH = True
+WERE_AT_FLASH_RATIO = 0.7
 
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
@@ -373,29 +371,11 @@ IGNORER_FLASH_RATIO = 0.7
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
-
-# GRIND_IDLE_REST: the Dlvl-1 levelling grind engraves Elbereth and searches in place when below
-# GRIND_IDLE_REST_BELOW of max HP with no hostile in view, until GRIND_IDLE_REST_UNTIL (see dive_logic.tour_idle_rest)
-# hypothesis: the grind never rests when hurt, so the next fight starts at 10-50% HP; resting costs no XP (spawn-paced)
-# sources: https://nethackwiki.com/wiki/Hit_points, https://nethackwiki.com/wiki/Elbereth, /refs/history/137.diff
-GRIND_IDLE_REST = True
-GRIND_IDLE_REST_BELOW = 0.7
-GRIND_IDLE_REST_UNTIL = 0.95
-GRIND_IDLE_REST_MAX_TURNS = 600
-GRIND_IDLE_REST_COOLDOWN = 200
+# PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
+# interrupts the PRAY step (see the hypothesis in agent.pray)
+PRAYER_RECORD_FIX = True
+# never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
+ELBERETH_VS_BLINDED = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
