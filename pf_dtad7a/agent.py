@@ -1254,9 +1254,9 @@ class Agent:
         # arriving mid-prayer) skipped the bookkeeping below, so last_prayer_turn / prayer_failed stayed stale and the
         # next prayer came a few turns later at a believed gap of 1200+ -- too soon (prayer timeout ~50-1000 after
         # every prayer, pray.c can_pray: 'You feel that X is displeased' / smiting). Record it before re-raising.
-        # sources: /refs/history/107.diff (kept, +0.0164 on #70; same fix kept as #146), /refs/top/ac6a6251af7b
-        #          nhbot/agent.py pray() PRAYER_RECORD_FIX, NetHack 3.6.6 src/pray.c can_pray/dopray (prayer
-        #          timeout is reset by every prayer, successful or not)
+        # sources: /refs/top/ac6a6251af7b nhbot/agent.py pray() PRAYER_RECORD_FIX (log study: 13 of 17 such losses,
+        #          among them tou-hum-neu-mal s211 'killed praying' at T12275/T12281), NetHack 3.6.6 src/pray.c
+        #          can_pray/dopray (prayer timeout is reset by every prayer, successful or not)
         try:
             self.step(A.Command.PRAY)
         except BaseException:
@@ -2062,6 +2062,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2100,6 +2105,16 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # hypothesis: a monster our own adjacent flash blinded (flash_hits_mon: mblinded = 0 with
+                    # mcansee = 0 when dist2 < 3, i.e. blind for good) no longer respects the Elbereth we engrave next
+                    # (monmove.c distfleeck/onscary use the square it *thinks* we are on; set_apparxy gives a blind
+                    # monster only a 1 in 3 chance of the right one), so remember its name for elbereth_rest.
+                    # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
+                    #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth
+                    for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
+                        if not hasattr(self, '_flash_blinded'):
+                            self._flash_blinded = {}
+                        self._flash_blinded[_name.lower()] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
@@ -2399,30 +2414,6 @@ class Agent:
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
 
-        # hypothesis: the healing-potion branch below drank first at any HP < 1/3 (or < 8), even in pray.c's
-        # TROUBLE_HIT window (critically_low_hp) with a long-cooled-down HP prayer at hand -- where the prayer heals
-        # fully for nothing and adds rnd(5) max HP while max HP < 5 * XL + 11 (an XL 1-6 Tourist's 10-40), and
-        # the Tourist's 2 starting extra healings were gone before the grind's (and the dive start's) critical-HP
-        # moments that fall inside a prayer timeout (the grind prays for hunger every ~1200 turns). Pray first only
-        # when the prayer is near-certain: no prayer yet (past LOWHP_FIRST_TURN) or the last one >= PRAY_FIRST_GAP
-        # turns ago, never after a failed one -- between 500 and PRAY_FIRST_GAP the sure potion still comes first
-        # and the HP prayer below stays the backstop.
-        # sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble TROUBLE_HIT, can_pray needs
-        #          u.ublesscnt <= 200, fix_worst_trouble TROUBLE_HIT: uhpmax += rnd(5)), src/rnd.c rnz,
-        #          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
-        #          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-213012/54.diff (kept there, +0.016),
-        #          /refs/history/99.diff (#99 kept: held-out 0.1563 -> 0.1833)
-        if jf_config.PRAY_FIRST_SURE and not poly_buffer and not self.prayer_failed and \
-                self._critically_low_hp() and self.blstats.hitpoints < self.blstats.max_hitpoints and \
-                self.is_safe_to_pray(jf_config.PRAY_FIRST_GAP, first_turn=jf_config.LOWHP_FIRST_TURN) and \
-                any(item.is_unambiguous() and item.category == nh.POTION_CLASS and
-                    item.object.name in ['healing', 'extra healing', 'full healing']
-                    for item in flatten_items(self.inventory.items)):
-            yield True
-            self.log(f'PRAY_FIRST at {self.blstats.hitpoints}/{self.blstats.max_hitpoints} HP, potion kept')
-            self.pray()
-            return
-
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
         if (
@@ -2496,7 +2487,7 @@ class Agent:
                 close = dive._near_hostiles(radius=3)
                 engraving = (self.inventory.engraving_below_me or '').lower()
                 if not any(dive._ignores_elbereth(m[3]) for m in close) and not self.character.prop.blind and \
-                        (engraving == 'elbereth' or self.can_engrave()):
+                        (engraving == 'elbereth' or self.can_engrave()) and not dive.elbereth_futile():
                     adjacent = []
             if adjacent:
                 level = self.current_level()
@@ -2671,44 +2662,16 @@ class Agent:
         food = self.edible_carried_food()
         if not food:
             yield False
-        # hypothesis: keeping EVERY food item left the were form Overtaxed (public s4 and s11: ~91 weight of food
-        # against a wererat form's ~19 capacity), hack.c check_capacity refused to eat 100+ times ("You can't
-        # do that while carrying so much stuff"), the bot fainted and a giant bat / rothe killed it in the grind
-        # (0.029 / 0.051); keep only the food the form can carry (eating works up to Strained: total < 2.5 x wc)
-        # sources: NetHack 3.6.6 src/hack.c check_capacity / near_capacity (EXT_ENCUMBER = total >= 2.5 x weight_cap),
-        #          src/eat.c doeat, src/hack.c weight_cap (Upolyd: carrcap * cwt / WT_HUMAN),
-        #          https://nethackwiki.com/wiki/Encumbrance, /refs/history/114.diff (WERE_UNLOAD_BUDGET)
-        kept_food = {id(i): i.count for i in food}
-        if jf_config.WERE_UNLOAD_BUDGET:
-            wc = max(int(self.blstats.carrying_capacity), 1)
-            fixed = sum(i.weight() for i in flatten_items(self.inventory.items)
-                        if i.category != nh.FOOD_CLASS and not i.can_be_dropped_from_inventory())
-            budget = 2.3 * wc - (int(self.blstats.gold) + 50) // 100 - fixed
-            kept_food = {}
-            for item in sorted(food, key=lambda i: -(i.nutrition_per_weight() if i.is_unambiguous() and i.is_food() else 0)):
-                unit = max(item.unit_weight(), 1)
-                n = min(item.count, int(budget // unit))
-                if n > 0:
-                    kept_food[id(item)] = n
-                    budget -= n * unit
-            if not kept_food:
-                lightest = min(food, key=lambda i: i.unit_weight())
-                kept_food[id(lightest)] = 1
-        to_drop, counts = [], []
-        for item in self.inventory.items:
-            if not item.can_be_dropped_from_inventory() or item.category == nh.COIN_CLASS:
-                continue
-            if item.is_container() and any(id(i) in kept_food for i in flatten_items([item])):
-                continue
-            keep_n = kept_food.get(id(item), 0)
-            if item.count > keep_n:
-                to_drop.append(item)
-                counts.append(item.count - keep_n)
+        keep = set(id(i) for i in food)
+        to_drop = [item for item in self.inventory.items
+                   if id(item) not in keep and item.can_be_dropped_from_inventory() and
+                   item.category != nh.COIN_CLASS and
+                   not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
         if not to_drop:
             yield False
         yield True
         self.log(f'LYCAN were form Overloaded while hungry: dropping {len(to_drop)} items to eat')
-        self.inventory.drop(to_drop, counts, smart=False)
+        self.inventory.drop(to_drop, smart=False)
 
     _TIN_SMELL = re.compile(r'It smells like (?:the )?([A-Za-z -]+?)\.')
     _BAD_TIN_WORDS = ('cockatrice', 'chickatrice', 'Medusa', 'green slime', 'were', 'little dog', 'large dog',

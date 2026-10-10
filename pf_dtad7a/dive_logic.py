@@ -575,6 +575,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._elb_hurt_turns = []          # the last few such turns (ELBERETH_FAIL_DETECT)
+        self._elb_futile_until = -1        # Elbereth counted as futile up to this turn (ELBERETH_FAIL_DETECT)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -594,6 +596,7 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._elb_hurt_turns = (self._elb_hurt_turns + [turn])[-6:]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1203,6 +1206,23 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
+    def elbereth_futile(self):
+        """ELBERETH_FAIL_DETECT: whatever is hurting us ignores the Elbereth we stand on (a blinded monster, a
+        cornered one, a bad engrave): ELBERETH_FAIL_HITS turns of damage within ELBERETH_FAIL_WINDOW turns while it
+        read intact. Holds for ELBERETH_FAIL_HOLD turns."""
+        if not jf_config.ELBERETH_FAIL_DETECT:
+            return False
+        turn = self.agent.blstats.time
+        if turn <= self._elb_futile_until:
+            return True
+        recent = [t for t in self._elb_hurt_turns if t >= turn - jf_config.ELBERETH_FAIL_WINDOW]
+        if len(recent) >= jf_config.ELBERETH_FAIL_HITS:
+            self._elb_futile_until = turn + jf_config.ELBERETH_FAIL_HOLD
+            self._elb_hurt_turns = []
+            self.agent.log(f'ELBERETH futile: hurt on an intact engraving on turns {recent}; fighting on')
+            return True
+        return False
+
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs
         fight on through Elbereth. Breathers, spitters and casters don't melee a hero standing on it
@@ -1280,6 +1300,9 @@ class DiveLogic:
             # behind (base-public s0 rested among Medusa-4's snakes, then fought them from the square)
             self._elbereth_resting = False
             yield False
+        if self.elbereth_futile():
+            self._elbereth_resting = False
+            yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
@@ -1289,6 +1312,17 @@ class DiveLogic:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
                 not infectious_were(agent, near[0][3]):
+            self._elbereth_resting = False
+            yield False
+        # hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (permanent blindness), then hides on Elbereth
+        # from it at low HP and is bitten to death by the blind rat/hobbit/ant on the "intact" engraving (replay of
+        # seed 12 at XL4: two flashed giant rats and a hobbit took 13 HP to 0 during ELBERETH rest); keep fighting
+        # and let the emergency potion/prayer/flee logic act instead of waiting on a square that does not protect.
+        # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
+        #          https://nethackwiki.com/wiki/Elbereth, /refs/history/109 (same idea, kept in the #71 subtree)
+        blinded = getattr(agent, '_flash_blinded', {})
+        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
+                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \

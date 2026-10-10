@@ -214,10 +214,6 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
-# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
-# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
-PRAY_FIRST_SURE = True
-PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -369,12 +365,41 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# WERE_UNLOAD_BUDGET: were_unload keeps only the food that fits the were form's carrying capacity (agent.were_unload)
-WERE_UNLOAD_BUDGET = True
-
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
+# never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
+ELBERETH_VS_BLINDED = True
+
+# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
+# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
+# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
+# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
+# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
+# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
+# melee / potions / prayer within two bites.
+# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
+#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
+#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
+ELBERETH_FAIL_DETECT = True
+ELBERETH_FAIL_HITS = 2
+ELBERETH_FAIL_WINDOW = 6
+ELBERETH_FAIL_HOLD = 25
+
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of /refs/history/154.diff (this round: #154 0.1646 -> 0.2150, held-out 0.1462 -> 0.2310) onto the #118/#148 chain.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://www.melankolia.net/nethack/nethack.guide.html (Tourists: retreat into a corridor so one monster
+#          attacks at a time), https://github.com/krajj7/BotHack (lures monsters into corridors),
+#          /refs/history/154.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
