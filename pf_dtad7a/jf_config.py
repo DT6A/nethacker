@@ -407,6 +407,9 @@ CHOKEPOINT_HOLD_TURNS = 5
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -415,19 +418,6 @@ if _raw:
 
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
-
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850-1500) spends it on hunger although a Tourist carries 7+ food items
-# (seeds 6/7/13: Weak prayers at T1250-1580 with 3-4 rations in the pack); the next HP crisis then comes at a 600-1000
-# turn gap, where rnz(350) leaves ~35% failure ('Thou must relearn thy lessons', Luck -3) and a Dlvl-1 death follows.
-# Eating keeps the prayer for HP. Threshold 5, not 8: the XL8 variant (#131) lost held-out.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Tourist (food is rarely an early
-#          worry; rely on healing items); rec.games.roguelike.nethack 'Eating' thread (pray for hunger only in dire
-#          emergency); /refs/history/112.diff (kept, held-out 0.1427 vs 0.1198)
-EAT_BEFORE_PRAY_XL = 5
 
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
