@@ -1272,12 +1272,6 @@ class DiveLogic:
                 not infectious_were(agent, near[0][3]):
             self._elbereth_resting = False
             yield False
-        # ELBERETH_VS_BLINDED (jf_config): a monster our own camera flash blinded ignores the engraving
-        blinded = getattr(agent, '_flash_blinded', {})
-        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
-                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
-            self._elbereth_resting = False
-            yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
             self._elbereth_resting = False

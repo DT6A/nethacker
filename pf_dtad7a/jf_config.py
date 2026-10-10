@@ -359,6 +359,17 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while fight2's
+# 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer corridor
+# squares and open doors (at most 2 squares to be attacked from) and hold one there for a few turns, so the pack
+# arrives one or two at a time (combat/fight_heur.py).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Tourist,
+#          /refs/history/117.diff (kept on 4 chains earlier), /refs/history/31.diff
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come
+CHOKEPOINT_HOLD_TURNS = 5
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -384,11 +395,3 @@ DIVE_FOOD_RESERVE_XL = 6
 
 # were_unload keeps only the food a were form can carry (weight_cap() of the tiny form), not every edible item
 WERE_UNLOAD_BUDGET = True
-
-# hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (blind for good), hides on Elbereth at low HP and is bitten
-# to death by the blind rat/hobbit/ant on the "intact" engraving (my replay of seed 12 at XL4: two flashed giant rats
-# and a hobbit took 13 HP to 0 during an ELBERETH rest); keep fighting and let potion/prayer logic act instead.
-# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Expensive_camera,
-#          https://www.steelypips.org/nethack/elbereth_faq.html (players: any externally blinded monster ignores it),
-#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c onscary, /refs/history/118.diff
-ELBERETH_VS_BLINDED = True
