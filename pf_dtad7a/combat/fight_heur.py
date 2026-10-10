@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G, MON
+from ..glyph import G, MON, SS
 from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
@@ -25,6 +25,39 @@ def spore_blast_hits_friend(agent, y, x):
     # record that starts at 0, so the first grind prayer failed at T1364)
     seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
     return seen is not None and agent.blstats.time - seen < 100 and not utils.any_in(agent.glyphs, G.PETS)
+
+
+# hypothesis: the Tourist's own darts kill its kitten/little dog when it stands unseen in the throw line (dark corridor
+# or dark room squares past the adjacent ring are not displayed, so the pet glyph check in ranged_priority cannot see it):
+# "It yelps! You kill it!" + "You hear the rumble of distant thunder..." = Luck -5 and alignment -15 (mon.c xkilled
+# you_feel_guilty / adjalign(-15) for a tame victim). The next prayers then end "You feel that The Lady is displeased"
+# (pray.c: Luck < 0 / negative alignment, angrygods), so prayer_failed starts the rescue dive at XL3-5 (dev seed 733389:
+# pet killed T374 at a kobold 5 squares down a corridor, first prayer T1132 displeased, rescue dive, dead on Dlvl 5;
+# public seed 12 the same). Do not throw along a line whose unseen squares (past the adjacent ring, up to the dart range)
+# could hide a pet seen on this level in the last PET_LINE_MEMORY turns that is not in view now.
+# sources: https://nethackwiki.com/wiki/Pet#Killing_your_pet , https://nethackwiki.com/wiki/Luck , https://nethackwiki.com/wiki/Prayer ,
+#          NetHack 3.6.6 src/mon.c xkilled (tame: adjalign(-15), change_luck(-5)), src/pray.c can_pray / angrygods
+HIDING_SQUARES = frozenset({SS.S_corr, SS.S_darkroom})
+
+
+def unseen_pet_may_be_in_line(agent, y0, x0, dy, dx, reach):
+    """True when a pet seen lately and not in view might stand on an undisplayed square of the throw line."""
+    try:
+        if not jf_config.PET_LINE_GUARD or utils.any_in(agent.glyphs, G.PETS):
+            return False
+        seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
+        if seen is None or agent.blstats.time - seen > jf_config.PET_LINE_MEMORY:
+            return False
+        for k in range(2, max(reach, 2) + 1):
+            y, x = y0 + dy * k, x0 + dx * k
+            if not 0 <= y < agent.glyphs.shape[0] or not 0 <= x < agent.glyphs.shape[1] or \
+                    not agent.current_level().walkable[y, x]:
+                break
+            if agent.glyphs[y, x] in HIDING_SQUARES:
+                return True
+        return False
+    except Exception:
+        return False
 
 
 def melee_monster_priority(agent, monsters, monster):
@@ -175,6 +208,9 @@ def ranged_priority(agent, dy, dx, monsters):
             _, _, _, mon, _ = monster[0]
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
+                return None
+            if dis >= 2 and unseen_pet_may_be_in_line(agent, agent.blstats.y, agent.blstats.x, dy, dx,
+                                                      agent.character.get_range(launcher, ammo)):
                 return None
             if dis in (1, 2):
                 ret -= 5
@@ -440,37 +476,15 @@ def camera_actions(agent, monsters):
                 agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
                 (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
             return []
-        # FLASH_WORST_NEIGHBOUR
-        # hypothesis: with 2+ monsters adjacent the single flash (10-turn cooldown) went to the first one listed --
-        # replay public s5 flashed a giant rat while an adjacent giant bat (speed 22, d6 per move) did the damage
-        # and the Tourist died; aim it at the neighbour with the highest damage per turn (WEAK_ROUND_DAMAGE, or
-        # 2 + 2 * level scaled by speed) and not at a species our flash already blinded.
-        # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Giant_bat,
-        #          https://nethackwiki.com/wiki/Tourist, https://forums.tomshardware.com/threads/are-tourists-the-hardest-class.129674/,
-        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/q86z7hwNzT0 (physical damage = top early death)
-        from ..dive_logic import WEAK_ROUND_DAMAGE
-        here = (agent.blstats.y, agent.blstats.x)
-        blinded = getattr(agent, '_flash_blinded', {})
-        best = None
+        actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
-            if not adjacent((y, x), here) or getattr(mon, 'mflags1', 0) & 0x00001000:
+            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
                 continue
-            if not jf_config.FLASH_WORST_NEIGHBOUR:
-                best = (0, y, x)
-                break
-            name = getattr(mon, 'mname', '')
-            level = getattr(mon, 'mlevel', 1)
-            speed = getattr(mon, 'mmove', 12)
-            danger = WEAK_ROUND_DAMAGE.get(name) or (2 + 2 * level) * max(speed, 6) / 12.0
-            if blinded.get(name, -1) >= agent.blstats.time:
-                danger -= 100
-            if best is None or danger > best[0]:
-                best = (danger, y, x)
-        if best is None:
-            return []
-        agent._grind_flash_turn = agent.blstats.time
-        return [(25 + 20 * (1 - ratio), ('camera', best[1] - here[0], best[2] - here[1], camera))]
+            actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+            agent._grind_flash_turn = agent.blstats.time
+            break
+        return actions
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash

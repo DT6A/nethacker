@@ -71,7 +71,11 @@ PICK_DETOUR = True
 PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
-DIVE_XL = 8
+# hypothesis: end the Dlvl-1 levelling grind at XL 7 (640 XP) instead of XL 8 (1280 XP): XL7->8 is half of all grind XP and ~20 turns-of-hazard
+# (hunger-prayer failures ~2-4% each, were bites, fainting) per 1000 turns; 8 of 41 XL7 Tourists died in the grind (score ~0.04) vs ~0.38 for a dive
+# sources: /refs/parent-eval*.json deaths by XL (2:2 3:2 4:2 5:5 6:8 7:8); nethackwiki Experience_level (XL7=640, XL8=1280); makemon difficulty (depth+XL)/2;
+#   history #94 (deeper grind worse), #115 (dig dive at XL5 worse), AutoAscend's XL8 hand-over (NetPlay arXiv 2403.00690)
+DIVE_XL = 7
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
@@ -1271,50 +1275,6 @@ class DiveLogic:
         y0, x0 = agent.blstats.y, agent.blstats.x
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
-
-    # hypothesis: the Dlvl-1 levelling grind never rests when hurt (only the dive does, plan_step 'rest'; the grind's
-    # Elbereth rest needs a hostile within 2 squares), so with nothing in view the AC10 Tourist explores on at 10-50%
-    # HP and the next jackal/rothe/giant bat/hill orc finds it at 6-14 HP. XL<10 regen is 1 HP per 42/(XL+2)+1 turns,
-    # and the grind's XP is paced by the random-spawn rate, not by exploring, so a rest of ~100-250 turns costs
-    # almost no XP and restores a fight's worth of HP. Below GRIND_IDLE_REST_BELOW of max HP with no hostile in view,
-    # engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL (capped, with a cooldown).
-    # sources: https://nethackwiki.com/wiki/Hit_points (regeneration below XL10), https://nethackwiki.com/wiki/Elbereth,
-    #          https://nethackwiki.com/wiki/Tourist, /refs/history/137.diff (GRIND_IDLE_REST, kept on its chain),
-    #          NetHack 3.6.6 src/allmain.c (u.ulevel < 10: heal 1 every (42 / (ulevel + 2) + 1) moves)
-    @Strategy.wrap
-    def tour_idle_rest(self):
-        agent = self.agent
-        bl = agent.blstats
-        turn = bl.time
-        resting = getattr(self, '_idle_resting', False)
-        level = agent.current_level()
-        if not jf_config.GRIND_IDLE_REST or self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
-                bl.hunger_state >= Hunger.WEAK or agent.character.prop.blind or agent.character.prop.polymorph or \
-                agent.prayer_failed:
-            self._idle_resting = False
-            yield False
-        threshold = jf_config.GRIND_IDLE_REST_UNTIL if resting else jf_config.GRIND_IDLE_REST_BELOW
-        if bl.hitpoints >= threshold * bl.max_hitpoints or agent.get_visible_monsters() or \
-                utils.isin(agent.glyphs, G.GUARD).any() or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
-            if resting:
-                self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        if not resting:
-            if turn < getattr(self, '_idle_rest_cooldown', 0) or agent._hurt_recently(3):
-                yield False
-            self._idle_rest_start = turn
-        elif turn - self._idle_rest_start > jf_config.GRIND_IDLE_REST_MAX_TURNS:
-            self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        yield True
-        if not resting:
-            agent.log(f'GRIND idle rest start at {bl.hitpoints}/{bl.max_hitpoints} HP')
-        self._idle_resting = True
-        if self._rest_elbereth():
-            return
-        agent.search(10)
 
     @Strategy.wrap
     @_hold_loop
@@ -2516,9 +2476,9 @@ class DiveLogic:
         self.tool_spots.discard((key, spot))
 
     def first_level_done(self):
-        """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
+        """The tour's Dlvl 1 grind ends at DIVE_XL (DT6A: 8), or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= DIVE_XL or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
