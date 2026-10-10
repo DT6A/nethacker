@@ -373,20 +373,18 @@ WEAK_FLOOR_BY_DAMAGE = True
 # instead of darts or fists (combat/fight_heur.tame_actions): tamed by food it eats, made peaceful by the rest
 TAME_DOMESTIC = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of history #117 / #142 (best scorers in the #106 subtree; the hub's top Tourist 337df5bb3ade carries it) and of
-# past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392).
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/history/117.diff, /refs/top/337df5bb3ade.diff, /refs/past_runs/20261008-213012/8.diff
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the helms, boots and mail its kills drop --
+# wear_best_stuff puts on only KNOWN uncursed/blessed armour, and with no altar or pet test on Dlvl 1 the BUC stays
+# unknown. Every grind/dive-start loss (rothe, giant bat, coyote, Woodland-elf, were-creature) is a melee loss.
+# Random armour is cursed ~12% of the time and then mostly -0/-1: a cursed plain piece only sticks and still gives
+# about its base AC, and takeoff() already handles 'It is cursed.'. So also wear unknown-BUC armour that is
+# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment), gives AC (base >= 1), is not a
+# shield (a stuck shield blocks the dive's two-handed mattock) and is not unpaid. Known items win ties.
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Armor , https://nethackwiki.com/wiki/Helm ,
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
+#          /refs/history/147.diff, /refs/history/132.diff
+WEAR_UNKNOWN_MUNDANE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
