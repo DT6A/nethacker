@@ -2045,11 +2045,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2088,6 +2083,12 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
+                    # ELBERETH_VS_BLINDED: remember which species our flash blinded (flash_hits_mon message)
+                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
+                    if _m:
+                        if not hasattr(self, '_blinded_mons'):
+                            self._blinded_mons = {}
+                        self._blinded_mons[_m.group(1).lower()] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
