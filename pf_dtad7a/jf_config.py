@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -386,8 +377,6 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-# FLASH_ONCE: never re-flash a monster the camera already blinded / that resisted a flash (fight_heur.blind_flashed_positions)
-FLASH_ONCE = True
 
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
@@ -403,11 +392,8 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
-# CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -422,3 +408,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+# hypothesis: standing on Elbereth with an adjacent @-form were / elf / minotaur (they ignore it) the bot only
+# searched while being killed (public s11); fight2 should attack such a monster instead (grind only).
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          NetHack 3.6.6 src/monmove.c onscary()
+IGNORER_FIGHTS = True

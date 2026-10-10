@@ -309,7 +309,7 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         if targeted_monsters:
             # priority = priority * (1 - player_hp_ratio) - 10
             priority = priority - 15
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not elbereth_futile_here(agent, monsters):
                 priority -= 100
             ret.append((priority, ('zap', dy, dx, item, targeted_monsters)))
     return ret
@@ -367,7 +367,24 @@ def elbereth_action(agent, monsters):
     return []
 
 
+# hypothesis: on an Elbereth square fight2 gave every attack -100 and 'wait' (search) priority >= -10, so with an
+# adjacent monster that ignores Elbereth in melee (@-form werejackal/wererat, elf, minotaur) the Tourist just
+# searched while being beaten to death (public s11 T23449-23451: HP 21 -> 14 -> 2 -> dead next to a werejackal @,
+# level 2 / AC10 / 2d4 weapon -- an easy kill). While grinding, drop the penalty and the wait when one is adjacent.
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Werecreature, NetHack 3.6.6 src/monmove.c onscary(), s11 replay
+def elbereth_futile_here(agent, monsters):
+    if not jf_config.IGNORER_FIGHTS or agent.global_logic.dive.diving or in_gehennom(agent):
+        return False
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    dive = agent.global_logic.dive
+    return any(adjacent((my, mx), (y0, x0)) and dive._melee_ignores_elbereth(mon)
+               for _, my, mx, mon, _ in monsters)
+
+
 def wait_action(agent, monsters):
+    if elbereth_futile_here(agent, monsters):
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
@@ -400,10 +417,9 @@ def distant_flash_directions(agent, monsters):
     level = agent.current_level()
     y0, x0 = agent.blstats.y, agent.blstats.x
     dirs = []
-    blind = blind_flashed_positions(agent, monsters)
     for monster in monsters:
         y, x, mon = monster[1], monster[2], monster[3]
-        if getattr(mon, 'mname', '') != 'minotaur' or (y, x) in blind:
+        if getattr(mon, 'mname', '') != 'minotaur':
             continue
         dy, dx = y - y0, x - x0
         if max(abs(dy), abs(dx)) != 2 or dy not in (-2, 0, 2) or dx not in (-2, 0, 2):
@@ -412,43 +428,6 @@ def distant_flash_directions(agent, monsters):
             continue
         dirs.append((dy // 2, dx // 2))
     return dirs
-
-
-def blind_flashed_positions(agent, monsters):
-    """Squares of monsters our camera already flashed (or that resisted a flash), followed as they move."""
-    # hypothesis: FLASH_ONCE -- a flash at a monster that is already blind does nothing (mondata.c resists_blnd:
-    # mon->mblinded || !mon->mcansee), and an adjacent flash blinds for good (uhitm.c flash_hits_mon: mblinded = 0
-    # with mcansee = 0 when dist2 < 3), yet camera_actions re-flashed the same rat/gnome/hobbit every few turns:
-    # replays of public s13 / dev 733389 show 10-15 flashes in a row with an empty message while the monsters bit
-    # a 6-9 HP Tourist (733389 died on Dlvl 4 at XL 4 that way). Follow each flashed monster (same name, nearest
-    # square, a few squares of slack for the turns it was out of sight) and never spend a turn on it again.
-    # sources: NetHack 3.6.6 src/mondata.c resists_blnd, src/uhitm.c flash_hits_mon, src/apply.c use_camera,
-    #          https://nethackwiki.com/wiki/Expensive_camera
-    if not jf_config.FLASH_ONCE:
-        return set()
-    marks = getattr(agent, '_blind_marks', None)
-    if not marks:
-        return set()
-    now = agent.blstats.time
-    key = agent.current_level().key()
-    kept, used = [], set()
-    for mark in marks:
-        if mark['level'] != key or now - mark['seen'] > 40 or now - mark['t'] > 600:
-            continue
-        radius = 1 + min(now - mark['seen'], 4)
-        best = None
-        for _, y, x, mon, _ in monsters:
-            if (y, x) in used or getattr(mon, 'mname', '').lower() != mark['name']:
-                continue
-            d = max(abs(y - mark['y']), abs(x - mark['x']))
-            if d <= radius and (best is None or d < best[0]):
-                best = (d, y, x)
-        if best is not None:
-            mark['y'], mark['x'], mark['seen'] = best[1], best[2], now
-            used.add((best[1], best[2]))
-        kept.append(mark)
-    agent._blind_marks = kept
-    return used
 
 
 def camera_actions(agent, monsters):
@@ -467,7 +446,6 @@ def camera_actions(agent, monsters):
     if camera is None:
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
-    blind = blind_flashed_positions(agent, monsters)
     # hypothesis: the grind's Dlvl 1-4 deaths (giant bat, rabid rat, rothe, werejackal at XL 5-7) are melee losses at
     # low HP with ~60-90 camera charges unused; a flash blinds the monster and makes it flee 3 times in 4
     # (apply.c use_camera -> flash_hits_mon), buying the turns the emergency quaff/prayer/Elbereth need. Below
@@ -482,8 +460,7 @@ def camera_actions(agent, monsters):
         actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
-            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000 or \
-                    (y, x) in blind:
+            if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
                 continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
@@ -527,7 +504,7 @@ def camera_actions(agent, monsters):
         agent._distant_flash_turn = agent.blstats.time
     for monster in monsters:
         _, y, x, mon, _ = monster
-        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or (y, x) in blind:
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             continue
         if on_elbereth and not dive._melee_ignores_elbereth(mon):
             continue
@@ -543,13 +520,14 @@ def camera_actions(agent, monsters):
 
 def get_available_actions(agent, monsters):
     actions = []
+    futile = elbereth_futile_here(agent, monsters)
 
     # melee attack actions
     for monster in monsters:
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
@@ -571,7 +549,7 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                     pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10
