@@ -1291,17 +1291,6 @@ class DiveLogic:
                 not infectious_were(agent, near[0][3]):
             self._elbereth_resting = False
             yield False
-        # hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (permanent blindness), then hides on Elbereth
-        # from it at low HP and is bitten to death by the blind rat/hobbit/ant on the "intact" engraving (replay of
-        # seed 12 at XL4: two flashed giant rats and a hobbit took 13 HP to 0 during ELBERETH rest); keep fighting
-        # and let the emergency potion/prayer/flee logic act instead of waiting on a square that does not protect.
-        # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
-        #          https://nethackwiki.com/wiki/Elbereth, /refs/history/109 (same idea, kept in the #71 subtree)
-        blinded = getattr(agent, '_flash_blinded', {})
-        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
-                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
-            self._elbereth_resting = False
-            yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
             self._elbereth_resting = False

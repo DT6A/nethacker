@@ -176,9 +176,18 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-CORPSE_TRACK = False
+# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
+# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
+# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
+# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
+# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
+# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
+# left to it while it is starving.
+# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
+#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
+CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = False
+CLAIM_CORPSES = True
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -368,8 +377,9 @@ WEAK_FLOOR_BY_DAMAGE = True
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
-# never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
-ELBERETH_VS_BLINDED = True
+
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
