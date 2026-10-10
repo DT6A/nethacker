@@ -109,20 +109,34 @@ def point_blank_throw(agent, launcher, ammo):
                 ch.role in (ch.MONK, ch.SAMURAI) or not ammo.is_thrown_projectile():
             return False
         main = agent.inventory.items.main_hand
-        # hypothesis: a found dagger that welded itself to the Tourist's hand (cursed, Unskilled -4 to hit) kept
-        # point-blank dart throwing off for the rest of the game (s733390 / s733402 died stabbing a hobbit with it, darts
-        # unused). A welded one-handed weapon can't be put away and a throw needs no free hand (dothrow.c throw_obj
-        # checks only canletgo(obj) of the thrown object), so it counts as 'nothing to hit with'.
-        # sources: NetHack 3.6.6 src/wield.c welded(), src/dothrow.c throw_obj, https://nethackwiki.com/wiki/Cursed,
-        #          https://nethackwiki.com/wiki/Dart , /refs/history/171.diff (the same fix, never scored)
-        if jf_config.WELDED_THROW and main is not None and main.is_weapon() and main.status == Item.CURSED and \
-                main.equipped and not getattr(main.objs[0], 'bi', False):
-            return True
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-            main.objs[0].name in ('dart', 'shuriken')
+        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+                main.objs[0].name in ('dart', 'shuriken'):
+            return True
+        return jf_config.POINT_BLANK_WIELDED and _dart_beats_wielded(agent, ammo, main)
     except Exception:
         return False
+
+
+# hypothesis: the Tourist wields any found dagger (get_best_melee_weapon allows unknown BUC), which switched
+# point-blank dart throwing off, so the XL1-5 Tourist stabbed Unskilled (-4 to hit, -2 damage) with 14-35 +2 darts
+# at the ready: replay dev s733402 (XL3, 29 HP): a runed dagger missed a mace-wielding hobbit 5 of 7 swings and
+# the hobbit's 2-13 damage hits took 29 -> 0 HP; s733390 / public s7, s12, s14 died the same way. A +2 dart thrown
+# at distance 1 hits at base +2 (throwing weapon) +2 (3 - distance) +2 enchantment and does d3+2, so keep
+# throwing while its expected damage per swing beats the wielded weapon's (the same calc_dps the weapon choice
+# uses); a skilled / enchanted weapon still wins and is used in melee.
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart ,
+#          NetHack 3.6.6 src/dothrow.c thitmonst (+2 throwing weapon, +(3 - distance), omon_adj), src/weapon.c
+#          weapon_hit_bonus (Unskilled -4, Basic 0), /refs/history/129.diff, /refs/history/171.diff
+def _dart_beats_wielded(agent, ammo, main):
+    ch = agent.character
+    w_hit, w_dmg = ch.get_melee_bonus(main, large_monster=False)
+    base = 1 + ch._get_str_dex_to_hit_bonus() + agent.blstats.experience_level
+    s_hit, s_dmg = ch._get_weapon_skill_bonus(ammo)
+    a_hit, a_dmg = ch.get_ranged_bonus(None, ammo)
+    # thitmonst starts from -1 (melee from +1), +2 throwing weapon, +2 at distance 1
+    dart_hit = base - 2 + 2 + 2 + s_hit + a_hit
+    return utils.calc_dps(dart_hit, a_dmg + s_dmg) > utils.calc_dps(w_hit, w_dmg)
 
 
 def point_blank_priority(agent, monster, default):

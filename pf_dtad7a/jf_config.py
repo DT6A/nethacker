@@ -389,9 +389,6 @@ GRIND_IDLE_REST_UNTIL = 0.95
 GRIND_IDLE_REST_MAX_TURNS = 600
 GRIND_IDLE_REST_COOLDOWN = 200
 
-# WELDED_THROW: a cursed (welded) one-handed weapon in hand no longer turns point-blank dart throwing off (fight_heur.point_blank_throw)
-WELDED_THROW = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -405,3 +402,10 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+
+# hypothesis: a Tourist wielding a found Unskilled dagger keeps throwing its +2 darts point blank when a dart's
+# expected damage per swing beats the wielded weapon's (fight_heur.point_blank_throw / _dart_beats_wielded).
+# sources: https://nethackwiki.com/wiki/Tourist , https://nethackwiki.com/wiki/Dart , NetHack 3.6.6 src/dothrow.c
+#          thitmonst, src/weapon.c weapon_hit_bonus; /refs/history/129.diff
+POINT_BLANK_WIELDED = True

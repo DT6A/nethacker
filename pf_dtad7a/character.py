@@ -221,16 +221,9 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
-    # hypothesis: the Unskilled/Restricted damage bonus was +2 (it is -2: weapon.c weapon_dam_bonus), so the bot
-    # priced an Unskilled found dagger (d4+2) far above bare hands (d2) and wielded it blind (every unknown-BUC item is
-    # taken as uncursed, item_manager): the Tourist then stabbed at -4 to hit with point-blank dart throwing off (a
-    # weapon in hand), and a cursed one welded itself to the hand (dev s733390 T414, s733402: a hobbit with a mace killed
-    # an XL3-4 Tourist that was stabbing with a welded crude dagger, its +2 darts unused). With -2 bare hands win.
-    # sources: NetHack 3.6.6 src/weapon.c weapon_hit_bonus / weapon_dam_bonus (P_UNSKILLED: -4 hit, -2 damage),
-    #          https://nethackwiki.com/wiki/Weapon_skill , https://nethackwiki.com/wiki/Tourist
     weapon_bonus = {
-        SKILL_LEVEL_RESTRICTED: (-4, -2),
-        SKILL_LEVEL_UNSKILLED: (-4, -2),
+        SKILL_LEVEL_RESTRICTED: (-4, 2),
+        SKILL_LEVEL_UNSKILLED: (-4, 2),
         SKILL_LEVEL_BASIC: (0, 0),
         SKILL_LEVEL_SKILLED: (2, 1),
         SKILL_LEVEL_EXPERT: (3, 2),
