@@ -378,11 +378,24 @@ WEAK_FLOOR_BY_DAMAGE = True
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
 
-# PET_LINE_GUARD (combat.fight_heur.ranged_priority): see the hypothesis there
-PET_LINE_GUARD = True
-
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+
+# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
+# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
+# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
+# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
+# bat, giant ant, Woodland-elf, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then mostly
+# -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
+# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
+# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment), gives AC, is not a shield (a stuck
+# shield blocks the dive's two-handed mattock) and is not unpaid. Known items keep priority on ties; lower AC ->
+# fewer hits taken in every early fight.
+# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
+#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
+#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
+#          /refs/past_runs/20261008-132537/71.diff, /refs/history/147.diff, /refs/history/132.diff
+WEAR_UNKNOWN_MUNDANE = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
