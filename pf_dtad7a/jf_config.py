@@ -276,6 +276,13 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
+# cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
+# max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
+# lycanthropy too, and always raises the form's max HP, pray.c fix_worst_trouble)
+# sources: pray.c in_trouble/fix_worst_trouble/pleased (3.6.6); nethackwiki.com/wiki/Prayer, /wiki/Trouble;
+# NetHack Ideas Archive 'lycanthropy' (low HP in were form uses up the prayer); /refs/history.md
+LYCAN_FORM_PRAY = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
@@ -370,21 +377,6 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-
-# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
-# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
-# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
-# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
-# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
-# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
-# melee / potions / prayer within two bites.
-# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
-#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
-#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
-ELBERETH_FAIL_DETECT = True
-ELBERETH_FAIL_HITS = 2
-ELBERETH_FAIL_WINDOW = 6
-ELBERETH_FAIL_HOLD = 25
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
