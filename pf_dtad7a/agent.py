@@ -2062,11 +2062,6 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
-        elif best_action[0] == 'hold':
-            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
-            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
-            self.search()
-            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2668,18 +2663,23 @@ class Agent:
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
         if not to_drop and jf_config.LYCAN_UNLOAD_FOOD:
-            # everything but food is on the floor and the form is still Overtaxed: lighten the food too
+            # everything but food is on the floor and the form is still Overtaxed: lighten the food too, but keep
+            # one unit of the most nutritious stack -- dropping the whole heaviest stack (the rations) left only a
+            # tin and an apple in public s4
+            # hypothesis: eating needs a unit of real food in the pack, not the lightest pack
+            # sources: NetHack 3.6.6 src/hack.c calc_cap()/weight_cap(), src/eat.c, https://nethackwiki.com/wiki/Encumbrance
+            def nutrition(i):
+                return getattr(i.object, 'nutrition', 0) if i.is_unambiguous() else 0
             stacks = sorted((i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()),
-                            key=lambda i: -i.unit_weight())
-            if len(stacks) > 1:
-                heavy, count = stacks[0], stacks[0].count
-            elif stacks and stacks[0].count > 1:
-                heavy, count = stacks[0], stacks[0].count - 1
-            else:
-                heavy = count = None
-            if heavy is not None:
+                            key=lambda i: (-nutrition(i), i.unit_weight()))
+            surplus = [(i, i.count) for i in stacks[1:]]
+            if stacks and stacks[0].count > 1:
+                surplus.append((stacks[0], stacks[0].count - 1))
+            surplus.sort(key=lambda ic: -ic[0].unit_weight() * ic[1])
+            if surplus:
+                heavy, count = surplus[0]
                 yield True
-                self.log(f'LYCAN were form still Overtaxed: dropping {count} x {heavy.text!r} (heaviest food)')
+                self.log(f'LYCAN were form still Overtaxed: dropping {count} x {heavy.text!r} (surplus food)')
                 self.inventory.drop([heavy], [count], smart=False)
                 return
             coins = [i for i in self.inventory.items if i.category == nh.COIN_CLASS]
@@ -2729,8 +2729,14 @@ class Agent:
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""
+        # hypothesis: a were form (wererat/werejackal: tiny, no hands) cannot open a tin (eat.c start_tin: cantwield
+        # -> 'You cannot handle the tin properly to open it'), and the bot re-picked the tin every turn while
+        # fainting (public s4: 70 turns of it, died at T8680) -- a tin is no food in a were form
+        # sources: NetHack 3.6.6 src/eat.c start_tin(), https://nethackwiki.com/wiki/Tin, trace of public s4
+        no_tins = jf_config.LYCAN_FIXES and self.character.prop.polymorph
         return [item for item in flatten_items(self.inventory.items)
                 if item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
+                not (no_tins and item.objs[0].name == 'tin') and
                 (not item.is_corpse() or
                  item.monster_id in [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'lichen']])]
 

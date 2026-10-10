@@ -1271,7 +1271,23 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
+        # hypothesis: the Elbereth rest starts only below 40% HP, but engraving gives every adjacent monster one free
+        # round (and a hit scuffs the dust), so a pack deals more than the 40% reserve before the engraving protects:
+        # public s13 (XL7, Dlvl 1): 4 hill orcs took 22/47 -> 4 HP in the engrave turn, public s11: jackals around a
+        # werejackal 37 -> 16 -> dead. With 2+ hostiles within 2 squares and HP under 70%, hide as soon as HP no longer
+        # exceeds their summed max one-round damage (WEAK_ROUND_DAMAGE, 4 for unlisted kinds) -- the pack analogue of
+        # WEAK_FLOOR_BY_DAMAGE's lone-monster floor; it only moves the start earlier, the ignorer/blind/polymorph exits
+        # below still apply.
+        # sources: https://nethackwiki.com/wiki/Elbereth (scared monsters flee; dust scuffs when monsters attack),
+        #          https://nethackwiki.com/wiki/Hill_orc, https://nethackwiki.com/wiki/Tourist,
+        #          NetHack 3.6.6 src/mhitu.c mattacku, src/monst.c; /refs/history/110 (PACK_ROUND_FLOOR, kept: held-out
+        #          0.1495 vs 0.1272 for its parent)
+        pack_low = False
+        if jf_config.PACK_ROUND_FLOOR and not resting and bl.hitpoints < 0.7 * bl.max_hitpoints:
+            pack = self._near_hostiles()
+            if len(pack) >= 2:
+                pack_low = bl.hitpoints <= sum(WEAK_ROUND_DAMAGE.get(getattr(m[3], 'mname', ''), 4) for m in pack)
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling and not pack_low) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False
