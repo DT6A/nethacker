@@ -394,8 +394,6 @@ CHOKEPOINT_HOLD_TURNS = 5
 
 # UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
 UNSKILLED_DAMAGE_SIGN = True
-# DART_SKILL_FIRST: #enhance spends a Tourist's skill slots on the dart skill (up to Expert) before any other skill
-DART_SKILL_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -415,3 +413,13 @@ if LATE_FIXES:
 # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
 #          NetHack 3.6.6 src/monmove.c onscary()
 IGNORER_FIGHTS = True
+# hypothesis: the hoard-and-pray grind prays for hunger every ~1200 turns, so ~40% of XL8 dive starts fall in
+# the 500-turn window after a prayer when the low-HP prayer is unavailable; dive-start losses (Dlvl 2-8, XL 7-8)
+# come in the first few hundred turns of the dive. Ending the Dlvl-1 grind only with the HP prayer ready and
+# HP >= 85% (at most DIVE_PRAYER_MAX_WAIT turns more on Dlvl 1, where an XL8 meets difficulty <= (1+8)/2
+# monsters) gives the dive start its backstop -- a readiness check before leaving the early game.
+# sources: NetHack 3.6.6 pray.c (prayer timeout rnz(350); low HP is major trouble, fixed only with timeout <= 200);
+# https://nethackwiki.com/wiki/Prayer_timeout; https://nethackwiki.com/wiki/Tourist ("descend slowly");
+# https://nethackwiki.com/wiki/Standard_strategy; /refs/history/221.diff (port; kept on ~10 chains, held-out +0.02-0.03)
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
