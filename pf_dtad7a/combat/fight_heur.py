@@ -100,6 +100,31 @@ def missiles_risk_the_watch(agent):
 #          https://forums.giantitp.com/archive/index.php/t-295017.html, https://nethackwiki.com/wiki/Jackal
 POINT_BLANK_THROW = True
 
+# hypothesis: the Tourist grind wields whatever unknown-BUC dagger it picks up (get_best_melee_weapon allows unknown
+# status), and that turned point_blank_throw off: the XL1-5 Tourist then stabs Unskilled (-4 to hit, -2 damage) while
+# 14-35 +2 darts sit at the ready. Replay on this chain, seed 14 fem: an XL4 30-HP Tourist wielding "2 crude daggers"
+# missed a coyote 7 swings of 12 and fell 30 -> 11 HP against one 1HD coyote (then the flash-blinded coyote bit through
+# its Elbereth); seed 12: a welded cursed dagger, hobbit + giant rats. A +2 dart thrown at distance 1 hits at base
+# +1, +2 (throwing weapon), +2 (3 - distance), +2 enchantment, Basic skill, and does d3+2: keep throwing while the
+# expected damage per swing beats the wielded weapon's (utils.calc_dps, the formulas that pick the weapon); a
+# skilled/enchanted weapon still wins and is used in melee.
+# sources: https://nethackwiki.com/wiki/Tourist ("lean on darts early"; Unskilled -4 to hit), https://nethackwiki.com/wiki/Dart,
+#          NetHack 3.6.6 src/dothrow.c thitmonst, src/uhitm.c find_roll_to_hit, /refs/history/22.diff (port; node #22 +0.024
+#          on its own tree), https://nethackwiki.com/wiki/Coyote
+POINT_BLANK_WIELDED = True
+
+
+def thrown_beats_wielded(agent, main, ammo):
+    ch = agent.character
+    melee_hit, melee_dmg = ch.get_melee_bonus(main)
+    base_hit = ch.get_melee_bonus(None)[0] - ch._get_weapon_skill_bonus(None)[0]
+    ammo_hit, ammo_dmg = ammo.get_weapon_bonus(False)
+    skill_hit, skill_dmg = ch._get_weapon_skill_bonus(ammo)
+    # thitmonst: +2 for a throwing weapon, +(3 - distance) = +2 at distance 1; get_weapon_bonus counts the base 1 again
+    dart_hit = base_hit + (ammo_hit - 1) + skill_hit + 2 + 2
+    dart_dmg = max(0, ammo_dmg + skill_dmg)
+    return utils.calc_dps(dart_hit, dart_dmg) > utils.calc_dps(melee_hit, melee_dmg)
+
 
 def point_blank_throw(agent, launcher, ammo):
     """A bare-handed, non-martial character whose best ranged set is hand-thrown (the Tourist's darts)."""
@@ -110,8 +135,10 @@ def point_blank_throw(agent, launcher, ammo):
             return False
         main = agent.inventory.items.main_hand
         # nothing to hit with in hand: bare, or a missile / ammo / launcher (rnd(2) in melee, uhitm.c hmon_hitmon)
-        return main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
-            main.objs[0].name in ('dart', 'shuriken')
+        if main is None or not main.is_weapon() or main.is_launcher() or main.is_fired_projectile() or \
+                main.objs[0].name in ('dart', 'shuriken'):
+            return True
+        return POINT_BLANK_WIELDED and thrown_beats_wielded(agent, main, ammo)
     except Exception:
         return False
 
@@ -597,27 +624,6 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
-def _chokepoint_group(agent, monsters):
-    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
-    bl = agent.blstats
-    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
-             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
-    return len(group) >= 2
-
-
-def chokepoint_mask(agent, walkable):
-    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
-    a door) and open doors, which nothing enters or leaves diagonally."""
-    w = walkable.astype(int)
-    k8 = np.ones((3, 3), dtype=int)
-    k8[1, 1] = 0
-    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
-    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
-    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
-    return walkable & (np.where(door, n4, n8) <= 2)
-
-
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -638,26 +644,10 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
-    # a monster nor any attack (melee ~16)
-    hold = False
-    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
-        choke = chokepoint_mask(agent, walkable)
-        priority[choke] += 4
-        bl = agent.blstats
-        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
-            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
-    else:
-        agent._choke_holds = 0
-
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
-        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
-        # square, e.g. one a monster will step next to, still wins)
-        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
