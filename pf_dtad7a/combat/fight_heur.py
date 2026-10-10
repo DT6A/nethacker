@@ -597,6 +597,118 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
+def _chokepoint_group(agent, monsters):
+    """CHOKEPOINT_FIGHT: 2+ mobile non-weak hostiles within 7 squares (a pack: hill orcs, jackals, rothes)."""
+    bl = agent.blstats
+    group = [m for m in monsters if m[3].mname not in WEAK_MONSTERS and m[3].mname not in ONLY_RANGED_SLOW_MONSTERS
+             and m[3].mmove > 0 and max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= 7]
+    return len(group) >= 2
+
+
+def chokepoint_mask(agent, walkable):
+    """Walkable squares a monster can reach us on from at most 2 squares: corridors (also the square in front of
+    a door) and open doors, which nothing enters or leaves diagonally."""
+    w = walkable.astype(int)
+    k8 = np.ones((3, 3), dtype=int)
+    k8[1, 1] = 0
+    k4 = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+    n8 = signal.convolve2d(w, k8, boundary='fill', mode='same')
+    n4 = signal.convolve2d(w, k4, boundary='fill', mode='same')
+    door = utils.isin(agent.current_level().objects, G.DOOR_OPENED)
+    return walkable & (np.where(door, n4, n8) <= 2)
+
+
+def _kite_note_motion(agent, monsters):
+    """Per monster name, the last turn one of that name appeared on a square it did not hold the turn before."""
+    bl = agent.blstats
+    prev = getattr(agent, '_kite_prev', None)
+    moved = agent.__dict__.setdefault('_kite_moved', {})
+    if prev is not None and prev[0] == bl.time:
+        return moved
+    now = {(m[3].mname, int(m[1]), int(m[2])) for m in monsters}
+    old = set() if prev is None or bl.time - prev[0] > 3 else prev[1]
+    for name, y, x in now:
+        if (name, y, x) not in old:
+            moved[name] = bl.time
+    agent._kite_prev = (bl.time, now)
+    return moved
+
+
+# hypothesis: the AC 10 Tourist trades blows with slow melee monsters (hill orc 9, rothe 9, hobgoblin 9, bugbear 9,
+# gnome lord 8, dwarf 6, zombies 6-8: most of the grind's killers) although it can walk away from them for free.
+# NetHack 3.6.6 mon.c mcalcmove rounds a speed < 12 monster's movement randomly to 0 or 12, so it never gets two moves
+# a turn, and monmove.c dochug returns after m_move (case 1) so a monster that spent its move closing in cannot also
+# melee: a hero walking away from an adjacent speed < 12 monster is never hit, and on the turns the monster gets no
+# move (1 - speed/12 of them) it stands two squares off in line -- a free dart throw (the existing ranged action,
+# which is only offered at gap >= 2). So with darts in hand, an adjacent awake non-weak melee monster slower than us
+# (and nothing >= 12 close by) is answered with a step to a square >= 2 from every hostile, straight behind us when
+# possible so the dart stays in line, instead of a point-blank stab. Cornered or after KITE_MAX_STEPS: as before.
+# sources: https://nethackwiki.com/wiki/Speed (random rounding, 3.6), https://nethackwiki.com/wiki/Movement_tactics,
+#          https://nethackwiki.com/wiki/Hill_orc, https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Tourist
+#          (darts: "kill things by throwing"), NetHack 3.6.6 src/mon.c mcalcmove, src/monmove.c dochug
+def kite_actions(agent, monsters):
+    if not jf_config.KITE_SLOW or not monsters:
+        return []
+    bl = agent.blstats
+    moved = _kite_note_motion(agent, monsters)
+    try:
+        prop = agent.character.prop
+        if agent.global_logic.dive.diving or bl.carrying_capacity != 0 or bl.hunger_state >= 3 or \
+                prop.polymorph or prop.blind or prop.hallu or prop.confusion or prop.stun or \
+                agent.inventory.engraving_below_me.lower() == 'elbereth' or agent.in_pit():
+            return []
+        launcher, ammo = agent.inventory.get_best_ranged_set()
+        if ammo is None or not point_blank_throw(agent, launcher, ammo):
+            return []
+        y0, x0 = bl.y, bl.x
+        near = [m for m in monsters if max(abs(m[1] - y0), abs(m[2] - x0)) <= 5]
+        threats = [m for m in near if m[3].mname not in WEAK_MONSTERS]
+        adj = [m for m in threats if adjacent((m[1], m[2]), (y0, x0))]
+        if not adj:
+            return []
+        for m in threats:
+            mon = m[3]
+            if not 0 < mon.mmove < 12 or mon.mname in ONLY_RANGED_SLOW_MONSTERS or mon.mname in EXPLODING_MONSTERS \
+                    or mon.mname in ('unknown', 'gelatinous cube') or 'unicorn' in mon.mname \
+                    or infectious_were(agent, mon):
+                return []
+        # a sleeper or a statue-still monster is not chasing us: only the ones seen moving, or hitting us
+        hurt = agent._hurt_recently(3)
+        if not any(bl.time - moved.get(m[3].mname, -99) <= 4 for m in adj) and not hurt:
+            return []
+        recent = agent.__dict__.setdefault('_kite_log', [])
+        recent[:] = [t for t in recent if bl.time - t <= 40]
+        if len(recent) >= jf_config.KITE_MAX_STEPS:
+            return []
+        dis = agent.bfs()
+        walkable = agent.current_level().walkable
+        h, w = walkable.shape
+        pm = adj[0]
+        oy, ox = y0 - int(np.sign(pm[1] - y0)), x0 - int(np.sign(pm[2] - x0))
+        best = None
+        for dy, dx in product([-1, 0, 1], [-1, 0, 1]):
+            y, x = y0 + dy, x0 + dx
+            if (dy == 0 and dx == 0) or not (0 <= y < h and 0 <= x < w) or not walkable[y, x] or dis[y, x] != 1:
+                continue
+            if agent.glyphs[y, x] in G.MONS or agent.glyphs[y, x] in G.PETS:
+                continue
+            gap = min(max(abs(m[1] - y), abs(m[2] - x)) for m in near)
+            if gap < 2:
+                continue
+            room = int(walkable[max(y - 1, 0):y + 2, max(x - 1, 0):x + 2].sum()) - 1
+            if room < 2:
+                continue
+            score = 3 * min(gap, 3) + room + (6 if (y, x) == (oy, ox) else 0)
+            if best is None or score > best[0]:
+                best = (score, dy, dx)
+        if best is None:
+            return []
+        recent.append(bl.time)
+        return [(jf_config.KITE_PRIORITY, ('move', best[1], best[2]))]
+    except Exception:
+        return []
+
+
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -617,10 +729,27 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
+    # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
+    # a monster nor any attack (melee ~16)
+    hold = False
+    if jf_config.CHOKEPOINT_FIGHT and _chokepoint_group(agent, monsters):
+        choke = chokepoint_mask(agent, walkable)
+        priority[choke] += 4
+        bl = agent.blstats
+        hold = choke[bl.y, bl.x] and getattr(agent, '_choke_holds', 0) < jf_config.CHOKEPOINT_HOLD_TURNS and \
+            not any(adjacent((bl.y, bl.x), (m[1], m[2])) for m in monsters)
+    else:
+        agent._choke_holds = 0
+
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
+    actions.extend(kite_actions(agent, monsters))
+    if hold and not any(a[1][0] in ('melee', 'kick', 'ranged', 'zap') for a in actions):
+        # stay in the corridor/door for the pack to come (above goto_action's 1; a move to a better chokepoint
+        # square, e.g. one a monster will step next to, still wins)
+        actions.append((1.5, ('hold',)))
     if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions

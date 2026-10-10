@@ -575,6 +575,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._elb_hurt_turns = []          # turns HP fell on an intact Elbereth (ELBERETH_VS_BLINDED)
+        self._elbereth_block_until = -1    # no Elbereth rest before this turn (it kept failing)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -594,8 +596,14 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._elb_hurt_turns = (self._elb_hurt_turns + [turn])[-6:]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
+            blinded = getattr(agent, '_flash_blinded', None)
+            if blinded:
+                for dead in re.findall(r'You (?:kill|destroy) (?:the )?([a-z\- ]+?)[!.]|The ([a-z\- ]+?) is (?:killed|destroyed)',
+                                       agent.message or ''):
+                    blinded.pop((dead[0] or dead[1]).strip().lower(), None)
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
             self._pit_at = None
         if self.medusa_level is None and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
@@ -1201,6 +1209,9 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
+        if jf_config.ELBERETH_VS_BLINDED and \
+                getattr(self.agent, '_flash_blinded', {}).get(name, -1) >= self.agent.blstats.time:
+            return True   # our own flash blinded it: a blind monster doesn't see the engraving
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
@@ -1280,6 +1291,17 @@ class DiveLogic:
             # behind (base-public s0 rested among Medusa-4's snakes, then fought them from the square)
             self._elbereth_resting = False
             yield False
+        if jf_config.ELBERETH_VS_BLINDED:
+            if bl.time < self._elbereth_block_until:
+                self._elbereth_resting = False
+                yield False
+            if resting and len([t for t in self._elb_hurt_turns if bl.time - t <= 15]) >= 2:
+                # hit twice on an intact Elbereth within 15 turns: whatever bites ignores it
+                agent.log(f'ELBERETH rest abandoned: hurt twice on an intact engraving hp={bl.hitpoints}/{bl.max_hitpoints}')
+                self._elbereth_block_until = bl.time + 40
+                self._elb_hurt_turns = []
+                self._elbereth_resting = False
+                yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
@@ -1289,17 +1311,6 @@ class DiveLogic:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= weak_floor and \
                 not infectious_were(agent, near[0][3]):
-            self._elbereth_resting = False
-            yield False
-        # hypothesis: the Dlvl 1-4 grind flashes an adjacent monster (permanent blindness), then hides on Elbereth
-        # from it at low HP and is bitten to death by the blind rat/hobbit/ant on the "intact" engraving (replay of
-        # seed 12 at XL4: two flashed giant rats and a hobbit took 13 HP to 0 during ELBERETH rest); keep fighting
-        # and let the emergency potion/prayer/flee logic act instead of waiting on a square that does not protect.
-        # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
-        #          https://nethackwiki.com/wiki/Elbereth, /refs/history/109 (same idea, kept in the #71 subtree)
-        blinded = getattr(agent, '_flash_blinded', {})
-        if jf_config.ELBERETH_VS_BLINDED and blinded and any(
-                bl.time - blinded.get(getattr(m[3], 'mname', '').lower(), -10 ** 9) <= 400 for m in near):
             self._elbereth_resting = False
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
@@ -1317,22 +1328,6 @@ class DiveLogic:
         if engraving != 'elbereth':
             agent.engrave('Elbereth')
             return
-        # hypothesis: an Elbereth rest never eats -- eat_from_inventory sits below this preempt -- so a Weak/Fainting
-        # hero with 5 food rations in the pack searched on the square for 270 turns while the rest of its HP came back,
-        # fainting 10x (public s12 fem+mal, XL8 on Dlvl 3, prayer 200 turns old: rothes, coyotes and a kitten bit through
-        # the scuffed engraving during the faints, 0.075); eating is not an attack and leaves the engraving alone, so
-        # eat from the pack on the intact Elbereth once Weak when no safe hunger prayer is coming
-        # sources: NetHack 3.6.6 src/eat.c newuhs (faint: rnd(10 - u.uhunger/10) turns helpless), src/engrave.c
-        #          sengr_at/wipe_engr_at (only fighting scuffs it), https://nethackwiki.com/wiki/Elbereth,
-        #          https://nethackwiki.com/wiki/Nutrition, /refs/parent-eval.json (s12: killed by a kitten at Dlvl 3)
-        if jf_config.ELBERETH_EAT and bl.hunger_state >= Hunger.WEAK and bl.carrying_capacity < 4 and \
-                (agent.prayer_failed or bl.hunger_state >= Hunger.FAINTING or
-                 not agent.is_safe_to_pray(agent.SAFE_HUNGER_PRAYER_GAP)):
-            food = agent.edible_carried_food()
-            if food:
-                agent.log(f'ELBERETH rest: eating {food[0]} (hunger {bl.hunger_state})')
-                agent.inventory.eat(food[0])
-                return
         agent.search()
 
     WATER_DEMON = None

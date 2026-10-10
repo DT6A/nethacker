@@ -276,13 +276,6 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
-# hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
-# cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
-# max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
-# lycanthropy too, and always raises the form's max HP, pray.c fix_worst_trouble)
-# sources: pray.c in_trouble/fix_worst_trouble/pleased (3.6.6); nethackwiki.com/wiki/Prayer, /wiki/Trouble;
-# NetHack Ideas Archive 'lycanthropy' (low HP in were form uses up the prayer); /refs/history.md
-LYCAN_FORM_PRAY = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
@@ -375,10 +368,39 @@ WEAK_FLOOR_BY_DAMAGE = True
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
-# never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
+
+# ELBERETH_VS_BLINDED (agent camera branch, dive_logic._ignores_elbereth / elbereth_rest): a monster our own flash
+# blinded ignores Elbereth for BLINDED_MEMORY turns (an adjacent flash blinds for good, flash_hits_mon), and an
+# Elbereth rest ends (40-turn block) once HP fell twice within 15 turns while standing on an intact engraving
+# hypothesis: fewer Dlvl 1-4 grind deaths where the Tourist flashed a rat/hobbit/ant, hid on Elbereth at low HP and
+# was bitten to death by the blind monster that cannot see the engraving
+# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ;
+#          NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c onscary
 ELBERETH_VS_BLINDED = True
-# ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
-ELBERETH_EAT = True
+BLINDED_MEMORY = 300
+
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
+
+# hypothesis: see combat/fight_heur.kite_actions -- step away from adjacent awake melee monsters slower than 12 (they
+# cannot hit a retreating hero) and throw darts on the turns they fail to close, instead of trading blows at AC 10.
+# sources: https://nethackwiki.com/wiki/Speed, NetHack 3.6.6 src/mon.c mcalcmove, src/monmove.c dochug
+KITE_SLOW = True
+# above melee (16) and the point-blank throw (17), below the camera flash (25+) and a low-HP Elbereth
+KITE_PRIORITY = 18
+# kite steps allowed per 40 turns (then the fight is melee as before: no endless dances)
+KITE_MAX_STEPS = 30
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
