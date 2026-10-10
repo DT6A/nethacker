@@ -2045,6 +2045,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2083,16 +2088,6 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    # hypothesis: a monster our adjacent flash blinded (mcansee = 0, mblinded = 0: for good) ignores the
-                    # Elbereth we engrave next, so DiveLogic._flash_blinded makes both ignorer checks treat it as one
-                    # sources: https://nethackwiki.com/wiki/Elbereth (a blinded monster ignores it), NetHack 3.6.6
-                    #          src/apply.c use_camera/flash_hits_mon + monmove.c onscary(), /refs/history/118.diff
-                    if jf_config.BLINDED_NO_ELBERETH:
-                        blinded = re.search(r'The (.+?) is blinded by the flash', self.message)
-                        if blinded:
-                            if not hasattr(self, '_flash_blinded_mons'):
-                                self._flash_blinded_mons = {}
-                            self._flash_blinded_mons[blinded.group(1)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
