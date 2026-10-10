@@ -1249,32 +1249,15 @@ class Agent:
                  f'gap={gap} reason={self._pray_reason}')
         self._pray_reason = None
         history_len = len(self._message_history)
-        # hypothesis: a prayer whose PRAY step is interrupted by a strategy preemption (the update callbacks raise
-        # AgentChangeStrategy, e.g. 'You return to human form!' after a lycanthropy-cure prayer, or a monster
-        # arriving mid-prayer) skipped the bookkeeping below, so last_prayer_turn / prayer_failed stayed stale and the
-        # next prayer came a few turns later at a believed gap of 1200+ -- too soon (prayer timeout ~50-1000 after
-        # every prayer, pray.c can_pray: 'You feel that X is displeased' / smiting). Record it before re-raising.
-        # sources: /refs/top/ac6a6251af7b nhbot/agent.py pray() PRAYER_RECORD_FIX (log study: 13 of 17 such losses,
-        #          among them tou-hum-neu-mal s211 'killed praying' at T12275/T12281), NetHack 3.6.6 src/pray.c
-        #          can_pray/dopray (prayer timeout is reset by every prayer, successful or not)
-        try:
-            self.step(A.Command.PRAY)
-        except BaseException:
-            if jf_config.PRAYER_RECORD_FIX and \
-                    'You begin praying' in ' '.join(self._message_history[history_len:] + [self.message]):
-                self._record_prayer(history_len)
-            raise
-        self._record_prayer(history_len)
-        # TODO: return value
-        return True
-
-    def _record_prayer(self, history_len):
+        self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
             self.prayer_failed = False  # pleased() only runs with the god appeased and Luck >= 0
+        # TODO: return value
+        return True
 
     def open_door(self, y, x):
         with self.panic_if_position_changes():
@@ -1939,11 +1922,11 @@ class Agent:
                 # TT_PIT check): a digger in its own pit tried to walk out 4 times with a Grey-elf and a
                 # werewolf adjacent, 90 -> 38 HP, and died (dive-safety, dsafe-A2-jf16 s11). The camera flash works
                 # from a pit too (the Elbereth-ignorer flash in fight_heur.camera_actions)
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'camera', 'tame')]
                 if attack_actions:
                     actions = attack_actions
             if allow_attack_all:
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'tame')]
                 if attack_actions:
                     actions = attack_actions
 
@@ -2100,28 +2083,26 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    # hypothesis: an adjacent flash blinds the monster for good (apply.c use_camera ->
-                    # uhitm.c flash_hits_mon: dist2 < 3 -> mblinded 0), and a blind monster ignores Elbereth
-                    # (monmove.c onscary / m_move: it can't see the engraving): remember who we blinded so the
-                    # Elbereth rest (dive_logic._ignores_elbereth) stops hiding from it. Fem s12 (XL4) lost
-                    # 13 -> 1 HP searching on an intact Elbereth beside two flash-blinded giant rats and a hobbit.
-                    # sources: https://nethackwiki.com/wiki/Elbereth ("A blinded monster that can ordinarily see
-                    #          will not respect Elbereth while it is blind"), https://nethackwiki.com/wiki/Expensive_camera,
-                    #          NetHack 3.6.6 src/uhitm.c flash_hits_mon, https://nethackwiki.com/wiki/Tourist
-                    if jf_config.ELBERETH_VS_BLINDED:
-                        blinded = re.search(r'(?:The |the )?([A-Za-z\- ]+?) is blinded by the flash',
-                                            self.message or '')
-                        if blinded:
-                            if not hasattr(self, '_flash_blinded'):
-                                self._flash_blinded = {}
-                            self._flash_blinded[blinded.group(1).strip().lower()] = \
-                                self.blstats.time + (jf_config.BLINDED_MEMORY if max(abs(dy), abs(dx)) <= 1 else 20)
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():
                         self.inventory.empty_wands.add(camera.text)
                     if 'What do you want to use or apply' in self.single_message:
                         self.step(A.Command.ESC)
+            return wait_counter
+
+        elif best_action[0] == 'tame':
+            # TAME_DOMESTIC (combat/fight_heur.tame_actions): food thrown at a hostile domestic animal
+            _, dy, dx, food = best_action
+            glyph = self.glyphs[self.blstats.y + dy, self.blstats.x + dx]
+            self._tame_tries.setdefault((self.current_level().key(), glyph), []).append(self.blstats.time)
+            dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx,
+                                      allow_nonunit_distance=True)
+            name = food.object.name
+            self.fire(food, dir)
+            self.log(f'TAME_DOMESTIC: threw a {name} at {MON.permonst(glyph).mname} {dy},{dx}: {self.message!r}')
+            # a pacified one keeps its glyph: have the monster tracker look again to see it peaceful
+            self.monster_tracker._last_glyphs = None
             return wait_counter
 
         elif best_action[0] == 'pickup':
@@ -2414,6 +2395,30 @@ class Agent:
         # fixing hunger, and both starved before the next safe prayer; jf25 s10 zapped its wands and drank
         # a full healing as a 6-HP jackal)
         poly_buffer = jf_config.LYCAN_FIXES and self.character.poly_hp_is_buffer()
+
+        # hypothesis: the healing-potion branch below drank first at any HP < 1/3 (or < 8), even in pray.c's
+        # TROUBLE_HIT window (critically_low_hp) with a long-cooled-down HP prayer at hand -- where the prayer heals
+        # fully for nothing and adds rnd(5) max HP while max HP < 5 * XL + 11 (an XL 1-6 Tourist's 10-40), and
+        # the Tourist's 2 starting extra healings were gone before the grind's (and the dive start's) critical-HP
+        # moments that fall inside a prayer timeout (the grind prays for hunger every ~1200 turns). Pray first only
+        # when the prayer is near-certain: no prayer yet (past LOWHP_FIRST_TURN) or the last one >= PRAY_FIRST_GAP
+        # turns ago, never after a failed one -- between 500 and PRAY_FIRST_GAP the sure potion still comes first
+        # and the HP prayer below stays the backstop.
+        # sources: NetHack 3.6.6 src/pray.c (critically_low_hp, in_trouble TROUBLE_HIT, can_pray needs
+        #          u.ublesscnt <= 200, fix_worst_trouble TROUBLE_HIT: uhpmax += rnd(5)), src/rnd.c rnz,
+        #          https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Prayer_timeout,
+        #          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-213012/54.diff (kept there, +0.016),
+        #          /refs/history/99.diff (#99 kept: held-out 0.1563 -> 0.1833)
+        if jf_config.PRAY_FIRST_SURE and not poly_buffer and not self.prayer_failed and \
+                self._critically_low_hp() and self.blstats.hitpoints < self.blstats.max_hitpoints and \
+                self.is_safe_to_pray(jf_config.PRAY_FIRST_GAP, first_turn=jf_config.LOWHP_FIRST_TURN) and \
+                any(item.is_unambiguous() and item.category == nh.POTION_CLASS and
+                    item.object.name in ['healing', 'extra healing', 'full healing']
+                    for item in flatten_items(self.inventory.items)):
+            yield True
+            self.log(f'PRAY_FIRST at {self.blstats.hitpoints}/{self.blstats.max_hitpoints} HP, potion kept')
+            self.pray()
+            return
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
