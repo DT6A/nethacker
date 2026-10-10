@@ -1239,7 +1239,9 @@ class Agent:
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            return False
+            # hypothesis/sources: see jf_config.EAT_BEFORE_PRAY_XL (pray.c: a too-soon hunger prayer angers the god for good)
+            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
+                return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 

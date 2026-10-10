@@ -367,22 +367,18 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# hypothesis: the Tourist fights the whole Dlvl 1-4 grind and the XL8 dive start at AC 10 although the pickup
-# (global_logic ItemPriority, allow_unknown_status pass) already hauls the orcish/dwarvish helms, low/high boots,
-# leather/ring/orcish chain mail and mithril its kills drop -- wear_best_stuff puts on only KNOWN uncursed/blessed
-# armour, and with no altar or pet test on Dlvl 1 the BUC stays unknown. Every grind/dive-start loss (rothe, giant
-# bat, fire ant, Woodland-elf, Uruk-hai, wererat) is a melee loss. Random armour is cursed 12.3% of the time and then
-# mostly -0/-1 (Armor wiki): a cursed plain piece only sticks and still gives about its base AC, and takeoff() already
-# handles 'It is cursed.' (do_wear.c cursed() sets bknown). So also wear unknown-BUC armour that is unambiguous,
-# NON-magical (oc_magic 0: no levitation/fumbling/dunce cap/opposite alignment, all mgc 1), gives AC (base >= 1, so
-# no AC-0 cloak locks the suit slot), is not a shield (a stuck shield blocks the dive's two-handed mattock) and is
-# not unpaid. Known items keep priority on ties; lower AC -> fewer hits taken in every early fight.
-# sources: https://nethackwiki.com/wiki/Tourist ("imperative ... to find better ... armor as soon as possible"),
-#          https://nethackwiki.com/wiki/Armor (generation BUC/enchantment odds, cursed armour effects),
-#          https://nethackwiki.com/wiki/Helm (autocursing helms are the random-appearance magical ones),
-#          NetHack 3.6.6 src/do_wear.c cursed(), src/mkobj.c mksobj() ARMOR_CLASS,
-#          /refs/past_runs/20261008-132537/71.diff, /refs/history/101.diff
-WEAR_UNKNOWN_MUNDANE = True
+# EAT_BEFORE_PRAY_XL: below this XL a Weak non-diving Tourist with real (non-corpse) food in the pack eats it instead of
+# praying for hunger (0: off; EARLY_FIXES also turns this on, as before)
+# hypothesis: every grind hunger prayer is a ~2% (1200-turn gap, rnz(350) tail) to 7% (909-turn gap) too-soon prayer, and a
+# too-soon prayer is permanent damage (p_type 0: ugangr++, Luck -3, so every later prayer fails -- public s1: a Weak
+# prayer at XL5, gap 1201, failed; the HP prayer 4000 turns later was 'displeased' again and a werejackal finished the
+# 7-HP Tourist); it also restarts the ~500-turn window in which the HP prayer is unsafe (dev s733390: hunger prayer T858,
+# HP prayer at a 909 gap failed, XL2 -> XL1). The Tourist carries 7+ food items; eating them through the whole grind
+# (XL < 8, not only XL < 5 as in the kept #112) keeps the prayer for HP and for the first hunger after the pack is empty.
+# sources: NetHack 3.6.6 src/pray.c can_pray()/dopray()/gods_upset() (p_type 0 -> ugangr++, Luck -3; u.ugangr -> p_type -1);
+#          https://nethackwiki.com/wiki/Prayer (a timeout above 200 with major trouble is unsafe; an angry god is unsafe);
+#          https://nethackwiki.com/wiki/Tourist ; /refs/history/112.diff (EAT_BEFORE_PRAY_XL=5, kept, held-out 0.1427 vs 0.1198)
+EAT_BEFORE_PRAY_XL = 8
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
