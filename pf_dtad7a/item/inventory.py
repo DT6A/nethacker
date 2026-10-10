@@ -1437,7 +1437,21 @@ class Inventory:
         if not mask.any():
             yield False
 
+        # hypothesis: check_containers leaves a square in multi_container_squares alone (a trapped or
+        # multi-container box) and a welded two-hander has no hand free to #loot, but this strategy kept
+        # walking back to such a box: from the next square the box is dis > 0 again, so the hero
+        # oscillated between it and the exploration target for ~12000 turns (public s11, both genders: XL3 from
+        # T2500 to a 'Fainting' death at T14987, debug log 'target (0,1,3,16) multi=True a large box').
+        # Targets that check_containers would refuse are skipped.
+        # sources: this bot's own log of public seed 11; /workspace/pf_dtad7a/item/inventory.py check_containers
+        main = self.items.main_hand
+        if main is not None and main.status == Item.CURSED and getattr(main.objs[0], 'bi', False):
+            yield False
+        level_key = self.agent.current_level().key()
         for y, x in zip(*mask.nonzero()):
+            if (*level_key, int(y), int(x)) in self.multi_container_squares:
+                mask[y, x] = False
+                continue
             for item in self.agent.current_level().items[y, x]:
                 if not item.is_possible_container():
                     mask[y, x] = False

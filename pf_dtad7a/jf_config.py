@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -401,11 +392,14 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
-# CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
+# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included: 'It yelps! You
+# kill it! ... rumble of distant thunder' (dev seed 733389, T374: the pet was between the hero and a grid bug 5 squares
+# away) is Luck -5 and alignment -15, so the first hunger prayer is 'displeased' (ugangr), the XL3 Tourist starts the
+# rescue dive and dies on Dlvl 5. With a pet seen lately and none in view, never throw at a target 3+ squares away
+# unless every square between is lit visible floor (combat/fight_heur.ranged_priority).
+# sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15), src/pray.c
+#          (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer, /refs/history/226.diff
+PET_LINE_GUARD = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -415,19 +409,6 @@ if _raw:
 
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
-
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850-1500) spends it on hunger although a Tourist carries 7+ food items
-# (seeds 6/7/13: Weak prayers at T1250-1580 with 3-4 rations in the pack); the next HP crisis then comes at a 600-1000
-# turn gap, where rnz(350) leaves ~35% failure ('Thou must relearn thy lessons', Luck -3) and a Dlvl-1 death follows.
-# Eating keeps the prayer for HP. Threshold 5, not 8: the XL8 variant (#131) lost held-out.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Tourist (food is rarely an early
-#          worry; rely on healing items); rec.games.roguelike.nethack 'Eating' thread (pray for hunger only in dire
-#          emergency); /refs/history/112.diff (kept, held-out 0.1427 vs 0.1198)
-EAT_BEFORE_PRAY_XL = 5
 
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)

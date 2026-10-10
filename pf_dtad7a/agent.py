@@ -56,7 +56,6 @@ class Agent:
         self._last_pet_seen = 0
         self._corpse_debug_pos = None
         self._attack_ctx = None       # (turn, melee target, throw direction, origin, glyphs before) CORPSE_TRACK
-        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
 
         self.inventory = Inventory(self)
         self.character = Character(self)
@@ -431,8 +430,6 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
-        if jf_config.PET_HUNGER_FIX:
-            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -1242,8 +1239,7 @@ class Agent:
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
-                return False
+            return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 
@@ -2272,25 +2268,10 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
-    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
-
-    def _note_pet_hunger(self):
-        bl = getattr(self, 'blstats', None)
-        if bl is None:
-            return
-        msg = self.message or ''
-        if 'is confused from hunger' in msg:
-            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
-        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
-            self._pet_starving_until = -1
-
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
-        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
-                self.blstats.hunger_state < Hunger.WEAK:
-            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
