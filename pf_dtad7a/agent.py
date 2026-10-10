@@ -2667,27 +2667,6 @@ class Agent:
                    if id(item) not in keep and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
-        if not to_drop and jf_config.LYCAN_UNLOAD_FOOD:
-            # everything but food is on the floor and the form is still Overtaxed: lighten the food too
-            stacks = sorted((i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()),
-                            key=lambda i: -i.unit_weight())
-            if len(stacks) > 1:
-                heavy, count = stacks[0], stacks[0].count
-            elif stacks and stacks[0].count > 1:
-                heavy, count = stacks[0], stacks[0].count - 1
-            else:
-                heavy = count = None
-            if heavy is not None:
-                yield True
-                self.log(f'LYCAN were form still Overtaxed: dropping {count} x {heavy.text!r} (heaviest food)')
-                self.inventory.drop([heavy], [count], smart=False)
-                return
-            coins = [i for i in self.inventory.items if i.category == nh.COIN_CLASS]
-            if coins:
-                yield True
-                self.log('LYCAN were form still Overtaxed: dropping gold')
-                self.inventory.drop(coins, smart=False)
-                return
         if not to_drop:
             yield False
         yield True
