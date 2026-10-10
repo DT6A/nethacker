@@ -55,7 +55,6 @@ class Inventory:
         self.empty_wands = set()  # inventory texts of wands that answered "Nothing happens"
         self.multi_container_squares = set()  # (dungeon, level, y, x) where #loot asks 'Loot which containers?'
         self._container_failures = {}         # (dungeon, level, y, x) -> failed use_container attempts
-        self._container_walks = {}            # (dungeon, level, y, x) -> go_to_unchecked_containers walks started
         self.unreachable_items_until = {}     # (dungeon, level, y, x) -> turn: items at a pit bottom out of reach
 
     def is_known_empty(self, item):
@@ -1438,21 +1437,10 @@ class Inventory:
         if not mask.any():
             yield False
 
-        lkey = self.agent.current_level().key()
         for y, x in zip(*mask.nonzero()):
             for item in self.agent.current_level().items[y, x]:
                 if not item.is_possible_container():
                     mask[y, x] = False
-            # hypothesis: check_containers skips a square it has marked (trapped chest, several containers,
-            # repeated failures), but the item there stays 'possible container', so the walk to the nearest
-            # unchecked container ping-pongs between two such squares (public s11: ~1500 turns at XL4);
-            # leaving marked squares and squares already walked to 3 times alone frees those turns
-            # sources: https://nethackwiki.com/wiki/Chest, https://nethackwiki.com/wiki/Container_trap,
-            #          https://nethackwiki.com/wiki/Loot, /refs/top/1c4099e80253 (never re-visit a given-up target)
-            if jf_config.CONTAINER_SQUARE_MEMORY and mask[y, x] and (
-                    (*lkey, int(y), int(x)) in self.multi_container_squares or
-                    self._container_walks.get((*lkey, int(y), int(x)), 0) >= 3):
-                mask[y, x] = False
 
         if not mask.any():
             yield False
@@ -1461,9 +1449,6 @@ class Inventory:
         nonzero_y, nonzero_x = (mask & (dis == dis[mask].min())).nonzero()
         i = self.agent.rng.randint(len(nonzero_y))
         target_y, target_x = nonzero_y[i], nonzero_x[i]
-        if jf_config.CONTAINER_SQUARE_MEMORY:
-            tkey = (*lkey, int(target_y), int(target_x))
-            self._container_walks[tkey] = self._container_walks.get(tkey, 0) + 1
 
         with self.agent.env.debug_tiles(mask, color=(255, 0, 0, 128)):
             self.agent.go_to(target_y, target_x, debug_tiles_args=dict(color=(255, 0, 255), is_path=True))

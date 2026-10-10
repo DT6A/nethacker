@@ -264,13 +264,6 @@ UNSQUEEZE = False
 # menu that never matched was retried 45,453 times in one game)
 # ON (train 2): the take-out loop (robustness B004) hit jf14 s0 in the train-2 smoke: 11399 panics and 317k steps; with the fix 152 and 36k
 CONTAINER_LOOP_FIX = True
-# go_to_unchecked_containers skips squares check_containers marked (multi_container_squares) and squares it already
-# walked to 3 times: the walk ping-ponged between two such squares for ~1500 turns (public s11, XL4)
-# hypothesis: marked/failed container squares keep their 'possible container' item, so the nearest-unchecked-container
-# walk never ends; excluding them returns ~1500 grind turns per affected game to levelling (fewer hunger prayers,
-# less pack exposure) with no loot lost (those squares are never opened anyway)
-# sources: https://nethackwiki.com/wiki/Chest, https://nethackwiki.com/wiki/Container_trap, /refs/top/1c4099e80253
-CONTAINER_SQUARE_MEMORY = True
 # climbing out of a branch (or on the tool quest), known trap doors and holes stay closed: the stairs-cut-off walk
 # stepped onto them again and again (base-jf26 s14 fell 42 times in 10k turns climbing out of Mines' End)
 CLIMB_NO_FALL = False
@@ -366,6 +359,12 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# WERE_AT_FLASH: the grind also flashes an adjacent hostile were-creature in @ form (ignores Elbereth) below this ratio
+# hypothesis: fewer Dlvl 1-4 grind deaths to wererat/werejackal @-form melee plus their summoned packs
+# sources: https://nethackwiki.com/wiki/Werecreature ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/apply.c
+WERE_AT_FLASH = True
+WERE_AT_FLASH_RATIO = 0.7
+
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
@@ -378,20 +377,8 @@ PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
 
-# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
-# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
-# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
-# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
-# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
-# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
-# melee / potions / prayer within two bites.
-# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
-#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
-#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
-ELBERETH_FAIL_DETECT = True
-ELBERETH_FAIL_HITS = 2
-ELBERETH_FAIL_WINDOW = 6
-ELBERETH_FAIL_HOLD = 25
+# WELDED_THROW: a cursed (welded) one-handed weapon in hand no longer turns point-blank dart throwing off (fight_heur.point_blank_throw)
+WELDED_THROW = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

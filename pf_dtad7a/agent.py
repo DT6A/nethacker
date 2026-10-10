@@ -2482,7 +2482,7 @@ class Agent:
                 close = dive._near_hostiles(radius=3)
                 engraving = (self.inventory.engraving_below_me or '').lower()
                 if not any(dive._ignores_elbereth(m[3]) for m in close) and not self.character.prop.blind and \
-                        (engraving == 'elbereth' or self.can_engrave()) and not dive.elbereth_futile():
+                        (engraving == 'elbereth' or self.can_engrave()):
                     adjacent = []
             if adjacent:
                 level = self.current_level()
