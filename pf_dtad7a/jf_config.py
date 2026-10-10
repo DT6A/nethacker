@@ -351,7 +351,15 @@ DEMON_VIGIL_RADIUS = 5
 DEMON_VIGIL_TURNS = 400
 # fight2 never melees a floating eye we can see (the exploration stall breaker's attack-all mode did: 401
 # paralysis events in 223 dev games, 35 games died frozen)
-FEYE_FIX = False
+# hypothesis: the Dlvl-1 grind's fight2 (stall breaker / attack-all, or a were form with no darts) can still melee a visible
+# floating eye: its passive gaze (2/3 chance per non-killing hit, up to 127 turns, no Free Action) leaves the Tourist helpless
+# to any grid bug or newt; with the eye's melee actions filtered out, only darts or a wait/detour remain, so these frozen deaths
+# (35 of 223 dev games in the older lineage) turn into slower but survivable fights; expected effect is small but non-negative
+# sources: NetHack 3.6.6 src/uhitm.c passive() (AD_PLYS: floating eye, !mon->mcansee check),
+#          https://nethackwiki.com/wiki/Floating_eye ('never melee one unless blind or free-acting'),
+#          https://davidbau.github.io/nethack-companion/spoilers/ and https://nethack.fandom.com/wiki/Floating_eye
+#          (player guides: killed 'while helpless' by newts after meleeing an eye; Tourists especially exposed)
+FEYE_FIX = True
 # no Excalibur dips during a water demon's vigil window (the bot went back to the fountain next to the demon)
 DEMON_NO_REDIP = False
 # the last resort (unknown wands/potions/scrolls) yields to the Elbereth rest while everything close respects
@@ -407,9 +415,8 @@ CHOKEPOINT_HOLD_TURNS = 5
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# hypothesis: a digger that lands in a shop (trap door / hole above) must wait SHOP_DIG_WAIT turns *of this visit* before digging out, and must dig from an object-free square -- the wait ran from the level's first-ever sighting (so it never waited on a revisited level: public s5 dug at once on landing in Dlvl 2's general store and the goods under the hero fell with it: shopkeeper + Kops killed the XL8 hero on Dlvl 3) and the hero's own square (its glyph hides the floor goods) was never checked
-# sources: https://nethackwiki.com/wiki/Shopkeeper (a customer who falls through a hole owing for the goods that fell with them: the shopkeeper follows and is angry), https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop: objects on the hole square fall too -- 'You owe X for goods lost')
-SHOP_DIG_CLEAR = True
+# UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
+UNSKILLED_DAMAGE_SIGN = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -419,19 +426,6 @@ if _raw:
 
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
-
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850-1500) spends it on hunger although a Tourist carries 7+ food items
-# (seeds 6/7/13: Weak prayers at T1250-1580 with 3-4 rations in the pack); the next HP crisis then comes at a 600-1000
-# turn gap, where rnz(350) leaves ~35% failure ('Thou must relearn thy lessons', Luck -3) and a Dlvl-1 death follows.
-# Eating keeps the prayer for HP. Threshold 5, not 8: the XL8 variant (#131) lost held-out.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Tourist (food is rarely an early
-#          worry; rely on healing items); rec.games.roguelike.nethack 'Eating' thread (pray for hunger only in dire
-#          emergency); /refs/history/112.diff (kept, held-out 0.1427 vs 0.1198)
-EAT_BEFORE_PRAY_XL = 5
 
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)

@@ -498,7 +498,6 @@ class DiveLogic:
         self.visited_quest = False
         self.quest_arrival = None      # (y, x) of the portal on the Quest home level
         self.level_first_turn = {}     # level key -> turn first seen
-        self.level_arrival_turn = 0    # turn of the latest arrival on the current level
         self._mapped = set()           # level keys a scroll of magic mapping was read on (MAP_WHEN_STUCK)
         self.fully_explored = set()    # level keys explored to exhaustion
         self.sweep_started = None      # turn the current portal sweep began
@@ -707,7 +706,6 @@ class DiveLogic:
         if key != self._last_key:
             agent.log(f'DIVE level {key} depth {agent.blstats.depth}')
             self._last_key = key
-            self.level_arrival_turn = turn
             # diagnostics (power.py): what the character would bring to the Castle
             mark = 20 if agent.blstats.depth >= 20 else 10 if agent.blstats.depth >= 10 else None
             if mark is not None and mark not in getattr(self, '_kit_logged', set()):
@@ -3007,11 +3005,6 @@ class DiveLogic:
         # a square always covered by objects (a leprechaun hall is gold wall to wall) never shows its
         # floor: an s12 digger found no 'floor' there and explored the hall until it starved
         terrain = level.objects[py, px]
-        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) goods under the hero's own square fall through the hole with us ('You owe ... for goods lost')
-        # sources: https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop)
-        if jf_config.SHOP_DIG_CLEAR and level.shop[py, px] and level.item_count[py, px] and \
-                (py, px) == (agent.blstats.y, agent.blstats.x):
-            return False
         if not (terrain in PLAIN_FLOOR or (terrain == -1 and level.walkable[py, px]) or
                 (DIG_IN_PITS and terrain in PITS)) or \
                 (level.shop[py, px] and not self._trapped_in_shop(py, px)) or \
@@ -3040,10 +3033,7 @@ class DiveLogic:
         # only when trapped: no floor outside the shop reachable, for a while (the s4 dive walked out of a Dlvl 2
         # shop 140 turns after landing) -- at once when Weak or Fainting: each faint is turns lost to hunger
         hungry = agent.blstats.hunger_state >= Hunger.WEAK
-        # hypothesis: (see jf_config.SHOP_DIG_CLEAR) the wait counts from this visit's arrival, not the level's first sighting
-        # sources: https://nethackwiki.com/wiki/Shopkeeper, https://nethackwiki.com/wiki/Shop#Digging_in_a_shop
-        waited = agent.blstats.time - self.level_arrival_turn if jf_config.SHOP_DIG_CLEAR else self.turns_on_level()
-        if (waited < SHOP_DIG_WAIT and not hungry) or \
+        if (self.turns_on_level() < SHOP_DIG_WAIT and not hungry) or \
                 ((agent.bfs() >= 0) & level.walkable & ~level.shop).any():
             return False
         return not any(i.shop_status == Item.UNPAID for i in flatten_items(agent.inventory.items))
