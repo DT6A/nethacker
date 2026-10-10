@@ -575,6 +575,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._elb_hurt_turns = []          # the last few such turns (ELBERETH_FAIL_DETECT)
+        self._elb_futile_until = -1        # Elbereth counted as futile up to this turn (ELBERETH_FAIL_DETECT)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -594,6 +596,7 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._elb_hurt_turns = (self._elb_hurt_turns + [turn])[-6:]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1203,6 +1206,23 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
+    def elbereth_futile(self):
+        """ELBERETH_FAIL_DETECT: whatever is hurting us ignores the Elbereth we stand on (a blinded monster, a
+        cornered one, a bad engrave): ELBERETH_FAIL_HITS turns of damage within ELBERETH_FAIL_WINDOW turns while it
+        read intact. Holds for ELBERETH_FAIL_HOLD turns."""
+        if not jf_config.ELBERETH_FAIL_DETECT:
+            return False
+        turn = self.agent.blstats.time
+        if turn <= self._elb_futile_until:
+            return True
+        recent = [t for t in self._elb_hurt_turns if t >= turn - jf_config.ELBERETH_FAIL_WINDOW]
+        if len(recent) >= jf_config.ELBERETH_FAIL_HITS:
+            self._elb_futile_until = turn + jf_config.ELBERETH_FAIL_HOLD
+            self._elb_hurt_turns = []
+            self.agent.log(f'ELBERETH futile: hurt on an intact engraving on turns {recent}; fighting on')
+            return True
+        return False
+
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs
         fight on through Elbereth. Breathers, spitters and casters don't melee a hero standing on it
@@ -1278,6 +1298,9 @@ class DiveLogic:
         if DIG_ESCAPE and self._dig_escape_action() is not None:
             # a digger digs on its Elbereth instead of resting on it: the hole leaves this level's monsters
             # behind (base-public s0 rested among Medusa-4's snakes, then fought them from the square)
+            self._elbereth_resting = False
+            yield False
+        if self.elbereth_futile():
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()

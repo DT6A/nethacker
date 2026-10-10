@@ -2482,7 +2482,7 @@ class Agent:
                 close = dive._near_hostiles(radius=3)
                 engraving = (self.inventory.engraving_below_me or '').lower()
                 if not any(dive._ignores_elbereth(m[3]) for m in close) and not self.character.prop.blind and \
-                        (engraving == 'elbereth' or self.can_engrave()):
+                        (engraving == 'elbereth' or self.can_engrave()) and not dive.elbereth_futile():
                     adjacent = []
             if adjacent:
                 level = self.current_level()
@@ -2601,7 +2601,20 @@ class Agent:
         # the dive eats what it carries as soon as it is Hungry: its prayers are for HP emergencies
         # (a dive fainted at Dlvl 6 and died fighting); the tour keeps DT6A's hoard-and-pray policy
         diving = self.global_logic.dive.diving
-        if not diving and not self.prayer_failed and self.blstats.hunger_state < Hunger.FAINTING and \
+        # hypothesis: a lycanthrope that hoards its food for a Weak hunger prayer meets pray.c pleased() with two
+        # major troubles (TROUBLE_STARVING above TROUBLE_LYCANTHROPE); at Luck 0 action = rn1(2,1) fixes only the
+        # worst one half the time, so hunger is fed, the lycanthropy stays, and the next safe prayer is ~1000
+        # turns away (public s4/s9/s11: hundreds of turns as a 4-12 HP rat, fainting, dead). Eating the carried
+        # food while merely Hungry leaves the cure prayer (cure_disease, gap 1200) as the only trouble: it works
+        # every time the timeout allows.
+        # sources: https://nethackwiki.com/wiki/Prayer (Luck 0: 1d2 -> one or all major troubles),
+        #          https://nethackwiki.com/wiki/Trouble (weak hunger listed above lycanthropy),
+        #          https://nethackwiki.com/wiki/Lycanthropy (prayer cures it as a major trouble),
+        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/bITTR3R7q3A (Wererats: pray),
+        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/Od34jOzi7sQ (Lycanthropy cure),
+        #          NetHack 3.6.6 src/pray.c in_trouble()/pleased()
+        lycan_eat = jf_config.LYCAN_EAT_FIRST and self.character.is_lycanthrope
+        if not diving and not lycan_eat and not self.prayer_failed and self.blstats.hunger_state < Hunger.FAINTING and \
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
@@ -2662,27 +2675,6 @@ class Agent:
                    if id(item) not in keep and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
-        if not to_drop and jf_config.LYCAN_UNLOAD_FOOD:
-            # everything but food is on the floor and the form is still Overtaxed: lighten the food too
-            stacks = sorted((i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()),
-                            key=lambda i: -i.unit_weight())
-            if len(stacks) > 1:
-                heavy, count = stacks[0], stacks[0].count
-            elif stacks and stacks[0].count > 1:
-                heavy, count = stacks[0], stacks[0].count - 1
-            else:
-                heavy = count = None
-            if heavy is not None:
-                yield True
-                self.log(f'LYCAN were form still Overtaxed: dropping {count} x {heavy.text!r} (heaviest food)')
-                self.inventory.drop([heavy], [count], smart=False)
-                return
-            coins = [i for i in self.inventory.items if i.category == nh.COIN_CLASS]
-            if coins:
-                yield True
-                self.log('LYCAN were form still Overtaxed: dropping gold')
-                self.inventory.drop(coins, smart=False)
-                return
         if not to_drop:
             yield False
         yield True
@@ -2753,7 +2745,6 @@ class Agent:
             # (7), above TROUBLE_LYCANTHROPE (6), and with Luck 0 only half the prayers fix more than one
             # trouble -- wait until the form's HP is back up, or it dies and we rehumanize
             if jf_config.LYCAN_FIXES and self.character.prop.polymorph and \
-                    not (jf_config.LYCAN_FORM_PRAY and self.blstats.max_hitpoints <= 5) and \
                     (self.blstats.hitpoints <= 5 or self.blstats.hitpoints * 7 <= self.blstats.max_hitpoints):
                 yield False
             # Hungry (minor trouble, not fixed at Luck 0): a cure prayer now restarts the prayer timeout just

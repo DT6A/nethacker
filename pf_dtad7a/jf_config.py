@@ -276,20 +276,6 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
-# hypothesis: were_unload keeps every edible stack, but a wererat form (cwt 40, weight_cap ~16) is Overtaxed from
-# ~2.5x that (calc_cap), where the command loop refuses eating ('You can't do that while carrying so much stuff'):
-# public s4 dropped 18 items yet stayed Overtaxed 250 turns, fainted and died. Keep dropping the heaviest food
-# stack (then all but one of the last, then gold) until below Overtaxed so the form can eat
-# sources: NetHack 3.6.6 hack.c weight_cap()/calc_cap() (Upolyd: carrcap * cwt / WT_HUMAN), cmd.c rhack;
-# https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, /refs/history.md (LYCAN_FIXES)
-LYCAN_UNLOAD_FOOD = True
-# hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
-# cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
-# max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
-# lycanthropy too, and always raises the form's max HP, pray.c fix_worst_trouble)
-# sources: pray.c in_trouble/fix_worst_trouble/pleased (3.6.6); nethackwiki.com/wiki/Prayer, /wiki/Trouble;
-# NetHack Ideas Archive 'lycanthropy' (low HP in were form uses up the prayer); /refs/history.md
-LYCAN_FORM_PRAY = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
@@ -323,6 +309,11 @@ WERE_KEEP_AWAY = True
 WIELDED_STACK_THROW = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
+# a lycanthrope eats its carried food when Hungry instead of waiting for a Weak hunger prayer, so the cure prayer is the
+# only major trouble pray.c has to fix (see Agent.eat_from_inventory)
+# hypothesis: at Luck 0 a prayer with two major troubles fixes both only half the time (starving is fixed first)
+# sources: https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Trouble, https://nethackwiki.com/wiki/Lycanthropy
+LYCAN_EAT_FIRST = True
 # Weak/Fainting in the tour with no prayer due and a monster within FAINT_GUARD_RADIUS: hold on Elbereth
 # instead of fighting (dive_logic.faint_guard; fainted melee deaths were 8 of 18 Dlvl-1 grind deaths)
 FAINT_GUARD = True
@@ -384,6 +375,21 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
+
+# ELBERETH_FAIL_DETECT: after ELBERETH_FAIL_HITS distinct turns within ELBERETH_FAIL_WINDOW turns in which our HP fell
+# while we stood on an intact Elbereth, the engraving is treated as futile for ELBERETH_FAIL_HOLD turns: no new engrave,
+# no waiting on it (fight2 elbereth/wait actions, elbereth_rest) and no LR_ELBERETH deferral of the last resort.
+# hypothesis: a Tourist that sits on a readable Elbereth while a flash-blinded giant ant / coyote / non-respecting
+# monster keeps biting (dev s733394: 15 -> 0 HP in 8 turns on "Elbereth", never fighting, quaffing or praying) dies
+# with every other defence suppressed; detecting the failure empirically (not by monster name) hands control back to
+# melee / potions / prayer within two bites.
+# sources: https://nethackwiki.com/wiki/Elbereth (3.6: blinded monsters ignore it, scared monsters may erase it,
+#          @ A minotaur never respect it); NetHack 3.6.6 src/monmove.c onscary/distfleeck/set_apparxy;
+#          dive_logic._hurt_on_elbereth (existing single-turn detector, used for unseen attackers only)
+ELBERETH_FAIL_DETECT = True
+ELBERETH_FAIL_HITS = 2
+ELBERETH_FAIL_WINDOW = 6
+ELBERETH_FAIL_HOLD = 25
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
