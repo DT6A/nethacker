@@ -56,7 +56,6 @@ class Agent:
         self._last_pet_seen = 0
         self._corpse_debug_pos = None
         self._attack_ctx = None       # (turn, melee target, throw direction, origin, glyphs before) CORPSE_TRACK
-        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
 
         self.inventory = Inventory(self)
         self.character = Character(self)
@@ -431,8 +430,6 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
-        if jf_config.PET_HUNGER_FIX:
-            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -2065,6 +2062,11 @@ class Agent:
             assert self.inventory.engraving_below_me.lower() != 'elbereth'
             self.engrave("Elbereth")
             return wait_counter
+        elif best_action[0] == 'hold':
+            # jf_config.CHOKEPOINT_FIGHT: wait on a corridor/door square for an approaching pack
+            self._choke_holds = getattr(self, '_choke_holds', 0) + 1
+            self.search()
+            return wait_counter
         elif best_action[0] == 'wait':
             assert self.inventory.engraving_below_me.lower() == 'elbereth'
             self.stats_logger.log_event('wait_in_fight')
@@ -2095,11 +2097,6 @@ class Agent:
             if not hasattr(self, '_camera_flashed'):
                 self._camera_flashed = {}
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
-            _flash_target = None
-            if jf_config.FLASH_ONCE and max(abs(dy), abs(dx)) == 1:
-                for _m in self.get_visible_monsters():
-                    if (_m[1], _m[2]) == (self.blstats.y + dy, self.blstats.x + dx):
-                        _flash_target = getattr(_m[3], 'mname', '').lower()
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
             with self.atom_operation():
@@ -2114,14 +2111,6 @@ class Agent:
                     # monster only a 1 in 3 chance of the right one), so remember its name for elbereth_rest.
                     # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
                     #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth
-                    # FLASH_ONCE: the monster hit (or that resisted: already blind) is never flashed again
-                    # (fight_heur.blind_flashed_positions)
-                    if _flash_target and 'burns' not in self.message:
-                        if not hasattr(self, '_blind_marks'):
-                            self._blind_marks = []
-                        self._blind_marks.append(dict(
-                            y=self.blstats.y + dy, x=self.blstats.x + dx, name=_flash_target,
-                            t=self.blstats.time, seen=self.blstats.time, level=self.current_level().key()))
                     for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
                         if not hasattr(self, '_flash_blinded'):
                             self._flash_blinded = {}
@@ -2279,25 +2268,10 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
-    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
-
-    def _note_pet_hunger(self):
-        bl = getattr(self, 'blstats', None)
-        if bl is None:
-            return
-        msg = self.message or ''
-        if 'is confused from hunger' in msg:
-            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
-        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
-            self._pet_starving_until = -1
-
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
-        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
-                self.blstats.hunger_state < Hunger.WEAK:
-            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
@@ -2693,6 +2667,29 @@ class Agent:
                    if id(item) not in keep and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
+        if not to_drop and jf_config.LYCAN_UNLOAD_FOOD:
+            # everything but food is on the floor and the form is still Overtaxed (eat.c doeat check_capacity
+            # refuses at Overtaxed = 2.5x weight_cap): keep ONE unit of the most nutritious food, drop the rest
+            stacks = [i for i in self.inventory.items if id(i) in keep and i.can_be_dropped_from_inventory()]
+
+            def nutrition(i):
+                return getattr(i.object, 'nutrition', 0) if i.is_unambiguous() else 0
+
+            best = max(stacks, key=lambda i: (nutrition(i), -i.unit_weight()), default=None)
+            drops = [(i, int(i.count) - (1 if i is best else 0)) for i in stacks]
+            drops = [(i, c) for i, c in drops if c > 0]
+            if drops:
+                yield True
+                self.log(f'LYCAN were form still Overtaxed: keeping 1 x {best.text!r}, dropping '
+                         f'{[(i.text, c) for i, c in drops]}')
+                self.inventory.drop([i for i, _ in drops], [c for _, c in drops], smart=False)
+                return
+            coins = [i for i in self.inventory.items if i.category == nh.COIN_CLASS]
+            if coins:
+                yield True
+                self.log('LYCAN were form still Overtaxed: dropping gold')
+                self.inventory.drop(coins, smart=False)
+                return
         if not to_drop:
             yield False
         yield True
@@ -2734,8 +2731,14 @@ class Agent:
 
     def edible_carried_food(self):
         """What eat_from_inventory eats: food, but not wolfsbane or corpses other than lizard/lichen."""
+        # hypothesis: a were form (wererat/werejackal: no hands) cannot open a tin ('You cannot handle the tin
+        # properly to open it'), yet eat_from_inventory retried it every turn while Fainting (public s4: 100+
+        # EAT attempts at the tins while the rations lay on the floor), so tins are not food in that form
+        # sources: NetHack 3.6.6 src/eat.c start_tin() (nohands), src/polyself.c; /tmp trace of public s4
         return [item for item in flatten_items(self.inventory.items)
                 if item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
+                not (jf_config.LYCAN_UNLOAD_FOOD and item.objs[0].name == 'tin' and
+                     self.character.prop.polymorph) and
                 (not item.is_corpse() or
                  item.monster_id in [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'lichen']])]
 
