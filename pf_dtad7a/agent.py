@@ -56,7 +56,6 @@ class Agent:
         self._last_pet_seen = 0
         self._corpse_debug_pos = None
         self._attack_ctx = None       # (turn, melee target, throw direction, origin, glyphs before) CORPSE_TRACK
-        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which floor corpses are left to the pet
 
         self.inventory = Inventory(self)
         self.character = Character(self)
@@ -431,8 +430,6 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
-        if jf_config.PET_HUNGER_FIX:
-            self._note_pet_hunger()
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -1242,7 +1239,8 @@ class Agent:
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            return False
+            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
+                return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 
@@ -2100,11 +2098,6 @@ class Agent:
             if not hasattr(self, '_camera_flashed'):
                 self._camera_flashed = {}
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
-            _flash_target = None
-            if jf_config.FLASH_ONCE and max(abs(dy), abs(dx)) == 1:
-                for _m in self.get_visible_monsters():
-                    if (_m[1], _m[2]) == (self.blstats.y + dy, self.blstats.x + dx):
-                        _flash_target = getattr(_m[3], 'mname', '').lower()
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
             with self.atom_operation():
@@ -2119,14 +2112,6 @@ class Agent:
                     # monster only a 1 in 3 chance of the right one), so remember its name for elbereth_rest.
                     # sources: NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/monmove.c distfleeck/set_apparxy,
                     #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth
-                    # FLASH_ONCE: the monster hit (or that resisted: already blind) is never flashed again
-                    # (fight_heur.blind_flashed_positions)
-                    if _flash_target and 'burns' not in self.message:
-                        if not hasattr(self, '_blind_marks'):
-                            self._blind_marks = []
-                        self._blind_marks.append(dict(
-                            y=self.blstats.y + dy, x=self.blstats.x + dx, name=_flash_target,
-                            t=self.blstats.time, seen=self.blstats.time, level=self.current_level().key()))
                     for _name in re.findall(r'[Tt]he (.+?) is blinded by the flash', self.message):
                         if not hasattr(self, '_flash_blinded'):
                             self._flash_blinded = {}
@@ -2284,25 +2269,10 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
-    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
-
-    def _note_pet_hunger(self):
-        bl = getattr(self, 'blstats', None)
-        if bl is None:
-            return
-        msg = self.message or ''
-        if 'is confused from hunger' in msg:
-            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
-        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
-            self._pet_starving_until = -1
-
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
-        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
-                self.blstats.hunger_state < Hunger.WEAK:
-            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
