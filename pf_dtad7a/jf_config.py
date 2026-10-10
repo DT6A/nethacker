@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/195.diff (+ /refs/history/177.diff, kept), /refs/history/3.diff
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -351,15 +342,7 @@ DEMON_VIGIL_RADIUS = 5
 DEMON_VIGIL_TURNS = 400
 # fight2 never melees a floating eye we can see (the exploration stall breaker's attack-all mode did: 401
 # paralysis events in 223 dev games, 35 games died frozen)
-# hypothesis: the Dlvl-1 grind's fight2 (stall breaker / attack-all, or a were form with no darts) can still melee a visible
-# floating eye: its passive gaze (2/3 chance per non-killing hit, up to 127 turns, no Free Action) leaves the Tourist helpless
-# to any grid bug or newt; with the eye's melee actions filtered out, only darts or a wait/detour remain, so these frozen deaths
-# (35 of 223 dev games in the older lineage) turn into slower but survivable fights; expected effect is small but non-negative
-# sources: NetHack 3.6.6 src/uhitm.c passive() (AD_PLYS: floating eye, !mon->mcansee check),
-#          https://nethackwiki.com/wiki/Floating_eye ('never melee one unless blind or free-acting'),
-#          https://davidbau.github.io/nethack-companion/spoilers/ and https://nethack.fandom.com/wiki/Floating_eye
-#          (player guides: killed 'while helpless' by newts after meleeing an eye; Tourists especially exposed)
-FEYE_FIX = True
+FEYE_FIX = False
 # no Excalibur dips during a water demon's vigil window (the bot went back to the fountain next to the demon)
 DEMON_NO_REDIP = False
 # the last resort (unknown wands/potions/scrolls) yields to the Elbereth rest while everything close respects
@@ -409,14 +392,10 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
-# hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
-# CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
-
 # UNSKILLED_DAMAGE_SIGN: Character.weapon_bonus uses weapon.c's -2 damage for Restricted/Unskilled (it had +2; see character.py)
 UNSKILLED_DAMAGE_SIGN = True
+# DART_SKILL_FIRST: #enhance spends a Tourist's skill slots on the dart skill (up to Expert) before any other skill
+DART_SKILL_FIRST = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -431,3 +410,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+# hypothesis: standing on Elbereth with an adjacent @-form were / elf / minotaur (they ignore it) the bot only
+# searched while being killed (public s11); fight2 should attack such a monster instead (grind only).
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          NetHack 3.6.6 src/monmove.c onscary()
+IGNORER_FIGHTS = True

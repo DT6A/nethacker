@@ -309,7 +309,7 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         if targeted_monsters:
             # priority = priority * (1 - player_hp_ratio) - 10
             priority = priority - 15
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not elbereth_futile_here(agent, monsters):
                 priority -= 100
             ret.append((priority, ('zap', dy, dx, item, targeted_monsters)))
     return ret
@@ -367,7 +367,24 @@ def elbereth_action(agent, monsters):
     return []
 
 
+# hypothesis: on an Elbereth square fight2 gave every attack -100 and 'wait' (search) priority >= -10, so with an
+# adjacent monster that ignores Elbereth in melee (@-form werejackal/wererat, elf, minotaur) the Tourist just
+# searched while being beaten to death (public s11 T23449-23451: HP 21 -> 14 -> 2 -> dead next to a werejackal @,
+# level 2 / AC10 / 2d4 weapon -- an easy kill). While grinding, drop the penalty and the wait when one is adjacent.
+# sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
+#          https://nethackwiki.com/wiki/Werecreature, NetHack 3.6.6 src/monmove.c onscary(), s11 replay
+def elbereth_futile_here(agent, monsters):
+    if not jf_config.IGNORER_FIGHTS or agent.global_logic.dive.diving or in_gehennom(agent):
+        return False
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    dive = agent.global_logic.dive
+    return any(adjacent((my, mx), (y0, x0)) and dive._melee_ignores_elbereth(mon)
+               for _, my, mx, mon, _ in monsters)
+
+
 def wait_action(agent, monsters):
+    if elbereth_futile_here(agent, monsters):
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
@@ -503,13 +520,14 @@ def camera_actions(agent, monsters):
 
 def get_available_actions(agent, monsters):
     actions = []
+    futile = elbereth_futile_here(agent, monsters)
 
     # melee attack actions
     for monster in monsters:
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
@@ -531,7 +549,7 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                if agent.inventory.engraving_below_me.lower() == 'elbereth' and not futile:
                     pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10

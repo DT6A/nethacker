@@ -211,6 +211,11 @@ class Character:
         "riding": O.P_RIDING,
     }
 
+    skill_type_to_name = {}
+    for _name, _type in name_to_skill_type.items():
+        skill_type_to_name.setdefault(_type, _name)
+    del _name, _type
+
     possible_skill_types = ['Fighting Skills', 'Weapon Skills', 'Spellcasting Skills']
     possible_skill_levels = ['Unskilled', 'Basic', 'Skilled', 'Expert', 'Master', 'Grand Master']
 
@@ -284,6 +289,7 @@ class Character:
         self.self_glyph = None
         self.skill_levels = np.zeros(max(self.name_to_skill_type.values()) + 1, dtype=int)
         self.upgradable_skills = dict()
+        self.upgradable_letters = dict()
 
         self.is_lycanthrope = False
         # 'rat' / 'jackal' / 'wolf' (were.c were_beastie families), None if unknown (LYCAN_FIXES)
@@ -451,29 +457,53 @@ class Character:
             self._parse_enhance_view()
             while self.upgradable_skills:
                 to_upgrade = self.select_skill_to_upgrade()
+                if to_upgrade is None:
+                    break
                 old_skill_level = self.skill_levels.copy()
-                letter = self.upgradable_skills[to_upgrade]
+                letter = self.upgradable_letters.get(to_upgrade) or self.upgradable_skills.get(to_upgrade)
+                if letter is None:
+                    break
+                skill_name = self.skill_type_to_name.get(to_upgrade, '')
 
                 def type_letter():
-                    while f'{letter} - ' not in '\n'.join(self.agent.single_popup):
+                    # tty menus restart their item letters at 'a' on every page, so the letter alone can match
+                    # another skill's line on an earlier page: wait for this skill's own line
+                    for _ in range(8):
+                        if any(l.startswith(f'{letter} - ') and skill_name in l for l in self.agent.single_popup):
+                            yield letter
+                            return
                         yield A.TextCharacters.SPACE
-                    yield letter
 
                 self.agent.step(A.Command.ENHANCE, type_letter())
 
                 self.agent.step(A.Command.ENHANCE)
                 self._parse_enhance_view()
-                assert (old_skill_level != self.skill_levels).any(), (old_skill_level, self.skill_levels)
+                if (old_skill_level == self.skill_levels).all():
+                    break
 
     def select_skill_to_upgrade(self):
         assert self.upgradable_skills
-        # TODO: logic
+        # hypothesis: #enhance took the first advanceable skill in menu order (bare handed, then dagger ... dart far
+        # down), so a Tourist's one-slot-per-XL went to bare hands / a found dagger or scimitar while the dart skill
+        # -- its only real attack -- stayed Basic: Skilled throws rnd(2) darts, Expert rnd(3) (volley avg 1 -> 1.5 -> 2),
+        # with +2/+3 to hit and +1/+2 damage on top of the +2 darts, i.e. ~3x the damage per throw. Until darts are
+        # Expert every slot waits for the dart skill (its practice comes from dart hits; slots are not lost).
+        # Earlier tries (#160, #203) died with a KeyError when the dart's letter was a page-2 duplicate letter that
+        # upgradable_skills had dropped; the letters of ALL advanceable skills are kept in upgradable_letters now.
+        # sources: NetHack 3.6.6 src/weapon.c (slots_required, can_advance, practice_needed_to_advance,
+        #          weapon_hit_bonus, weapon_dam_bonus), src/dothrow.c throw_obj (multishot by skill),
+        #          win/tty/wintty.c tty_end_menu (letters restart per page), https://nethackwiki.com/wiki/Dart,
+        #          https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Tourist
+        if jf_config.DART_SKILL_FIRST and self.role == self.TOURIST and \
+                self.skill_levels[O.P_DART] < self.SKILL_LEVEL_EXPERT:
+            return O.P_DART if O.P_DART in self.upgradable_letters else None
         return next(iter(self.upgradable_skills.keys()))
 
     def _parse_enhance_view(self):
         if self.agent.popup[0] not in ('Current skills:', 'Pick a skill to advance:'):
             raise ValueError('Invalid ehance popup text format.' + str(self.agent.popup))
         self.upgradable_skills = dict()
+        self.upgradable_letters = dict()
         for line in self.agent.popup[1:]:
             if line.strip() in self.possible_skill_types or \
                     line.strip() == '(Skill flagged by "#" cannot be enhanced any further.)' or \
@@ -493,6 +523,7 @@ class Character:
                 # panicked the caller. Keep the first page's skill; once it is advanced the list is re-read.
                 # sources: NetHack 3.6.6 win/tty/wintty.c tty_end_menu() (menu_ch reset to 'a' per page),
                 #          /refs/history/54.diff (same fix, kept as a proven neutral fix)
+                self.upgradable_letters[self.name_to_skill_type[skill_type]] = letter
                 if letter not in self.upgradable_skills.values():
                     self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
