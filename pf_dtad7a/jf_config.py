@@ -177,14 +177,15 @@ THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
 # hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
+# and a failed one starts the XL<8 rescue dive; replay of public s733390: hunger prayer T858, HP-crisis prayer T1770
+# at a 912 gap -> 'Thou art arrogant' + level loss -> dead at XL2), yet the bot eats only the corpse it stands on and
+# the pet (dogmove.c dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares
+# (CORPSE_TRACK) and walking <=3 steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition
+# (eat.c: corpse nutrition by cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is
+# the safety counterpart: a pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c
+# dog_hunger), so floor corpses are left to it while it is starving.
+# sources: https://nethackwiki.com/wiki/Corpse, https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Tourist,
+#          https://nethackwiki.com/wiki/Pet, /refs/history/195.diff (port; held-out +0.055), /refs/history/177.diff
 CORPSE_TRACK = True
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
 CLAIM_CORPSES = True
@@ -285,6 +286,13 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
+# cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
+# max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
+# lycanthropy too, and always raises the form's max HP, pray.c fix_worst_trouble)
+# sources: pray.c in_trouble/fix_worst_trouble/pleased (3.6.6); nethackwiki.com/wiki/Prayer, /wiki/Trouble;
+# NetHack Ideas Archive 'lycanthropy' (low HP in were form uses up the prayer); /refs/history.md
+LYCAN_FORM_PRAY = True
 # never trade melee blows with a were in animal form (werejackal/wererat/werewolf as d/r) while not a lycanthrope:
 # engrave Elbereth when it comes adjacent and stand on it while it is within 2 (combat.monster_utils.infectious_were)
 # hypothesis: each hit of the animal form's bite infects an MC0 Tourist with lycanthropy 1 in 4 (mhitu.c AD_WERE,
@@ -368,12 +376,6 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
-# WERE_AT_FLASH: the grind also flashes an adjacent hostile were-creature in @ form (ignores Elbereth) below this ratio
-# hypothesis: fewer Dlvl 1-4 grind deaths to wererat/werejackal @-form melee plus their summoned packs
-# sources: https://nethackwiki.com/wiki/Werecreature ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/apply.c
-WERE_AT_FLASH = True
-WERE_AT_FLASH_RATIO = 0.7
-
 # WEAK_FLOOR_BY_DAMAGE: the Elbereth rest's lone-weak-monster exemption holds only while HP exceeds that monster's
 # max one-round damage (dive_logic.WEAK_ROUND_DAMAGE); unlisted monsters keep the old flat 6.
 # hypothesis: fewer Dlvl 1-4 grind / dive-start deaths of the AC10 Tourist to one hard-hitting weak monster
@@ -385,9 +387,8 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-
-# WELDED_THROW: a cursed (welded) one-handed weapon in hand no longer turns point-blank dart throwing off (fight_heur.point_blank_throw)
-WELDED_THROW = True
+# ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
+ELBERETH_EAT = True
 
 # hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
 # CLAIM_CORPSES we leave floor corpses to it while it is starving
