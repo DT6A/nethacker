@@ -281,6 +281,11 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
     ret = []
     if missiles_risk_the_watch(agent):
         return ret
+    # hypothesis: IGNORER_FIGHTS used `futile` here without defining it, so every fight2 turn on an Elbereth square
+    # with a targetable attack wand raised NameError -> 'panic loop: random walk' off the square at low HP (public s0:
+    # HP 26/63 vs a pony, 700 panicking steps, random walk, dead). Compute it locally.
+    # sources: /refs/history/214.diff (the undefined name), replay of public s0 T24562 (NameError: name 'futile' is not defined)
+    futile = elbereth_futile_here(agent, monsters)
     player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
     # TODO: also get items recursively from bags
     for item in agent.inventory.items:
