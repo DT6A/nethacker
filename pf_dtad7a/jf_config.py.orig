@@ -407,10 +407,6 @@ CHOKEPOINT_HOLD_TURNS = 5
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# hypothesis: a digger that lands in a shop (trap door / hole above) must wait SHOP_DIG_WAIT turns *of this visit* before digging out, and must dig from an object-free square -- the wait ran from the level's first-ever sighting (so it never waited on a revisited level: public s5 dug at once on landing in Dlvl 2's general store and the goods under the hero fell with it: shopkeeper + Kops killed the XL8 hero on Dlvl 3) and the hero's own square (its glyph hides the floor goods) was never checked
-# sources: https://nethackwiki.com/wiki/Shopkeeper (a customer who falls through a hole owing for the goods that fell with them: the shopkeeper follows and is angry), https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop: objects on the hole square fall too -- 'You owe X for goods lost')
-SHOP_DIG_CLEAR = True
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
