@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G, MON, SS
+from ..glyph import G, MON
 from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
@@ -25,39 +25,6 @@ def spore_blast_hits_friend(agent, y, x):
     # record that starts at 0, so the first grind prayer failed at T1364)
     seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
     return seen is not None and agent.blstats.time - seen < 100 and not utils.any_in(agent.glyphs, G.PETS)
-
-
-# hypothesis: the Tourist's own darts kill its kitten/little dog when it stands unseen in the throw line (dark corridor
-# or dark room squares past the adjacent ring are not displayed, so the pet glyph check in ranged_priority cannot see it):
-# "It yelps! You kill it!" + "You hear the rumble of distant thunder..." = Luck -5 and alignment -15 (mon.c xkilled
-# you_feel_guilty / adjalign(-15) for a tame victim). The next prayers then end "You feel that The Lady is displeased"
-# (pray.c: Luck < 0 / negative alignment, angrygods), so prayer_failed starts the rescue dive at XL3-5 (dev seed 733389:
-# pet killed T374 at a kobold 5 squares down a corridor, first prayer T1132 displeased, rescue dive, dead on Dlvl 5;
-# public seed 12 the same). Do not throw along a line whose unseen squares (past the adjacent ring, up to the dart range)
-# could hide a pet seen on this level in the last PET_LINE_MEMORY turns that is not in view now.
-# sources: https://nethackwiki.com/wiki/Pet#Killing_your_pet , https://nethackwiki.com/wiki/Luck , https://nethackwiki.com/wiki/Prayer ,
-#          NetHack 3.6.6 src/mon.c xkilled (tame: adjalign(-15), change_luck(-5)), src/pray.c can_pray / angrygods
-HIDING_SQUARES = frozenset({SS.S_corr, SS.S_darkroom})
-
-
-def unseen_pet_may_be_in_line(agent, y0, x0, dy, dx, reach):
-    """True when a pet seen lately and not in view might stand on an undisplayed square of the throw line."""
-    try:
-        if not jf_config.PET_LINE_GUARD or utils.any_in(agent.glyphs, G.PETS):
-            return False
-        seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
-        if seen is None or agent.blstats.time - seen > jf_config.PET_LINE_MEMORY:
-            return False
-        for k in range(2, max(reach, 2) + 1):
-            y, x = y0 + dy * k, x0 + dx * k
-            if not 0 <= y < agent.glyphs.shape[0] or not 0 <= x < agent.glyphs.shape[1] or \
-                    not agent.current_level().walkable[y, x]:
-                break
-            if agent.glyphs[y, x] in HIDING_SQUARES:
-                return True
-        return False
-    except Exception:
-        return False
 
 
 def melee_monster_priority(agent, monsters, monster):
@@ -208,9 +175,6 @@ def ranged_priority(agent, dy, dx, monsters):
             _, _, _, mon, _ = monster[0]
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
-                return None
-            if dis >= 2 and unseen_pet_may_be_in_line(agent, agent.blstats.y, agent.blstats.x, dy, dx,
-                                                      agent.character.get_range(launcher, ammo)):
                 return None
             if dis in (1, 2):
                 ret -= 5
