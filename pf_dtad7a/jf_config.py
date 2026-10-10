@@ -388,12 +388,6 @@ PRAYER_DOWN_GAP = 800
 PRAYER_DOWN_BELOW = 0.5
 PRAYER_DOWN_REST_TURNS = 300
 
-# SHOP_DOOR_NO_KICK: explore1 does not kick locked doors on Dlvl 2..SHOP_DOOR_MAX_DEPTH of the Dungeons of Doom
-# until SHOP_DOOR_KICK_AFTER turns were spent on the level (a locked door there is often a shop's door)
-SHOP_DOOR_NO_KICK = True
-SHOP_DOOR_MAX_DEPTH = 20
-SHOP_DOOR_KICK_AFTER = 2500
-
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -407,3 +401,6 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+# FAINT_EAT: a Fainting hero that carries real food eats it from a strategy above fight2/faint_guard, even with
+# monsters in view (agent.faint_eat)
+FAINT_EAT = True

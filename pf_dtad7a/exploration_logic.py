@@ -325,17 +325,6 @@ class ExplorationLogic:
             level = self.agent.current_level()
             y0, x0 = self.agent.blstats.y, self.agent.blstats.x
             closed_shop = closed_shop or level.shop[y0, x0] or level.shop_interior[y0, x0]
-            # hypothesis: a locked door on Dlvl 2..20 is often a shop's "Closed for inventory" door whose dust
-            # warning fights on the doorstep scuff away (public s10: 3 hill orcs died there, the bot then kicked
-            # the door in with 323 gold < the 400 zm door price: the shopkeeper's wand of striking killed an XL8
-            # hero), so keep kicking off for the first SHOP_DOOR_KICK_AFTER turns spent on such a level
-            # sources: NetHack 3.6.6 src/shk.c pay_for_damage() (hot_pursuit unless the hero can pay) and
-            # src/shknam.c stock_room() (a locked shop door gets the "Closed for inventory" engraving),
-            # https://nethackwiki.com/wiki/Shopkeeper , https://nethackwiki.com/wiki/Stealing_from_shops
-            if jf_config.SHOP_DOOR_NO_KICK and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
-                    2 <= self.agent.blstats.depth <= jf_config.SHOP_DOOR_MAX_DEPTH and \
-                    self.agent.global_logic.dive.turns_on_level() < jf_config.SHOP_DOOR_KICK_AFTER:
-                closed_shop = True
             for py, px in self.agent.neighbors(self.agent.blstats.y, self.agent.blstats.x, diagonal=False):
                 if (self.agent.current_level().door_open_count[py, px] < door_open_count or
                         (kick_doors and not closed_shop)) and \

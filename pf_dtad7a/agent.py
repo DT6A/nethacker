@@ -2611,6 +2611,34 @@ class Agent:
             return
         yield False
 
+    @utils.debug_log('faint_eat')
+    @Strategy.wrap
+    def faint_eat(self):
+        # hypothesis: FAINT_EAT -- a Fainting Tourist that still carries real food never ate while any monster was in
+        # view: fight2 (and faint_guard's Elbereth wait) outrank eat_from_inventory, and ELBERETH_EAT only runs inside
+        # elbereth_rest, so the hero fainted again and again (each faint = rnd(10 - uhunger/10) helpless turns of free
+        # hits) with 2-3 food rations in the pack and died at XL1-8 on Dlvl 1 (replays: fem s6 3 rations + 3 tripe, s4
+        # 2 rations, 100+ faints before death). Eating is progressive (nutrition is added each turn of the meal, a
+        # ration 160/turn) so even an interrupted first turn lifts the hero out of Fainting; eat the biggest meal
+        # (not tins: up to 50 turns to open; not tripe: vomiting) from a preempt above fight2/faint_guard.
+        # sources: NetHack 3.6.6 src/eat.c newuhs() (Fainting: rn2(20 - uhunger/10) >= 19 faints for 10 - uhunger/10
+        #          turns), src/eat.c bite()/eatfood() (nutrition per bite), https://nethackwiki.com/wiki/Nutrition
+        #          ('Fainting ... randomly falls unconscious'; meal nutrition spread uniformly over its turns),
+        #          https://nethackwiki.com/wiki/Comestible, https://nethackwiki.com/wiki/Tourist (huge starting food),
+        #          rec.games.roguelike.nethack 'Eating' thread (Tourists die to jackals before using their food)
+        bl = self.blstats
+        if not jf_config.FAINT_EAT or bl.hunger_state < Hunger.FAINTING or bl.carrying_capacity >= 4 or \
+                self.character.prop.polymorph:
+            yield False
+        food = [item for item in self.edible_carried_food()
+                if item.objs[0].name not in ('tin', 'tripe ration')]
+        if not food:
+            yield False
+        food.sort(key=lambda item: -getattr(item.objs[0], 'nutrition', 0))
+        yield True
+        self.log(f'FAINT_EAT: eating {food[0]} (hunger {bl.hunger_state})')
+        self.inventory.eat(food[0])
+
     @Strategy.wrap
     def summon_were_allies(self):
         # hypothesis: a lycanthrope in were form fights its packs alone at XL 5-7 on Dlvl 1 (s12: a wererat's
