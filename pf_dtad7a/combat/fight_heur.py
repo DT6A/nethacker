@@ -478,7 +478,7 @@ def camera_actions(agent, monsters):
     #          /refs/top/47a6c840a4cf (Elbereth-first faint guard)
     # Only once the dive proper has begun (XL 8+): an early fall-dive at XL 1-3 lives on its flashes (s0 flashed a
     # grid bug at 6/14 HP on Dlvl 2 and went on to Dlvl 17; without the flash a bat killed it on Dlvl 3)
-    if agent.blstats.experience_level >= 8 and not on_elbereth and not in_gehennom(agent) and \
+    if agent.blstats.experience_level >= _dive_xl() and not on_elbereth and not in_gehennom(agent) and \
             dive._elbereth_possible():
         on_elbereth = True
     actions = []
@@ -638,8 +638,6 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
-    # hypothesis: packs (jackals, hill orcs, rothes, were summons) at AC10 arrive one or two at a time on corridor/door squares
-    # sources: https://nethackwiki.com/wiki/Movement_tactics, /refs/history/213.diff (held-out +0.09 on #174/#213)
     # CHOKEPOINT_FIGHT: the +4 outweighs the 'strike first' +3 two squares off, not the -9 of stepping next to
     # a monster nor any attack (melee ~16)
     hold = False
@@ -678,3 +676,8 @@ def get_move_actions(agent, dis, move_priority_heatmap):
         if not np.isnan(move_priority_heatmap[y, x]):
             ret.append((move_priority_heatmap[y, x], ('move', dy, dx)))
     return ret
+
+
+def _dive_xl():
+    from ..dive_logic import DIVE_XL
+    return DIVE_XL

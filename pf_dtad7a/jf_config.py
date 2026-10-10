@@ -380,14 +380,6 @@ ELBERETH_VS_BLINDED = True
 # ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
 ELBERETH_EAT = True
 
-# PRAYER_DOWN_CAUTION: in the levelling grind (not diving) with no HP prayer available (is_safe_to_pray(PRAYER_DOWN_GAP)
-# false), the Elbereth rest starts below PRAYER_DOWN_BELOW of max HP and the lone-weak-monster exemption is off
-# (dive_logic.elbereth_rest)
-PRAYER_DOWN_CAUTION = True
-PRAYER_DOWN_GAP = 800
-PRAYER_DOWN_BELOW = 0.5
-PRAYER_DOWN_REST_TURNS = 300
-
 # hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
 # Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
 # fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
