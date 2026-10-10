@@ -384,19 +384,15 @@ PET_LINE_GUARD = True
 PET_HUNGER_FIX = True
 PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of /refs/history/154.diff (kept on chain #120: held-out 0.1462 -> 0.2310) onto chain {#120, #155}.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/history/154.diff, /refs/past_runs/20261008-213012/8.diff
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# GRIND_IDLE_REST: the Dlvl-1 levelling grind engraves Elbereth and searches in place when below
+# GRIND_IDLE_REST_BELOW of max HP with no hostile in view, until GRIND_IDLE_REST_UNTIL (see dive_logic.tour_idle_rest)
+# hypothesis: the grind never rests when hurt, so the next fight starts at 10-50% HP; resting costs no XP (spawn-paced)
+# sources: https://nethackwiki.com/wiki/Hit_points, https://nethackwiki.com/wiki/Elbereth, /refs/history/137.diff
+GRIND_IDLE_REST = True
+GRIND_IDLE_REST_BELOW = 0.7
+GRIND_IDLE_REST_UNTIL = 0.95
+GRIND_IDLE_REST_MAX_TURNS = 600
+GRIND_IDLE_REST_COOLDOWN = 200
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
