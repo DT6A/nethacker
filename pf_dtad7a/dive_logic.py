@@ -71,7 +71,14 @@ PICK_DETOUR = True
 PICK_DETOUR_LEVELS = 2
 # astra: retreat onto Elbereth at 45-65% HP, rest there with searches, never attack from it
 # hand-over from AutoAscend's levelling tour to the dive
-DIVE_XL = 8
+# hypothesis: GRIND_END_XL7 -- the Dlvl-1 grind ends at XL 7 (640 XP), not XL 8 (1280 XP): XL7->8 is half of all grind XP
+# (random spawns on Dlvl 1 are capped at difficulty (1+XL)/2, so the kills are small) and the XL-7 Tourists that keep
+# grinding die there (hunger-prayer failures, were bites, invisible hill orc / pony / giant ant; score ~0.05) where a
+# dive scores 0.1-0.4 (the dive's own XP gate, REQUIRED_XL, keeps levelling Dlvl 2-5 at higher XP per kill)
+# sources: /refs/parent-eval.json + parent-eval-extra.json (Xp:7 deaths on Dlvl 1 at T14-21k: s2, s6, 733401);
+#          makemon.c (difficulty cap (depth + XL) / 2); https://nethackwiki.com/wiki/Experience_level (XL7=640, XL8=1280);
+#          /refs/history/189.diff (kept, +0.089 on its chain), /refs/history.md #193 (+0.035)
+DIVE_XL = 7
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
@@ -1317,6 +1324,22 @@ class DiveLogic:
         if engraving != 'elbereth':
             agent.engrave('Elbereth')
             return
+        # hypothesis: an Elbereth rest never eats -- eat_from_inventory sits below this preempt -- so a Weak/Fainting
+        # hero with 5 food rations in the pack searched on the square for 270 turns while the rest of its HP came back,
+        # fainting 10x (public s12 fem+mal, XL8 on Dlvl 3, prayer 200 turns old: rothes, coyotes and a kitten bit through
+        # the scuffed engraving during the faints, 0.075); eating is not an attack and leaves the engraving alone, so
+        # eat from the pack on the intact Elbereth once Weak when no safe hunger prayer is coming
+        # sources: NetHack 3.6.6 src/eat.c newuhs (faint: rnd(10 - u.uhunger/10) turns helpless), src/engrave.c
+        #          sengr_at/wipe_engr_at (only fighting scuffs it), https://nethackwiki.com/wiki/Elbereth,
+        #          https://nethackwiki.com/wiki/Nutrition, /refs/parent-eval.json (s12: killed by a kitten at Dlvl 3)
+        if jf_config.ELBERETH_EAT and bl.hunger_state >= Hunger.WEAK and bl.carrying_capacity < 4 and \
+                (agent.prayer_failed or bl.hunger_state >= Hunger.FAINTING or
+                 not agent.is_safe_to_pray(agent.SAFE_HUNGER_PRAYER_GAP)):
+            food = agent.edible_carried_food()
+            if food:
+                agent.log(f'ELBERETH rest: eating {food[0]} (hunger {bl.hunger_state})')
+                agent.inventory.eat(food[0])
+                return
         agent.search()
 
     WATER_DEMON = None
@@ -2461,9 +2484,9 @@ class DiveLogic:
         self.tool_spots.discard((key, spot))
 
     def first_level_done(self):
-        """The tour's Dlvl 1 grind ends at XL 8 (DT6A), or earlier for a tool run."""
+        """The tour's Dlvl 1 grind ends at XL DIVE_XL, or earlier for a tool run."""
         xl = self.agent.blstats.experience_level
-        return (xl >= 8 or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
+        return (xl >= DIVE_XL or (TOOL_RUN_XL is not None and xl >= TOOL_RUN_XL)) and self.fed_for_dive()
 
     def fed_for_dive(self):
         """jf_config.DIVE_FED: the grind ends fed -- Not Hungry within DIVE_FED_GAP turns of the last hunger prayer
