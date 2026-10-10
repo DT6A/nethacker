@@ -1317,22 +1317,6 @@ class DiveLogic:
         if engraving != 'elbereth':
             agent.engrave('Elbereth')
             return
-        # hypothesis: an Elbereth rest never eats -- eat_from_inventory sits below this preempt -- so a Weak/Fainting
-        # hero with 5 food rations in the pack searched on the square for 270 turns while the rest of its HP came back,
-        # fainting 10x (public s12 fem+mal, XL8 on Dlvl 3, prayer 200 turns old: rothes, coyotes and a kitten bit through
-        # the scuffed engraving during the faints, 0.075); eating is not an attack and leaves the engraving alone, so
-        # eat from the pack on the intact Elbereth once Weak when no safe hunger prayer is coming
-        # sources: NetHack 3.6.6 src/eat.c newuhs (faint: rnd(10 - u.uhunger/10) turns helpless), src/engrave.c
-        #          sengr_at/wipe_engr_at (only fighting scuffs it), https://nethackwiki.com/wiki/Elbereth,
-        #          https://nethackwiki.com/wiki/Nutrition, /refs/parent-eval.json (s12: killed by a kitten at Dlvl 3)
-        if jf_config.ELBERETH_EAT and bl.hunger_state >= Hunger.WEAK and bl.carrying_capacity < 4 and \
-                (agent.prayer_failed or bl.hunger_state >= Hunger.FAINTING or
-                 not agent.is_safe_to_pray(agent.SAFE_HUNGER_PRAYER_GAP)):
-            food = agent.edible_carried_food()
-            if food:
-                agent.log(f'ELBERETH rest: eating {food[0]} (hunger {bl.hunger_state})')
-                agent.inventory.eat(food[0])
-                return
         agent.search()
 
     WATER_DEMON = None
