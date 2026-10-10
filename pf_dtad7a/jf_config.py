@@ -176,18 +176,9 @@ THREAT_MIN_COUNT = 2
 THREAT_HP_FRAC = 0.5
 # find the kill square of our melee/thrown kills from the attack itself, and of pack kills from the corpse
 # glyph, when the glyph-disappearance test misses it (27% of kills: their corpses were never eaten)
-# hypothesis: the ~20k-turn Dlvl-1 grind to XL8 lives on hunger prayers (~12 of them, each ~2% fatal at a ~1200 gap
-# and a failed one starts the XL<8 rescue dive), yet the bot eats only the corpse it stands on and the pet (dogmove.c
-# dog_eat) takes ~40% of fresh kills; recovering the ~27% of unrecorded kill squares (CORPSE_TRACK) and walking <=3
-# steps to a <=15-turn-old edible corpse (CLAIM_CORPSES) turns kills into nutrition (eat.c: corpse nutrition by
-# cnutrit, safe until age ~30) and lengthens the hunger-prayer cycle; PET_HUNGER_FIX is the safety counterpart: a
-# pet starved of corpses turns 'confused from hunger' and attacks us (dogmove.c dog_hunger), so floor corpses are
-# left to it while it is starving.
-# sources: https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Nutrition,
-#          https://nethackwiki.com/wiki/Prayer, /refs/history/3.diff (PET_HUNGER_FIX, kept), jf_config notes above
-CORPSE_TRACK = True
+CORPSE_TRACK = False
 # walk to fresh (<= CLAIM_MAX_AGE turns) edible corpses within CLAIM_DIST steps and eat them, before the pet
-CLAIM_CORPSES = True
+CLAIM_CORPSES = False
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
 # eat poisonous corpses (not only when Weak) at HP >= max(POISON_EATS_MIN_HP, 60%) during the tour
@@ -223,6 +214,10 @@ LOWHP_EXACT = True
 # with LOWHP_EXACT: the first HP prayer is allowed from this turn (u.ublesscnt starts at 300, -1 per turn;
 # major trouble needs <= 200) instead of 300
 LOWHP_FIRST_TURN = 100
+# at critically_low_hp, pray before quaffing a healing potion when the HP prayer is near-certain (no prayer yet,
+# or the last one >= PRAY_FIRST_GAP turns ago, never after a failed one) -- see agent.emergency_strategy
+PRAY_FIRST_SURE = True
+PRAY_FIRST_GAP = 1000
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0
@@ -409,12 +404,6 @@ ELBERETH_FAIL_HOLD = 25
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
-
-# hypothesis: a pet starved of corpses turns 'confused from hunger' and bites us (dogmove.c dog_hunger), so with
-# CLAIM_CORPSES we leave floor corpses to it while it is starving
-# sources: NetHack 3.6.6 src/dogmove.c dog_hunger, https://nethackwiki.com/wiki/Pet, /refs/history/3.diff
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250   # a starving pet dies 250 turns after the message (dog_hunger: hungrytime + 750)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
