@@ -76,15 +76,16 @@ DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
-# is held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe
-# 1d3/1d3/1d8, a dwarf's mattock, speed-18+ kittens, little dogs and giant bats hitting twice, giant ants, weapon-using
-# kobolds, orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind killers (giant bat, rabid rat, rothe,
-# hobbit, giant ant, hobgoblin). Keep the exemption only while HP exceeds the monster's max one-round damage, so one
-# max round cannot kill; below that, hide on Elbereth (all of these respect it). Unlisted weak monsters keep the old 6.
-# sources: https://nethackwiki.com/wiki/Rothe ('can hit quite hard', 'respect Elbereth'),
-#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Giant_ant,
-#          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku;
-#          /refs/history/18.diff (= /refs/past_runs/20261008-213012/102.diff, kept on 6 chains, held-out +0.009..+0.045)
+# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
+# a dwarf's mattock, speed-18+ kittens, little dogs, giant ants and giant bats hitting twice, weapon-using kobolds,
+# orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind and dive-start killers (parent: giant bat,
+# kitten, manes, large kobold, hobbit, hill orc, rothe). Keep the exemption only while HP exceeds the monster's max
+# one-round damage, so one max round can't kill; below that, hide on Elbereth (all of these respect it) like against
+# any other monster. Unlisted weak monsters keep the old 6.
+# sources: https://nethackwiki.com/wiki/Rothe (1d3/1d3/1d8, 'respect Elbereth'), https://nethackwiki.com/wiki/Elbereth,
+#          https://nethackwiki.com/wiki/Giant_ant, https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c
+#          (attack dice, speeds), src/mhitu.c mattacku; /refs/top/0bf2b83ce5e8.diff (hub-top Tourist) and
+#          /refs/history/102.diff (kept on ~11 chains)
 WEAK_ROUND_DAMAGE = {
     'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
@@ -259,17 +260,6 @@ TOOL_RUN_XL = None
 # hunting dwarves on the way, digging in the main dungeon if it gets a pick-axe. Fires only in games
 # that are otherwise lost.
 RESCUE_DIVE = True
-# hypothesis: a failed prayer in the Dlvl-1 grind (a too-soon HP prayer at XL 1-4, or a hunger prayer after a pet kill)
-# starts the rescue dive at once, and the XL 1-4 Tourist (AC 10, 12-30 HP, no working prayer, Luck -3) dies within a few
-# hundred turns on Dlvl 3-5 (my traces: s733393 XL1 prayer at gap 302 -> 'Thou hast angered me' -> Dlvl 4 death;
-# s733389 XL4 -> Dlvl 4 death to a gnome lord's darts). The rescue exists for starvation (an angry god ends the hunger
-# prayers), but a Tourist with its starting food is not starving: eat_from_inventory eats carried food at Hungry once
-# prayer_failed, and corpses nearby are walked to. Random monsters are capped at difficulty (depth + XL) / 2, so Dlvl 1
-# is the safest place to gain XP; dive only when Weak with nothing edible carried (the LATE_RESCUE case) or at DIVE_XL.
-# sources: https://nethackwiki.com/wiki/Prayer (p_type 0: Luck -3, god anger), NetHack 3.6.6 src/pray.c (can_pray,
-#          prayer_done, angrygods -- fetched this session), https://nethackwiki.com/wiki/Monster_difficulty,
-#          https://nethackwiki.com/wiki/Tourist, /refs/past_runs/20261008-213012/40.diff (the same idea, kept there)
-RESCUE_DEFER = True
 # The same later in the tour: a prayer failed (the god is angry or Luck < 0, so no more hunger prayers)
 # and the character is Weak with nothing to eat. The tour would starve on the spot (a clock-jf6 XL8
 # starved in the Mines 1700 turns after an unlucky prayer); the dive at least banks depth on the way.
@@ -911,10 +901,6 @@ class DiveLogic:
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
-        if rescue and RESCUE_DEFER:
-            # dive only once the angry god leaves the grind starving (Weak, nothing edible carried) or the grind is done
-            rescue = xl >= DIVE_XL or \
-                (agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food())
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
         rescue = rescue or (EARLY_DIVE and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and
