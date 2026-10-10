@@ -276,6 +276,13 @@ PIT_AWARE_FIGHT = False
 # rat's HP and starved), and drop the load a rat can't carry so it can eat (public s4 starved Overloaded
 # with 5 food items)
 LYCAN_FIXES = True
+# hypothesis: were_unload keeps every edible stack, but a wererat form (cwt 40, weight_cap ~16) is Overtaxed from
+# ~2.5x that (calc_cap), where the command loop refuses eating ('You can't do that while carrying so much stuff'):
+# public s4 dropped 18 items yet stayed Overtaxed 250 turns, fainted and died. Keep dropping the heaviest food
+# stack (then all but one of the last, then gold) until below Overtaxed so the form can eat
+# sources: NetHack 3.6.6 hack.c weight_cap()/calc_cap() (Upolyd: carrcap * cwt / WT_HUMAN), cmd.c rhack;
+# https://nethackwiki.com/wiki/Encumbrance, https://nethackwiki.com/wiki/Lycanthropy, /refs/history.md (LYCAN_FIXES)
+LYCAN_UNLOAD_FOOD = True
 # hypothesis: a were form whose max HP is <= 5 (public s4: wererat 4/4) is permanently 'u.mh <= 5', so the
 # cure-prayer wait-for-HP block never opens, the bot idles in the form unable to eat/cure and dies; with
 # max HP <= 5 the wait is futile, so pray at the normal gap (it fixes TROUBLE_HIT and, half the time, the
@@ -377,16 +384,21 @@ WEAK_FLOOR_BY_DAMAGE = True
 PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
-# ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
-ELBERETH_EAT = True
 
-# PRAYER_DOWN_CAUTION: in the levelling grind (not diving) with no HP prayer available (is_safe_to_pray(PRAYER_DOWN_GAP)
-# false), the Elbereth rest starts below PRAYER_DOWN_BELOW of max HP and the lone-weak-monster exemption is off
-# (dive_logic.elbereth_rest)
-PRAYER_DOWN_CAUTION = True
-PRAYER_DOWN_GAP = 800
-PRAYER_DOWN_BELOW = 0.5
-PRAYER_DOWN_REST_TURNS = 300
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of /refs/history/166.diff (#166 on #148: 0.1773 -> 0.1903, held-out 0.1644 -> 0.2470).
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://www.melankolia.net/nethack/nethack.guide.html (Tourists: retreat into a corridor so one monster
+#          attacks at a time), https://github.com/krajj7/BotHack (lures monsters into corridors),
+#          /refs/history/166.diff, /refs/history/154.diff
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
