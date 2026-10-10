@@ -166,11 +166,7 @@ SELL_PRICE_ID = False
 # a hunger prayer from this gap (instead of FAINT_PRAYER_GAP / WEAK_PRAYER_GAP) when a hostile within
 # THREAT_RADIUS can reach us while Fainting, or while Weak with at most THREAT_WEAK_MARGIN nutrition left
 # (0: off). 9 of 10 Dlvl-1 deaths in the base runs were fainted next to ordinary monsters at gaps 950-1110.
-# hypothesis: a Fainting grind Tourist with a real walker close (difficulty >= 4, Elbereth-ignorer, 2+ walkers, HP < 50%) is
-# helpless for 10+ turns per faint; 9 of 10 Dlvl-1 base deaths were faints beside monsters at 950-1110 gaps, while a 950-gap
-# hunger prayer fails ~6%, so pray early only when such a threat is near
-# sources: NetHack 3.6.6 eat.c newuhs (faint 10 - uhunger/10 moves), pray.c can_pray (timeout <= 200 for major trouble), https://nethackwiki.com/wiki/Prayer
-THREAT_PRAYER_GAP = 950
+THREAT_PRAYER_GAP = 0
 THREAT_RADIUS = 5
 THREAT_WEAK_MARGIN = 15
 THREAT_MIN_DIFFICULTY = 4
@@ -363,6 +359,12 @@ MISSILES_NOT_MELEE = True
 GRIND_CAMERA = True
 GRIND_CAMERA_RATIO = 0.4
 
+# ADAPTIVE_ROUND_FLOOR: the Elbereth rest starts when HP <= twice the biggest one-turn HP loss of the last 12 turns
+# (capped at 60% of max HP, Dlvl <= 10), and the lone-weak-monster exemption ends there (see dive_logic.elbereth_rest)
+# hypothesis: fewer Dlvl 1-8 deaths to weapon wielders and packs that hit harder than the fixed 40% / 6-HP floors assume
+# sources: https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/mhitu.c mattacku, /refs/history/95.diff
+ADAPTIVE_ROUND_FLOOR = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
@@ -386,13 +388,17 @@ if LATE_FIXES:
 DIVE_FOOD_RESERVE = 800
 DIVE_FOOD_RESERVE_XL = 6
 
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off; EARLY_FIXES also turns this on, as before)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850, nutrition 900 at the start) spends it on hunger although a Tourist
-# carries 7+ food items; is_safe_to_pray(500) then blocks the HP prayer for ~500 of every ~900 turns, and one made at a
-# 909-turn gap failed (rnz(350) tail, XL2 -> XL1, grid bug kill, fem seed 733390). Eating keeps the prayer for HP.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (rely on healing items and found
-#          food in the early game, play with extreme caution); Agent._eat_before_praying EARLY_FIXES branch
-EAT_BEFORE_PRAY_XL = 5
+# hypothesis: the Dlvl-1 levelling grind (tour) never rests when hurt -- the dive rests below REST_BELOW, but the tour
+# explores on at 10-50% HP once nothing is in view, so the next jackal/rothe/giant bat finds the AC10 Tourist at 6-14 HP
+# (XL<10 regen is 1 HP per 42/(XL+2)+1 turns, so one rest of ~100-250 turns restores a fight's worth of HP; the grind's
+# XP is paced by the 1-in-70 spawn rate, so resting costs no XP). Below GRIND_IDLE_REST_BELOW of max HP with no mobile
+# hostile in view, engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL; eating, fight2, the Elbereth rest and
+# the emergency rules still win (the preempt sits at the bottom of global_strategy). Fewer XL 3-8 Dlvl-1 deaths.
+# sources: https://nethackwiki.com/wiki/Hit_points (regeneration at XL<10), https://nethackwiki.com/wiki/Elbereth
+#          (rest on it to recover HP), https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 allmain.c u_regen_hp,
+#          the dive's REST_BELOW/guard rest in dive_logic.plan_step
+GRIND_IDLE_REST = True
+GRIND_IDLE_REST_BELOW = 0.7
+GRIND_IDLE_REST_UNTIL = 0.95
+GRIND_IDLE_REST_MAX_TURNS = 600
+GRIND_IDLE_REST_COOLDOWN = 200

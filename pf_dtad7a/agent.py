@@ -1115,8 +1115,6 @@ class Agent:
         bl = self.blstats
         if bl.hunger_state < Hunger.WEAK:
             return False
-        if self._eat_before_praying():
-            return False  # carried food is eaten instead (EAT_BEFORE_PRAY_XL / FOOD_FIRST)
         if bl.hunger_state == Hunger.WEAK:
             est = self.uhunger_weak_estimate()
             if est is None or est > jf_config.THREAT_WEAK_MARGIN:
@@ -1241,8 +1239,7 @@ class Agent:
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
-                return False
+            return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 
