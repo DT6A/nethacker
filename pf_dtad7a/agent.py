@@ -1238,11 +1238,8 @@ class Agent:
         # hypothesis: at XL < 5 the emergency prayer is the only answer to a bad fight (an XL2 elite
         # game spent it on hunger at T1350 and died to a goblin at T1660 with nothing left); eat the
         # food we carry instead of praying for hunger while that weak.
-        # hypothesis: see jf_config.EAT_BEFORE_PRAY_XL (keep the first prayer for HP emergencies at XL1-4)
-        # sources: NetHack 3.6.6 src/pray.c can_pray(); https://nethackwiki.com/wiki/Prayer; /refs/history/112.diff
         if self.blstats.experience_level >= 5 or not jf_config.EARLY_FIXES:
-            if not (jf_config.EAT_BEFORE_PRAY_XL and self.blstats.experience_level < jf_config.EAT_BEFORE_PRAY_XL):
-                return False
+            return False
         return any(item.category == nh.FOOD_CLASS and item.objs[0].name != 'sprig of wolfsbane' and
                    not item.is_corpse() for item in flatten_items(self.inventory.items))
 
@@ -2086,11 +2083,16 @@ class Agent:
                 if 'In what direction' in self.message:
                     self.direction(dir)
                     self.log(f'CAMERA flash {dy},{dx}: {self.message!r}')
-                    _m = re.search(r'The (.+?) is blinded by the flash', self.message)
-                    if _m:
-                        if not hasattr(self, '_flash_blinded'):
-                            self._flash_blinded = {}
-                        self._flash_blinded[_m.group(1)] = self.blstats.time
+                    # hypothesis: a monster our adjacent flash blinded (mcansee = 0, mblinded = 0: for good) ignores the
+                    # Elbereth we engrave next, so DiveLogic._flash_blinded makes both ignorer checks treat it as one
+                    # sources: https://nethackwiki.com/wiki/Elbereth (a blinded monster ignores it), NetHack 3.6.6
+                    #          src/apply.c use_camera/flash_hits_mon + monmove.c onscary(), /refs/history/118.diff
+                    if jf_config.BLINDED_NO_ELBERETH:
+                        blinded = re.search(r'The (.+?) is blinded by the flash', self.message)
+                        if blinded:
+                            if not hasattr(self, '_flash_blinded_mons'):
+                                self._flash_blinded_mons = {}
+                            self._flash_blinded_mons[blinded.group(1)] = self.blstats.time
                 else:
                     self.log(f'CAMERA no prompt: {self.message!r}')
                     if 'nothing happens' in self.message.lower():

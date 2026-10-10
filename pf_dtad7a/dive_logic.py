@@ -75,6 +75,8 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+PACK_FLOOR_BELOW = 0.7
+PACK_DEFAULT_DAMAGE = 4
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
 # is held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe
 # 1d3/1d3/1d8, a dwarf's mattock, speed-18+ kittens, little dogs and giant bats hitting twice, giant ants, weapon-using
@@ -574,7 +576,6 @@ class DiveLogic:
         self._pit_at = None                # (level key, (y, x)) of the pit we dug and still stand in
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
-        self._hurt_on_elbereth_n = 0
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
@@ -594,9 +595,6 @@ class DiveLogic:
             if self._hp_history and agent.blstats.hitpoints < self._hp_history[-1][1] and \
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
-                if turn - self._hurt_on_elbereth > 15:
-                    self._hurt_on_elbereth_n = 0
-                self._hurt_on_elbereth_n += 1
                 self._hurt_on_elbereth = turn
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
@@ -1196,6 +1194,14 @@ class DiveLogic:
 
     # ------------------------------------------------------------- elbereth
 
+    def _flash_blinded(self, mon):
+        """BLINDED_NO_ELBERETH: a monster of a species our camera flash blinded within FLASH_BLINDED_TURNS (by name:
+        a second one of the species counts too)."""
+        if not jf_config.BLINDED_NO_ELBERETH:
+            return False
+        t = getattr(self.agent, '_flash_blinded_mons', {}).get(getattr(mon, 'mname', None))
+        return t is not None and 0 <= self.agent.blstats.time - t <= jf_config.FLASH_BLINDED_TURNS
+
     def _ignores_elbereth(self, mon):
         # monmove.c onscary(): @ humans and elves (incl. shopkeepers, guards, priests), minotaurs,
         # peacefuls and blind monsters are not scared; nothing is in Gehennom. permonst.mlet is the
@@ -1205,7 +1211,8 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
-        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
+        return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS or \
+            self._flash_blinded(mon)
 
     def _melee_ignores_elbereth(self, mon):
         """onscary() for melee only: @ humans and elves (also shopkeepers, guards, priests) and minotaurs
@@ -1218,7 +1225,7 @@ class DiveLogic:
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
         # lawful minions (is_lminion: Aleax, couatl, ki-rin, Archon) and Angels ignore it too (monmove.c onscary)
-        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS
+        return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS or self._flash_blinded(mon)
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -1275,6 +1282,18 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
+        # hypothesis: the Elbereth rest starts only below 40% HP, but engraving gives every adjacent monster one free
+        # round, and a pack (4 hill orcs 22/47 -> 4 HP in the engrave turn; jackals/rats around a were 37 -> 16 -> 0)
+        # deals more than the 40% reserve in that round; hide as soon as HP no longer exceeds the pack's summed max
+        # one-round damage (below 70% HP), the pack analogue of WEAK_FLOOR_BY_DAMAGE's lone-monster floor.
+        # sources: https://nethackwiki.com/wiki/Elbereth (engrave when swarmed, early; a free round while writing),
+        #          https://nethackwiki.com/wiki/Hill_orc (groups of 2-11, weapon d6), https://nethackwiki.com/wiki/Jackal,
+        #          https://forums.civfanatics.com/threads/nethack.256120/page-5, NetHack 3.6.6 src/mhitu.c mattacku
+        if not falling and not resting and jf_config.PACK_ROUND_FLOOR and \
+                bl.hitpoints < PACK_FLOOR_BELOW * bl.max_hitpoints:
+            pack = self._near_hostiles()
+            falling = len(pack) >= 2 and bl.hitpoints <= sum(
+                WEAK_ROUND_DAMAGE.get(getattr(m[3], 'mname', ''), PACK_DEFAULT_DAMAGE) for m in pack)
         if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
@@ -1285,13 +1304,6 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
-        if jf_config.ELBERETH_VS_BLINDED:
-            blinded = getattr(agent, '_flash_blinded', {})
-            if any(bl.time - blinded.get(getattr(m[3], 'mname', ''), -10**9) <= 300 for m in near) or \
-                    (self._hurt_on_elbereth >= 0 and bl.time - self._hurt_on_elbereth <= 15 and
-                     self._hurt_on_elbereth_n >= 2):
-                self._elbereth_resting = False
-                yield False
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
         weak_floor = 6

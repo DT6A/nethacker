@@ -367,23 +367,19 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
-# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
-# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
-# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
-# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
-ELBERETH_VS_BLINDED = True
+# PACK_ROUND_FLOOR: elbereth_rest also starts below 70% HP when HP <= the summed max one-round damage of the 2+ hostiles
+# within 2 squares (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones)
+PACK_ROUND_FLOOR = True
 
-# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
-# (0: off; EARLY_FIXES also turns this on, as before)
-# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
-# XL1-4 grind, but the first Weak spell (turn ~850, nutrition 900 at the start) spends it on hunger although a Tourist
-# carries 7+ food items; is_safe_to_pray(500) then blocks the HP prayer for ~500 of every ~900 turns, and one made at a
-# 909-turn gap failed (rnz(350) tail, XL2 -> XL1, grid bug kill, seed 733390). Eating keeps the prayer for HP.
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
-#          https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (rely on healing items and found
-#          food in the early game); /refs/history/112.diff (node #112, kept, held-out 0.1427 vs 0.1198)
-EAT_BEFORE_PRAY_XL = 5
+# BLINDED_NO_ELBERETH: a monster our own adjacent camera flash blinded ("The X is blinded by the flash!": blind for
+# good at dist2 < 3) is treated as an Elbereth ignorer for FLASH_BLINDED_TURNS turns (the blindness never wears off): elbereth_rest and the fight
+# heuristics no longer hide on Elbereth from it, and the camera is not wasted on it again
+# hypothesis: fewer Dlvl 1-4 grind deaths where the flashed monster kept biting through our intact Elbereth (replays:
+# coyote 9 -> 0 HP, hobbit/giant rat, a grid bug at 1 HP)
+# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/mon.c
+#          m_respond/onscary (monmove.c: sengr_at needs mtmp->mcansee) ; /refs/history/118.diff
+BLINDED_NO_ELBERETH = True
+FLASH_BLINDED_TURNS = 2000
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
