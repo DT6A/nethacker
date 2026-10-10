@@ -379,12 +379,6 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/53.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# PACK_ROUND_FLOOR: with 2+ hostiles within 2 squares and HP under 70%, the Elbereth rest starts once HP is at or
-# below their summed max one-round damage (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones), not only below 40%
-# hypothesis: engraving gives a pack a free round, so a 40% reserve is too small against 4 hill orcs / jackals + were
-# sources: https://nethackwiki.com/wiki/Elbereth ; NetHack 3.6.6 src/mhitu.c; /refs/history/110.diff
-PACK_ROUND_FLOOR = True
-
 # PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
 # interrupts the PRAY step (see the hypothesis in agent.pray)
 PRAYER_RECORD_FIX = True
@@ -405,6 +399,16 @@ ELBERETH_VS_BLINDED = True
 CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
+
+# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included ('It yelps! You
+# kill it! ... rumble of distant thunder': dev seed 733389 T374, public seed 12), so the first hunger prayer is
+# 'displeased' (Luck/alignment loss) and the XL3 Tourist dies in the rescue dive. With a pet seen in the last
+# PET_LINE_MEMORY turns and none in view, never throw at a target 3+ squares away across an unlit square
+# (combat/fight_heur.ranged_priority).
+# sources: NetHack 3.6.6 src/dothrow.c (bhit), src/mon.c (xkilled), src/pray.c (can_pray),
+#          https://nethackwiki.com/wiki/Pet#Killing_your_pet, /refs/history/155.diff
+PET_LINE_GUARD = True
+PET_LINE_MEMORY = 100
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

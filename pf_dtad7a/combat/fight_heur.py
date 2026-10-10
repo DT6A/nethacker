@@ -176,6 +176,24 @@ def ranged_priority(agent, dy, dx, monsters):
             dis = line_dis_from(agent, y, x)
             if dis > agent.character.get_range(launcher, ammo):
                 return None
+            # hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included:
+            # 'It yelps! You kill it!' + 'rumble of distant thunder' (dev seed 733389 T374, public seed 12) costs
+            # alignment and Luck, so the first hunger prayer is 'displeased' and the XL3 Tourist dies in the rescue
+            # dive. With a pet seen lately and none in view, never throw at a target 3+ squares away across an
+            # unlit (dark corridor / dark room / unseen) square where the pet could be standing.
+            # sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst: a missile stops at the first monster), src/mon.c
+            #          (xkilled: tame victim -15 alignment, Luck penalty), src/pray.c (can_pray: Luck < 0 or negative
+            #          alignment fails), https://nethackwiki.com/wiki/Pet#Killing_your_pet, /refs/history/155.diff
+            if jf_config.PET_LINE_GUARD and dis >= 3:
+                seen = agent.global_logic.dive.pet_seen.get(agent.current_level().key())
+                if seen is not None and agent.blstats.time - seen < jf_config.PET_LINE_MEMORY and \
+                        not utils.any_in(agent.glyphs, G.PETS):
+                    cy, cx = agent.blstats.y + dy, agent.blstats.x + dx
+                    for _ in range(dis - 2):
+                        cy += dy
+                        cx += dx
+                        if agent.glyphs[cy, cx] in G.UNLIT_FLOOR:
+                            return None
             if dis in (1, 2):
                 ret -= 5
             if dis == 1:
