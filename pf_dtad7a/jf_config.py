@@ -377,19 +377,12 @@ PRAYER_RECORD_FIX = True
 # never hide on Elbereth from a monster our own camera flash blinded (agent._flash_blinded, elbereth_rest)
 ELBERETH_VS_BLINDED = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# FLASH_HARD_HITTERS: the grind flashes an adjacent monster whose max one-round damage (dive_logic.WEAK_ROUND_DAMAGE) is at
+# least FLASH_HARD_DAMAGE at any HP (see fight_heur.camera_actions)
+# hypothesis: fewer Dlvl 1-4 grind deaths to rothes / giant bats / dwarves / kittens, which always hit AC10 and out-damage the Tourist's darts
+# sources: https://nethackwiki.com/wiki/Expensive_camera ; https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mon.c set_apparxy
+FLASH_HARD_HITTERS = True
+FLASH_HARD_DAMAGE = 12
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
