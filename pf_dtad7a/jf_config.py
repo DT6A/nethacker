@@ -410,14 +410,6 @@ if _raw:
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
 
-# hypothesis: the first prayer (timeout ~300 at the start, <= 200 after turn ~100) is a near-certain HP rescue, and a
-# second one only ~1000 turns later is a gamble (rnz(350) heavy tail: 'You feel that The Lady is displeased' and then the
-# doomed rescue dive); below XL EAT_BEFORE_PRAY_XL a Weak Tourist that carries real food eats it instead of praying for
-# hunger, keeping the prayer for the HP crisis that kills XL1-4 characters (seeds 733392, 733400).
-# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased(), https://nethackwiki.com/wiki/Prayer_timeout,
-#          https://nethackwiki.com/wiki/Tourist, /refs/history/112.diff, /refs/history/238.diff
-EAT_BEFORE_PRAY_XL = 5
-
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
@@ -427,3 +419,7 @@ if LATE_FIXES:
 # sources: https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Werejackal,
 #          NetHack 3.6.6 src/monmove.c onscary()
 IGNORER_FIGHTS = True
+
+# hypothesis: a digger that lands in a shop (trap door / hole above) must wait SHOP_DIG_WAIT turns *of this visit* before digging out, and must dig from an object-free square -- the wait ran from the level's first-ever sighting (so it never waited on a revisited level: public s5 dug at once on landing in Dlvl 2's general store and the goods under the hero fell with it: shopkeeper + Kops killed the XL8 hero on Dlvl 3) and the hero's own square (its glyph hides the floor goods) was never checked
+# sources: https://nethackwiki.com/wiki/Shopkeeper (a customer who falls through a hole owing for the goods that fell with them: the shopkeeper follows and is angry), https://nethackwiki.com/wiki/Shop#Digging_in_a_shop (impact_drop: objects on the hole square fall too -- 'You owe X for goods lost')
+SHOP_DIG_CLEAR = True
