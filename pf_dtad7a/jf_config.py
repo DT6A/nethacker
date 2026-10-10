@@ -400,6 +400,15 @@ CHOKEPOINT_FIGHT = True
 # with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
 CHOKEPOINT_HOLD_TURNS = 5
 
+# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included: 'It yelps! You
+# kill it! ... rumble of distant thunder' (dev seed 733389, T374: the pet was between the hero and a grid bug 5 squares
+# away) is Luck -5 and alignment -15, so the first hunger prayer is 'displeased' (ugangr), the XL3 Tourist starts the
+# rescue dive and dies on Dlvl 5. With a pet seen lately and none in view, never throw at a target 3+ squares away
+# unless every square between is lit visible floor (combat/fight_heur.ranged_priority).
+# sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15), src/pray.c
+#          (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer, /refs/history/226.diff
+PET_LINE_GUARD = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

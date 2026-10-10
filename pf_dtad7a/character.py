@@ -221,14 +221,9 @@ class Character:
     SKILL_LEVEL_MASTER = 5
     SKILL_LEVEL_GRAND_MASTER = 6
 
-    # hypothesis: weapon.c weapon_dam_bonus gives Restricted/Unskilled -2 damage (not +2): with the sign wrong an
-    # Unskilled Tourist priced a found dagger/axe (d4+2) above bare hands and wielded it blind (possibly cursed, welded),
-    # stabbing at -4 to hit instead of throwing +2 darts point blank. With -2 only a Basic+ weapon beats bare hands.
-    # sources: NetHack 3.6.6 src/weapon.c weapon_hit_bonus/weapon_dam_bonus (P_UNSKILLED: -4 hit, -2 damage),
-    #          https://nethackwiki.com/wiki/Weapon_skill, /refs/history/208.diff (kept, +0.027 on another chain)
     weapon_bonus = {
-        SKILL_LEVEL_RESTRICTED: (-4, -2),
-        SKILL_LEVEL_UNSKILLED: (-4, -2),
+        SKILL_LEVEL_RESTRICTED: (-4, 2),
+        SKILL_LEVEL_UNSKILLED: (-4, 2),
         SKILL_LEVEL_BASIC: (0, 0),
         SKILL_LEVEL_SKILLED: (2, 1),
         SKILL_LEVEL_EXPERT: (3, 2),
