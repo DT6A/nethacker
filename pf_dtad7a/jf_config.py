@@ -367,23 +367,23 @@ GRIND_CAMERA_RATIO = 0.4
 # sources: https://nethackwiki.com/wiki/Rothe ; NetHack 3.6.6 src/monst.c; /refs/history/18.diff
 WEAK_FLOOR_BY_DAMAGE = True
 
-# PACK_ROUND_FLOOR: elbereth_rest also starts below 70% HP when HP <= the summed max one-round damage of the 2+ hostiles
-# within 2 squares (dive_logic.WEAK_ROUND_DAMAGE, 4 for unlisted ones)
-PACK_ROUND_FLOOR = True
+# ELBERETH_VS_BLINDED: a monster that can normally see ignores Elbereth while blind (monmove.c onscary: mcansee),
+# and an adjacent camera flash blinds it permanently. The Elbereth rest therefore never hides from a monster our own
+# flash blinded (it keeps hitting through the engraving) and gives up after being hurt twice on an intact Elbereth.
+# hypothesis: fewer Dlvl 1-4 grind deaths where the bot flashed a monster, engraved at low HP and was bitten to death
+# sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Expensive_camera ; NetHack 3.6.6 src/monmove.c onscary, uhitm.c flash_hits_mon
+ELBERETH_VS_BLINDED = True
 
-# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
-# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
-# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
-# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
-# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
-# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
-# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
-#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
-#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
-#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
-CHOKEPOINT_FIGHT = True
-# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
-CHOKEPOINT_HOLD_TURNS = 5
+# EAT_BEFORE_PRAY_XL: below this XL a Weak grind character with food in the pack eats it instead of praying for hunger
+# (0: off; EARLY_FIXES also turns this on, as before)
+# hypothesis: the first prayer (timeout 300 at the start, <= 200 from turn ~100) is a near-certain HP rescue in the
+# XL1-4 grind, but the first Weak spell (turn ~850, nutrition 900 at the start) spends it on hunger although a Tourist
+# carries 7+ food items; is_safe_to_pray(500) then blocks the HP prayer for ~500 of every ~900 turns, and one made at a
+# 909-turn gap failed (rnz(350) tail, XL2 -> XL1, grid bug kill, seed 733390). Eating keeps the prayer for HP.
+# sources: NetHack 3.6.6 src/pray.c can_pray()/pleased() (prayer timeout rnz(350) after a success, trouble needs <= 200);
+#          https://nethackwiki.com/wiki/Prayer ; https://nethackwiki.com/wiki/Tourist (rely on healing items and found
+#          food in the early game); /refs/history/112.diff (node #112, kept, held-out 0.1427 vs 0.1198)
+EAT_BEFORE_PRAY_XL = 5
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
