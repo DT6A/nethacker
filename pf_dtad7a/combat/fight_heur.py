@@ -336,6 +336,8 @@ def were_keep_away(agent, monsters, radius=1):
 
 
 def elbereth_action(agent, monsters):
+    if agent.global_logic.dive.elbereth_stalled():
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
         return []
     if in_gehennom(agent):
@@ -369,6 +371,8 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
+    if agent.global_logic.dive.elbereth_stalled():
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40

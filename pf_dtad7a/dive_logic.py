@@ -506,6 +506,8 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
+        self._elb_window = None            # ELBERETH_STALL: (first rest turn, its HP, last rest turn)
+        self._elb_stalled_until = -1
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1261,6 +1263,10 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
+    def elbereth_stalled(self):
+        """ELBERETH_STALL: a stalled Elbereth rest handed the next turns to the fight."""
+        return jf_config.ELBERETH_STALL and self.agent.blstats.time < self._elb_stalled_until
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1299,6 +1305,27 @@ class DiveLogic:
         if engraving != 'elbereth' and not agent.can_engrave():
             self._elbereth_resting = False
             yield False
+        if jf_config.ELBERETH_STALL:
+            now = bl.time
+            if self.elbereth_stalled():
+                self._elbereth_resting = False
+                yield False
+            w = self._elb_window
+            if w is None or now - w[2] > 100:
+                w = (now, bl.hitpoints, now)
+            w = (w[0], w[1], now)
+            self._elb_window = w
+            if now - w[0] >= jf_config.ELBERETH_STALL_TURNS:
+                # natural regeneration below XL 10: 1 HP per 42 / (XL + 2) + 1 turns
+                expected = (now - w[0]) / (42 // (bl.experience_level + 2) + 1)
+                if bl.hitpoints - w[1] < 0.4 * expected and bl.hitpoints >= 0.25 * bl.max_hitpoints:
+                    agent.log(f'ELBERETH rest stalled: {w[1]} -> {bl.hitpoints}/{bl.max_hitpoints} HP in '
+                              f'{now - w[0]} turns beside {[m[3].mname for m in near]}: fighting')
+                    self._elb_stalled_until = now + jf_config.ELBERETH_STALL_FIGHT_TURNS
+                    self._elb_window = None
+                    self._elbereth_resting = False
+                    yield False
+                self._elb_window = (now, bl.hitpoints, now)
         yield True
         if not self._elbereth_resting:
             agent.log(f'ELBERETH rest start: {[m[3].mname for m in near]}')
