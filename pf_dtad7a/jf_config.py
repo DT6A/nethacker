@@ -292,6 +292,10 @@ LYCAN_FIXES = True
 #          src/were.c (were_change), rec.games.roguelike.nethack 'YAAD cuss werejackals' / 'Wererats' threads
 #          (players: Elbereth or ranged against d/r weres, never trade bites at low level)
 WERE_KEEP_AWAY = True
+# hypothesis: an adjacent were in @ form shapeshifts and bites in one call (1/5 per round), 1 in 4 bites infects; flash it
+# at once at any HP in the grind so it is blinded and flees (combat.fight_heur.camera_actions)
+# sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Expensive_camera
+WERE_FLASH_FIRST = True
 # hypothesis: this chain keeps the Tourist's whole +2 dart stack wielded as its melee weapon, and
 # get_ranged_combinations excluded the wielded / best-melee item from every throw -- so the Tourist had NO ranged
 # attack at all. With WERE_KEEP_AWAY it hides on Elbereth from an animal-form were and with MOLD_NO_MELEE it never
@@ -387,18 +391,3 @@ if LATE_FIXES:
 # /refs/past_runs/20261008-213012/74.diff
 DIVE_FOOD_RESERVE = 800
 DIVE_FOOD_RESERVE_XL = 6
-
-# hypothesis: the Dlvl-1 levelling grind (tour) never rests when hurt -- the dive rests below REST_BELOW, but the tour
-# explores on at 10-50% HP once nothing is in view, so the next jackal/rothe/giant bat finds the AC10 Tourist at 6-14 HP
-# (XL<10 regen is 1 HP per 42/(XL+2)+1 turns, so one rest of ~100-250 turns restores a fight's worth of HP; the grind's
-# XP is paced by the 1-in-70 spawn rate, so resting costs no XP). Below GRIND_IDLE_REST_BELOW of max HP with no mobile
-# hostile in view, engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL; eating, fight2, the Elbereth rest and
-# the emergency rules still win (the preempt sits at the bottom of global_strategy). Fewer XL 3-8 Dlvl-1 deaths.
-# sources: https://nethackwiki.com/wiki/Hit_points (regeneration at XL<10), https://nethackwiki.com/wiki/Elbereth
-#          (rest on it to recover HP), https://nethackwiki.com/wiki/Tourist, NetHack 3.6.6 allmain.c u_regen_hp,
-#          the dive's REST_BELOW/guard rest in dive_logic.plan_step
-GRIND_IDLE_REST = True
-GRIND_IDLE_REST_BELOW = 0.7
-GRIND_IDLE_REST_UNTIL = 0.95
-GRIND_IDLE_REST_MAX_TURNS = 600
-GRIND_IDLE_REST_COOLDOWN = 200

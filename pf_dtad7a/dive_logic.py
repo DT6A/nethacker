@@ -511,9 +511,6 @@ class DiveLogic:
         self._last_task = None
         self.mines_done = False        # reached the bottom of the Mines, or gave the route up
         self._elbereth_resting = False
-        self._tour_resting = False         # GRIND_IDLE_REST in progress
-        self._tour_rest_start = 0
-        self._tour_rest_cooldown = 0
         self.diving = False
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
@@ -1443,52 +1440,6 @@ class DiveLogic:
             agent.engrave('Elbereth')
             return
         agent.search(1 if near else 5)
-
-    @Strategy.wrap
-    @_hold_loop
-    def tour_idle_rest(self):
-        """GRIND_IDLE_REST: the levelling tour (not the dive, which has REST_BELOW) rests on Elbereth when hurt
-        and nothing mobile is in view, instead of exploring on at 10-50% HP into the next fight."""
-        agent = self.agent
-        bl = agent.blstats
-        level = agent.current_level()
-        resting = self._tour_resting
-        if not jf_config.GRIND_IDLE_REST or self.diving or level.dungeon_number == GEHENNOM or \
-                level.dungeon_number == Level.SOKOBAN:
-            yield False
-        if resting and bl.time - self._tour_rest_start > jf_config.GRIND_IDLE_REST_MAX_TURNS:
-            self._tour_resting = False
-            self._tour_rest_cooldown = bl.time + jf_config.GRIND_IDLE_REST_COOLDOWN
-            yield False
-        threshold = jf_config.GRIND_IDLE_REST_UNTIL if resting else jf_config.GRIND_IDLE_REST_BELOW
-        if bl.hitpoints >= threshold * bl.max_hitpoints or bl.hitpoints >= bl.max_hitpoints or \
-                (not resting and bl.time < self._tour_rest_cooldown):
-            self._tour_resting = False
-            yield False
-        # starving (Weak or worse, or no prayer left with nothing to eat): resting only burns what is left
-        prop = agent.character.prop
-        if bl.hunger_state >= Hunger.WEAK or self.starving() or prop.blind or prop.polymorph or \
-                getattr(prop, 'levitation', False) or level.shop[bl.y, bl.x] or \
-                utils.isin(agent.glyphs, G.GUARD).any():
-            self._tour_resting = False
-            yield False
-        # hurt right now with nothing in view (an unseen attacker, a trap, poison): resting is no answer
-        if agent._hurt_recently(3) and not resting:
-            yield False
-        for m in agent.get_visible_monsters():
-            name = getattr(m[3], 'mname', '')
-            if getattr(m[3], 'mmove', 12) > 0 and name not in self._PASSIVE_SESSILE:
-                self._tour_resting = False
-                yield False
-        engraving = (agent.inventory.engraving_below_me or '').lower()
-        yield True
-        if not self._tour_resting:
-            self._tour_resting = True
-            self._tour_rest_start = bl.time
-            agent.log(f'TOUR rest start at hp {bl.hitpoints}/{bl.max_hitpoints}')
-        if engraving != 'elbereth' and self._rest_elbereth():
-            return
-        agent.search(10)
 
     _PASSIVE_SESSILE = frozenset(('brown mold', 'yellow mold', 'green mold', 'red mold', 'shrieker', 'floating eye',
                                   'acid blob', 'gas spore', 'lichen'))
