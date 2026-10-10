@@ -970,9 +970,6 @@ class GlobalLogic:
                 self.dive.faint_guard().condition(lambda: jf_config.FAINT_GUARD),
             ])
             .preempt(self.agent, [
-                self.agent.faint_eat(),
-            ])
-            .preempt(self.agent, [
                 self.dive.leave_minetown_hallucinating(),
             ])
             .preempt(self.agent, [

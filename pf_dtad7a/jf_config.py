@@ -380,13 +380,28 @@ ELBERETH_VS_BLINDED = True
 # ELBERETH_EAT: a Weak/Fainting hero eats from the pack while resting on an intact Elbereth (dive_logic.elbereth_rest)
 ELBERETH_EAT = True
 
-# PRAYER_DOWN_CAUTION: in the levelling grind (not diving) with no HP prayer available (is_safe_to_pray(PRAYER_DOWN_GAP)
-# false), the Elbereth rest starts below PRAYER_DOWN_BELOW of max HP and the lone-weak-monster exemption is off
-# (dive_logic.elbereth_rest)
-PRAYER_DOWN_CAUTION = True
-PRAYER_DOWN_GAP = 800
-PRAYER_DOWN_BELOW = 0.5
-PRAYER_DOWN_REST_TURNS = 300
+# hypothesis: the unarmoured (AC 10) Tourist's Dlvl 1-4 grind losses include packs -- jackals/coyotes, hill orcs,
+# Uruk-hai, rothes, sewer rats, a were's summoned jackals/rats -- that surround it in an open room, while
+# fight2's 'strike first' heatmap ignores terrain. With 2+ non-weak mobile hostiles within 7 squares, prefer
+# corridor squares and open doors (at most 2 squares to be attacked from; nothing passes a door diagonally) and
+# hold one there for a few turns, so the pack arrives one or two at a time (combat/fight_heur.py).
+# Port of past run 20261008-213012 #8 (kept on the darts chain, held-out 0.1157 -> 0.1392) / #26 / #33 / #65.
+# sources: https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Hill_orc,
+#          https://nethackwiki.com/wiki/Tourist, https://nethackwiki.com/wiki/Rothe,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/Rp4-2A3OxuM (backing into a corridor),
+#          /refs/past_runs/20261008-213012/8.diff, AutoAscend's commented-out corridor TODO in fight_heur.get_priorities
+CHOKEPOINT_FIGHT = True
+# with CHOKEPOINT_FIGHT: consecutive turns fight2 waits on a chokepoint for the group to come (then as before)
+CHOKEPOINT_HOLD_TURNS = 5
+
+# hypothesis: a dart thrown down a dark corridor stops at the first monster, an unseen pet included: 'It yelps! You
+# kill it! ... rumble of distant thunder' (dev seed 733389, T374: the pet was between the hero and a grid bug 5 squares
+# away) is Luck -5 and alignment -15, so the first hunger prayer is 'displeased' (ugangr), the XL3 Tourist starts the
+# rescue dive and dies on Dlvl 5. With a pet seen lately and none in view, never throw at a target 3+ squares away
+# unless every square between is lit visible floor (combat/fight_heur.ranged_priority).
+# sources: NetHack 3.6.6 src/dothrow.c (bhit/thitmonst), src/mon.c (xkilled: Luck -5, adjalign -15), src/pray.c
+#          (can_pray: Luck < 0 is p_type 1, angrygods), https://nethackwiki.com/wiki/Prayer, /refs/history/155.diff
+PET_LINE_GUARD = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -401,6 +416,3 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
-# FAINT_EAT: a Fainting hero that carries real food eats it from a strategy above fight2/faint_guard, even with
-# monsters in view (agent.faint_eat)
-FAINT_EAT = True
