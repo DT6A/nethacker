@@ -76,15 +76,15 @@ DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
 # hypothesis: the lone-weak-monster exemption in elbereth_rest (one mlevel <= 2 hostile near: fight it, never hide)
-# held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe 1d3/1d3/1d8,
-# a dwarf's mattock, speed-18+ kittens, little dogs, giant ants and giant bats hitting twice, weapon-using kobolds,
-# orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind and dive-start killers (giant bat, rothe,
-# rabid rat, werejackal, hobbit). Keep the exemption only while HP exceeds the monster's max one-round damage, so
-# one max round can't kill; below that, hide on Elbereth (all of these respect it). Unlisted weak monsters keep 6.
+# is held down to a flat 6 HP, but several mlevel <= 2 monsters deal more than that in one round -- a rothe
+# 1d3/1d3/1d8, a dwarf's mattock, speed-18+ kittens, little dogs and giant bats hitting twice, giant ants, weapon-using
+# kobolds, orcs and hobbits -- and they are the AC10 Tourist's Dlvl 1-4 grind killers (giant bat, rabid rat, rothe,
+# hobbit, giant ant, hobgoblin). Keep the exemption only while HP exceeds the monster's max one-round damage, so one
+# max round cannot kill; below that, hide on Elbereth (all of these respect it). Unlisted weak monsters keep the old 6.
 # sources: https://nethackwiki.com/wiki/Rothe ('can hit quite hard', 'respect Elbereth'),
 #          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Giant_ant,
 #          https://nethackwiki.com/wiki/Tourist; NetHack 3.6.6 src/monst.c (attack dice, speeds), src/mhitu.c mattacku;
-#          /refs/past_runs/20261008-213012/102.diff, /refs/history/53.diff (kept on many chains)
+#          /refs/history/18.diff (= /refs/past_runs/20261008-213012/102.diff, kept on 6 chains, held-out +0.009..+0.045)
 WEAK_ROUND_DAMAGE = {
     'rothe': 14, 'dwarf': 14, 'killer bee': 18, 'little dog': 12, 'kitten': 12, 'giant bat': 12, 'manes': 10,
     'rabid rat': 8, 'large kobold': 8, 'kobold lord': 8, 'hill orc': 8, 'hobgoblin': 8, 'giant ant': 8, 'hobbit': 8,
@@ -574,6 +574,7 @@ class DiveLogic:
         self._pit_at = None                # (level key, (y, x)) of the pit we dug and still stand in
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
+        self._hurt_on_elbereth_n = 0
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
@@ -593,6 +594,9 @@ class DiveLogic:
             if self._hp_history and agent.blstats.hitpoints < self._hp_history[-1][1] and \
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
+                if turn - self._hurt_on_elbereth > 15:
+                    self._hurt_on_elbereth_n = 0
+                self._hurt_on_elbereth_n += 1
                 self._hurt_on_elbereth = turn
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
@@ -1281,9 +1285,15 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         near = self._near_hostiles()
+        if jf_config.ELBERETH_VS_BLINDED:
+            blinded = getattr(agent, '_flash_blinded', {})
+            if any(bl.time - blinded.get(getattr(m[3], 'mname', ''), -10**9) <= 300 for m in near) or \
+                    (self._hurt_on_elbereth >= 0 and bl.time - self._hurt_on_elbereth <= 15 and
+                     self._hurt_on_elbereth_n >= 2):
+                self._elbereth_resting = False
+                yield False
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
-        # WEAK_FLOOR_BY_DAMAGE: and only while HP exceeds that monster's max one-round damage (else hide)
         weak_floor = 6
         if jf_config.WEAK_FLOOR_BY_DAMAGE and len(near) == 1:
             weak_floor = max(6, WEAK_ROUND_DAMAGE.get(getattr(near[0][3], 'mname', ''), 0) + 1)
