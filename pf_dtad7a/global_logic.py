@@ -905,10 +905,6 @@ class GlobalLogic:
                 # a tour-mode pick trip looks for the Mines branch itself (dive_logic.FAST_BRANCH)
                 self.dive.trip_branch_strategy(),
             ])
-            # GRIND_IDLE_REST: the levelling grind rests (on Elbereth) when hurt and nothing is in view
-            .preempt(self.agent, [
-                self.dive.tour_idle_rest(),
-            ])
             .preempt(self.agent, [
                 self.solve_sokoban_strategy()
                 .condition(lambda: self.milestone == Milestone.SOLVE_SOKOBAN and

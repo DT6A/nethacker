@@ -575,8 +575,6 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
-        self._elb_hurt_turns = []          # turns HP fell on an intact Elbereth (ELBERETH_VS_BLINDED)
-        self._elbereth_block_until = -1    # no Elbereth rest before this turn (it kept failing)
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -596,14 +594,8 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
-                self._elb_hurt_turns = (self._elb_hurt_turns + [turn])[-6:]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
-            blinded = getattr(agent, '_flash_blinded', None)
-            if blinded:
-                for dead in re.findall(r'You (?:kill|destroy) (?:the )?([a-z\- ]+?)[!.]|The ([a-z\- ]+?) is (?:killed|destroyed)',
-                                       agent.message or ''):
-                    blinded.pop((dead[0] or dead[1]).strip().lower(), None)
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
             self._pit_at = None
         if self.medusa_level is None and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
@@ -1209,9 +1201,6 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
-        if jf_config.ELBERETH_VS_BLINDED and \
-                getattr(self.agent, '_flash_blinded', {}).get(name, -1) >= self.agent.blstats.time:
-            return True   # our own flash blinded it: a blind monster doesn't see the engraving
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
@@ -1272,50 +1261,6 @@ class DiveLogic:
         return [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - y0), abs(m[2] - x0)) <= radius]
 
-    # hypothesis: the Dlvl-1 levelling grind never rests when hurt (only the dive does, plan_step 'rest'; the grind's
-    # Elbereth rest needs a hostile within 2 squares), so with nothing in view the AC10 Tourist explores on at 10-50%
-    # HP and the next jackal/rothe/giant bat/hill orc finds it at 6-14 HP. XL<10 regen is 1 HP per 42/(XL+2)+1 turns,
-    # and the grind's XP is paced by the random-spawn rate, not by exploring, so a rest of ~100-250 turns costs
-    # almost no XP and restores a fight's worth of HP. Below GRIND_IDLE_REST_BELOW of max HP with no hostile in view,
-    # engrave Elbereth and search in place until GRIND_IDLE_REST_UNTIL (capped, with a cooldown).
-    # sources: https://nethackwiki.com/wiki/Hit_points (regeneration below XL10), https://nethackwiki.com/wiki/Elbereth,
-    #          https://nethackwiki.com/wiki/Tourist, /refs/history/137.diff (GRIND_IDLE_REST, kept on its chain),
-    #          NetHack 3.6.6 src/allmain.c (u.ulevel < 10: heal 1 every (42 / (ulevel + 2) + 1) moves)
-    @Strategy.wrap
-    def tour_idle_rest(self):
-        agent = self.agent
-        bl = agent.blstats
-        turn = bl.time
-        resting = getattr(self, '_idle_resting', False)
-        level = agent.current_level()
-        if not jf_config.GRIND_IDLE_REST or self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
-                bl.hunger_state >= Hunger.WEAK or agent.character.prop.blind or agent.character.prop.polymorph or \
-                agent.prayer_failed:
-            self._idle_resting = False
-            yield False
-        threshold = jf_config.GRIND_IDLE_REST_UNTIL if resting else jf_config.GRIND_IDLE_REST_BELOW
-        if bl.hitpoints >= threshold * bl.max_hitpoints or agent.get_visible_monsters() or \
-                utils.isin(agent.glyphs, G.GUARD).any() or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
-            if resting:
-                self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        if not resting:
-            if turn < getattr(self, '_idle_rest_cooldown', 0) or agent._hurt_recently(3):
-                yield False
-            self._idle_rest_start = turn
-        elif turn - self._idle_rest_start > jf_config.GRIND_IDLE_REST_MAX_TURNS:
-            self._idle_rest_cooldown = turn + jf_config.GRIND_IDLE_REST_COOLDOWN
-            self._idle_resting = False
-            yield False
-        yield True
-        if not resting:
-            agent.log(f'GRIND idle rest start at {bl.hitpoints}/{bl.max_hitpoints} HP')
-        self._idle_resting = True
-        if self._rest_elbereth():
-            return
-        agent.search(10)
-
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -1335,17 +1280,6 @@ class DiveLogic:
             # behind (base-public s0 rested among Medusa-4's snakes, then fought them from the square)
             self._elbereth_resting = False
             yield False
-        if jf_config.ELBERETH_VS_BLINDED:
-            if bl.time < self._elbereth_block_until:
-                self._elbereth_resting = False
-                yield False
-            if resting and len([t for t in self._elb_hurt_turns if bl.time - t <= 15]) >= 2:
-                # hit twice on an intact Elbereth within 15 turns: whatever bites ignores it
-                agent.log(f'ELBERETH rest abandoned: hurt twice on an intact engraving hp={bl.hitpoints}/{bl.max_hitpoints}')
-                self._elbereth_block_until = bl.time + 40
-                self._elb_hurt_turns = []
-                self._elbereth_resting = False
-                yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         # (not a were in animal form while its bite can still infect us -- WERE_KEEP_AWAY)
