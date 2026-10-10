@@ -337,8 +337,6 @@ def were_keep_away(agent, monsters, radius=1):
 def elbereth_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
         return []
-    if agent.global_logic.dive.elbereth_futile():
-        return []
     if in_gehennom(agent):
         return []
     if not agent.can_engrave():
@@ -370,8 +368,7 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
-    if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent) and \
-            not agent.global_logic.dive.elbereth_futile():
+    if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         if were_keep_away(agent, monsters, radius=2):
@@ -439,14 +436,30 @@ def camera_actions(agent, monsters):
     # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Tourist,
     #          NetHack 3.6.6 src/apply.c use_camera, src/uhitm.c flash_hits_mon
     if not agent.global_logic.dive.diving:
-        if not jf_config.GRIND_CAMERA or ratio >= jf_config.GRIND_CAMERA_RATIO or in_gehennom(agent) or \
-                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10 or \
-                (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+        # hypothesis: a wererat/werejackal in @ form ignores Elbereth (onscary: S_HUMAN) and hits for 7-20 a turn with its
+        # summoned pack around it, which killed ~5 of 9 replayed Dlvl-1 grind losses; flashing it already below
+        # WERE_AT_FLASH_RATIO (not only 40%) blinds it (it guesses our square ~40% of the time) and 3 in 4 flee.
+        # sources: https://nethackwiki.com/wiki/Werecreature, https://nethackwiki.com/wiki/Wererat,
+        #          https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Elbereth,
+        #          NetHack 3.6.6 src/apply.c use_camera, src/monmove.c onscary
+        def were_at(mon, y, x):
+            return jf_config.WERE_AT_FLASH and 'were' in getattr(mon, 'mname', '') and \
+                ord(getattr(mon, 'mlet', ' ')) == MON.S_HUMAN and \
+                not agent.monster_tracker.peaceful_monster_mask[y, x]
+        limit = max(jf_config.GRIND_CAMERA_RATIO, jf_config.WERE_AT_FLASH_RATIO) if jf_config.WERE_AT_FLASH \
+            else jf_config.GRIND_CAMERA_RATIO
+        if not jf_config.GRIND_CAMERA or ratio >= limit or in_gehennom(agent) or \
+                agent.blstats.time - getattr(agent, '_grind_flash_turn', -100) < 10:
             return []
+        on_elb = (agent.inventory.engraving_below_me or '').lower() == 'elbereth'
         actions = []
         for monster in monsters:
             _, y, x, mon, _ = monster
             if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)) or getattr(mon, 'mflags1', 0) & 0x00001000:
+                continue
+            if ratio >= jf_config.GRIND_CAMERA_RATIO and not were_at(mon, y, x):
+                continue
+            if on_elb and not were_at(mon, y, x):
                 continue
             actions.append((25 + 20 * (1 - ratio), ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
             agent._grind_flash_turn = agent.blstats.time
