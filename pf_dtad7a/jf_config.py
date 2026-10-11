@@ -391,6 +391,32 @@ UNICORN_KEEP_AWAY = True
 UNICORN_ENGAGE_AC = 0
 UNICORN_ENGAGE_HP = 60
 
+# hypothesis: the expensive camera only fires while diving (camera_actions: 'in the levelling grind a fleeing monster
+# is lost XP'), so a Dlvl-1 grind fight with a monster that melees through Elbereth has no way out: elbereth_rest
+# gives way to any near @ human/elf or minotaur (_ignores_elbereth), leaving punches and darts at a few HP. Wererats
+# end 4 of 60 public + dev games in the grind (public s6 fem + mal at XL7, dev 195880 fem + mal at XL6, all Dlvl 1):
+# the @ form fights through Elbereth, turns into the rat 1 attack round in 5 next to us (1 in 3 at night; mhitu.c),
+# calls rats and bites in lycanthropy. An adjacent flash blinds it for good and it flees 3 times in 4 (uhitm.c
+# flash_hits_mon); blind, it wanders at random (monmove.c m_move: appr 0 without mcansee) and mostly swings at a
+# wrong square (set_apparxy), so it is also easier XP when met again. In the grind, flash an adjacent
+# Elbereth-ignorer below GRIND_IGNORER_FLASH_RATIO of our HP, and an @-form were at once while we can still catch
+# lycanthropy (combat/fight_heur.py grind_ignorer_flash). Never a monster that respects Elbereth: blinded, it would
+# stop respecting it, and flashing it from the square wipes the engraving (mon.c setmangry) -- the grind's Elbereth
+# rests are untouched. Diving keeps its own flash rules.
+# sources: https://nethackwiki.com/wiki/Expensive_camera ('a directly adjacent monster will be blinded
+#          indefinitely'; 3/4 flee), https://nethackwiki.com/wiki/Talk:Expensive_camera (players: flashing also
+#          makes it run away, unlike a potion of blindness; a pet flashed on turn 2 still blind on turn 112),
+#          https://nethack.fandom.com/wiki/Expensive_camera ('monsters blinded by your expensive camera will not
+#          respond to Elbereth'), https://nethackwiki.com/wiki/Wererat, https://nethackwiki.com/wiki/Lycanthropy,
+#          https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Tourist ('one of the most useful
+#          starting items'), https://groups.google.com/g/rec.games.roguelike.nethack/c/bITTR3R7q3A (Wererats thread:
+#          avoid melee with the animal form), NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mhitu.c mattacku,
+#          src/monmove.c m_move / set_apparxy / onscary, src/mon.c setmangry, /refs/parent-eval.json +
+#          /refs/parent-eval-extra.json (causes of death), past run 20261009-090421 (GRIND_CAMERA / IGNORER_FLASH,
+#          WERE_FLASH_FIRST: held-out +0.112), /refs/top/0d3fa079a23e (camera scare in the dive)
+GRIND_IGNORER_FLASH = True
+GRIND_IGNORER_FLASH_RATIO = 0.6
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

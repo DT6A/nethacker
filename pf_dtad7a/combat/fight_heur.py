@@ -422,6 +422,43 @@ def distant_flash_directions(agent, monsters):
     return dirs
 
 
+def grind_ignorer_flash(agent, monsters, camera, ratio):
+    """GRIND_IGNORER_FLASH: in the levelling grind, flash an adjacent monster that melees through Elbereth (@ humans
+    and elves, minotaurs) below GRIND_IGNORER_FLASH_RATIO of our HP, and an @-form were at once while we can still
+    catch lycanthropy (it turns into the biting animal 1 attack round in 5 next to us, mhitu.c). Never one that
+    respects Elbereth: blinded, it would stop respecting the Elbereth rest (and flashing it from the square wipes
+    the engraving, mon.c setmangry), so the grind's Elbereth rests are untouched."""
+    # hypothesis: elbereth_rest gives way to any near Elbereth-ignorer, so a grind fight with an @-form wererat
+    # has no way out but punches at low HP (public s6 fem + mal at XL7, dev 195880 fem + mal at XL6, all on Dlvl 1);
+    # the adjacent flash blinds it for good and it flees 3 times in 4 (uhitm.c flash_hits_mon), and blind it
+    # wanders at random (monmove.c m_move: appr 0) and swings at a wrong square 2 times in 3 (set_apparxy)
+    # sources: https://nethackwiki.com/wiki/Expensive_camera, https://nethackwiki.com/wiki/Wererat,
+    #          https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/uhitm.c flash_hits_mon, src/mhitu.c
+    #          mattacku, src/monmove.c m_move / set_apparxy / onscary, past run 20261009-090421 (WERE_FLASH_FIRST)
+    if not jf_config.GRIND_IGNORER_FLASH or agent.character.prop.hallu or in_gehennom(agent):
+        return []
+    dive = agent.global_logic.dive
+    flashed = getattr(agent, '_camera_flashed', {})
+    actions = []
+    for monster in monsters:
+        _, y, x, mon, _ = monster
+        if not adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if mon.mname == 'unknown' or not dive._melee_ignores_elbereth(mon):
+            continue
+        if getattr(mon, 'mflags1', 0) & 0x00001000:  # M1_NOEYES
+            continue
+        # an adjacent flash blinds for good, and a blind monster is neither blinded nor scared again (resists_blnd)
+        if agent.blstats.time - flashed.get((y, x), -100) < 30:
+            continue
+        were = 'were' in mon.mname and not agent.character.is_lycanthrope
+        if ratio >= jf_config.GRIND_IGNORER_FLASH_RATIO and not were:
+            continue
+        actions.append((25 + 20 * (1 - ratio) + (10 if were else 0),
+                        ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
+    return actions
+
+
 def camera_actions(agent, monsters):
     """hypothesis: a Tourist's expensive camera (~60-90 charges, unused so far) blinds an adjacent monster and makes
     it flee 3 times in 4 (apply.c use_camera -> flash_hits_mon); flashing attackers at low HP beats trading
@@ -439,7 +476,7 @@ def camera_actions(agent, monsters):
         return []
     ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
     if not agent.global_logic.dive.diving:
-        return []
+        return grind_ignorer_flash(agent, monsters, camera, ratio)
     # hypothesis: an adjacent monster that melees through Elbereth (@ humans and elves, minotaurs, the lawful
     # minions: Aleax, couatl) stops every dig step with its attacks, and the dig-diver waited until 50% HP to flash
     # it -- an Aleax took s7's digger 64 -> 23 HP on Dlvl 23 and killed it, a couatl ended s3 on Dlvl 27. Flash
