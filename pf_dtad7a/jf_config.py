@@ -406,7 +406,17 @@ CHOKEPOINT_HOLD_TURNS = 5
 #          https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Tourist,
 #          NetHack 3.6.6 src/uhitm.c flash_hits_mon, /refs/past_runs/20261010-232029/6.diff (held-out +0.12)
 GRIND_IGNORER_FLASH = True
+
 GRIND_IGNORER_FLASH_RATIO = 0.6
+
+# hypothesis: fight2 and elbereth_rest stop treating an Elbereth square as protection when HP keeps falling on the
+# intact engraving (2 turns out of 4) or an adjacent monster was blinded by our camera flash -- fewer deaths searching
+# on Elbereth while a blinded monster, a lined-up thrower or an unrecognised ignorer hurts us (see
+# combat/fight_heur.elbereth_not_holding and dive_logic.elbereth_futile).
+# sources: https://nethackwiki.com/wiki/Elbereth, NetHack 3.6.6 src/monmove.c onscary/distfleeck,
+#          /refs/past_runs/20261009-090421/249.diff (kept on held-out there)
+ELBERETH_NOT_HOLDING = True
+ELBERETH_NOT_HOLDING_TURNS = 12   # how long the engraving counts as futile after that
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

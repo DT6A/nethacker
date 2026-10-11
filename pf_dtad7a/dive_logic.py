@@ -560,6 +560,8 @@ class DiveLogic:
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
+        self._elb_hurt_turns = []          # recent turns HP fell on an intact Elbereth (ELBERETH_NOT_HOLDING)
+        self._elb_futile_until = -1        # ELBERETH_NOT_HOLDING: no Elbereth rest/hiding until this turn
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
@@ -581,6 +583,7 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                self._elb_hurt_turns = [t for t in self._elb_hurt_turns if turn - t <= 8] + [turn]
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1205,6 +1208,23 @@ class DiveLogic:
         # lawful minions (is_lminion: Aleax, couatl, ki-rin, Archon) and Angels ignore it too (monmove.c onscary)
         return cls == MON.S_HUMAN or name in ('minotaur',) + LAWFUL_MINIONS
 
+    def elbereth_hurts(self, turns=4):
+        """Distinct turns within the last `turns` on which HP fell while we stood on an intact Elbereth."""
+        now = self.agent.blstats.time
+        return len([t for t in self._elb_hurt_turns if now - t <= turns])
+
+    def elbereth_futile(self):
+        """ELBERETH_NOT_HOLDING: something kept hurting us through an intact Elbereth (on 2 turns within 4) -- the
+        engraving is no protection here for a while (see combat/fight_heur.elbereth_not_holding)."""
+        if not jf_config.ELBERETH_NOT_HOLDING or self.agent.current_level().dungeon_number == GEHENNOM:
+            return False
+        now = self.agent.blstats.time
+        if (self.agent.inventory.engraving_below_me or '').lower() == 'elbereth' and self.elbereth_hurts(4) >= 2:
+            if self._elb_futile_until < now:
+                self.agent.log(f'ELBERETH not holding: hurt on turns {self._elb_hurt_turns[-3:]}')
+            self._elb_futile_until = now + jf_config.ELBERETH_NOT_HOLDING_TURNS
+        return now <= self._elb_futile_until
+
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
 
@@ -1278,6 +1298,11 @@ class DiveLogic:
             yield False
         if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
+            self._elbereth_resting = False
+            yield False
+        # ELBERETH_NOT_HOLDING: searching on while HP keeps falling on the intact engraving is waiting to die;
+        # let fight2 / the retreat answer whatever hurts us
+        if self.elbereth_futile():
             self._elbereth_resting = False
             yield False
         engraving = (agent.inventory.engraving_below_me or '').lower()

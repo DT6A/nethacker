@@ -2097,6 +2097,13 @@ class Agent:
             if not hasattr(self, '_camera_flashed'):
                 self._camera_flashed = {}
             self._camera_flashed[(self.blstats.y + dy, self.blstats.x + dx)] = self.blstats.time
+            # ELBERETH_NOT_HOLDING: an adjacent flash blinds for good, and a blind monster ignores Elbereth
+            flashed = [m[3].mname for m in self.get_visible_monsters()
+                       if (m[1], m[2]) == (self.blstats.y + dy, self.blstats.x + dx)]
+            if flashed and flashed[0] != 'unknown' and max(abs(dy), abs(dx)) == 1:
+                if not hasattr(self, '_flash_blinded'):
+                    self._flash_blinded = {}
+                self._flash_blinded[flashed[0]] = self.blstats.time
             dir = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
             pass
             with self.atom_operation():

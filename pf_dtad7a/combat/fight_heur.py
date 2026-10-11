@@ -309,7 +309,7 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         if targeted_monsters:
             # priority = priority * (1 - player_hp_ratio) - 10
             priority = priority - 15
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not elbereth_not_holding(agent, monsters):
                 priority -= 100
             ret.append((priority, ('zap', dy, dx, item, targeted_monsters)))
     return ret
@@ -334,10 +334,42 @@ def were_keep_away(agent, monsters, radius=1):
                for _, my, mx, mon, _ in monsters)
 
 
+# hypothesis: on an Elbereth square fight2 gives every attack -100 and 'wait' (search) priority up to 30, and
+# elbereth_rest searches on until 85% HP -- right only while the engraving scares what is next to us. Something that
+# keeps hurting us on an engraving that is intact (inventory re-reads it every turn we stand on it) does not respect
+# it: a monster our own camera flash blinded for good (the dive flashes at < 50% HP and rests below 40%), a thrower
+# lined up two squares off, an unrecognised ignorer. Searching on while HP falls 2 turns out of 4 is waiting to die
+# (past run 20261009-090421 #249: public s6 XL6 searched six turns while a blinded cave spider bit it from 7 HP to
+# dead). With such a monster adjacent drop the Elbereth penalty and the wait, stop the rest and don't re-engrave for a
+# few turns, so the bot fights back, flashes, quaffs or retreats instead.
+# sources: https://nethackwiki.com/wiki/Elbereth ('A blinded monster that can ordinarily see will not respect
+#          Elbereth while it is blind'; 'Elbereth will not protect you from any missile or spell attack'),
+#          NetHack 3.6.6 src/monmove.c onscary/distfleeck, src/uhitm.c flash_hits_mon,
+#          https://nethackwiki.com/wiki/Talk:Elbereth (players: still hit on an intact Elbereth -> blind or ranged
+#          attacker), /refs/past_runs/20261009-090421/249.diff (kept on held-out)
+def elbereth_not_holding(agent, monsters):
+    if not jf_config.ELBERETH_NOT_HOLDING or in_gehennom(agent):
+        return False
+    if (agent.inventory.engraving_below_me or '').lower() != 'elbereth':
+        return False
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    adj = [mon for _, my, mx, mon, _ in monsters if adjacent((my, mx), (y0, x0))]
+    if not adj:
+        return False
+    now = agent.blstats.time
+    blinded = getattr(agent, '_flash_blinded', {})
+    if any(now - blinded.get(getattr(mon, 'mname', ''), -10 ** 9) <= 400 for mon in adj):
+        return True
+    return agent.global_logic.dive.elbereth_futile()
+
+
 def elbereth_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
         return []
     if in_gehennom(agent):
+        return []
+    if jf_config.ELBERETH_NOT_HOLDING and agent.global_logic.dive.elbereth_futile() and \
+            not were_keep_away(agent, monsters):
         return []
     if not agent.can_engrave():
         return []
@@ -368,6 +400,8 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
+    if elbereth_not_holding(agent, monsters):
+        return []
     if agent.inventory.engraving_below_me.lower() == 'elbereth' and not in_gehennom(agent):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
@@ -531,13 +565,14 @@ def camera_actions(agent, monsters):
 
 def get_available_actions(agent, monsters):
     actions = []
+    not_holding = elbereth_not_holding(agent, monsters)
 
     # melee attack actions
     for monster in monsters:
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not not_holding:
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
@@ -559,7 +594,7 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                if agent.inventory.engraving_below_me.lower() == 'elbereth' and not not_holding:
                     pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10
