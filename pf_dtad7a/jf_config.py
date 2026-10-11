@@ -193,6 +193,37 @@ DIVE_FED = False
 DIVE_FED_GAP = 500
 DIVE_FED_FOOD = 400
 DIVE_FED_MAX_WAIT = 2000
+# hypothesis: a readiness check before the dive. 8 of the parent's 60 public + dev games die at XL8 (or XL7 in a
+# rescue) on Dlvl 1-8 right after the Dlvl-1 grind ends (public s5 shopkeeper and s7 wolf, both genders; dev 583687
+# orcish arrow, 583693 carnivorous ape, 583694-mal white unicorn, 583684-fem gnome lord), each scoring 0.05-0.075
+# against 0.36-0.65 for a dive that gets past the first levels. The dive starts wherever in the ~1200-turn
+# hunger-prayer cycle XL8 lands, often < 500 turns after the last prayer, so the low-HP prayer (pray.c: HP < 1/7 max
+# or <= 5 is major trouble, fixed only when the timeout is < 201; rnz(350) leaves only ~22% of resets below 201) is
+# missing for the first fights below Dlvl 1. End the grind only with the emergency prayer usable (the low-HP
+# prayer's own is_safe_to_pray(500) test) and HP >= ELBERETH_REST_UNTIL of max, waiting on the safe Dlvl 1 at most
+# DIVE_PRAYER_MAX_WAIT turns and not at all after a failed prayer (dive_logic.prayer_ready_for_dive). Players' rule
+# is the same: take it slowly, keep prayer for emergencies, don't go deeper without your safety net.
+# sources: NetHack 3.6.6 src/pray.c (can_pray, in_trouble, prayer_timeout = rnz(350)),
+#          https://nethackwiki.com/wiki/Prayer_timeout ('~22% chance ... reset to less than 201'),
+#          https://nethackwiki.com/wiki/Prayer (not 100% reliable, can't be used twice in quick succession),
+#          https://nethackwiki.com/wiki/Tourist ('extreme caution', 'a slower descent in general might be worthwhile'),
+#          https://nethackwiki.com/wiki/Standard_strategy ('take it slowly!'),
+#          https://forums.civfanatics.com/threads/nethack.256120/page-5 (Tourist killed using the camera instead of
+#          praying: 'With prayer I would have reached my max HP again'),
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/s-H_MMO_nJY ('How best to pray'),
+#          /refs/top/74cf6b61c783 nhbot/dive_logic.py DIVE_PRAYER_GAP (DT6A's Monk engine: tool dives < 800 turns after
+#          a prayer died 4/12 vs 0/13), /refs/top/40592c808d86 (same gate),
+#          /refs/past_runs/20261010-232029/52.diff (kept on held-out; also #244/#250/#255 of run 20261009-090421),
+#          https://www.steelypips.org/nethack/pray.html (timeout rnz(350); major trouble needs it <= 200),
+#          https://gamefaqs.gamespot.com/boards/582497-nethack-1987/41120461 (players: save prayers for when you
+#          really need them), https://nethackwiki.com/wiki/Lessons_learned_the_hard_way.
+# Node #5 (tree chain #1 camera flash -> #5): the camera chain's public s7 / s14 XL8 dive-start deaths on Dlvl 3-4
+# (soldier ant, hill orc, rothe) and dev 583681 dwarf / 583687 soldier ant + gnome lord are this gate's targets.
+DIVE_PRAYER_READY = True
+DIVE_PRAYER_MAX_WAIT = 1500
+# PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, prayer_failed) even when a preempting strategy
+# interrupts the PRAY step (see the hypothesis in agent.pray; proven neutral fix)
+PRAYER_RECORD_FIX = True
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 TOUR_WEAK_PRAYER_GAP = 0
