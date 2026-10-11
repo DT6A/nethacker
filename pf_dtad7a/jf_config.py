@@ -417,6 +417,15 @@ UNICORN_ENGAGE_HP = 60
 GRIND_IGNORER_FLASH = True
 GRIND_IGNORER_FLASH_RATIO = 0.6
 
+# hypothesis: engraving Elbereth gives every adjacent monster a free round (more when a dust letter wobbles), so the
+# 40% start of the Elbereth rest is too late against the groups the XL7 grind and the XL8 dive start meet (rothes,
+# hill orcs, giant/soldier ants). With 2+ hostiles within 2 squares and HP under PACK_ROUND_BELOW, the rest starts
+# once HP is at or below their summed worst round (dive_logic.PACK_ROUND_DAMAGE, 4 for unlisted kinds).
+# sources: https://nethackwiki.com/wiki/Elbereth , https://nethackwiki.com/wiki/Rothe , NetHack 3.6.6 src/monst.c,
+#          src/engrave.c; past run 20261009-090421 #110/#216 (kept 2 of 2 on held-out); see dive_logic.elbereth_rest
+PACK_ROUND_FLOOR = True
+PACK_ROUND_BELOW = 0.7
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

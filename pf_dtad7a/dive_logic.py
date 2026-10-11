@@ -75,6 +75,16 @@ DIVE_XL = 8
 DIVE_TURN = 10 ** 9
 ELBERETH_REST_BELOW = 0.4
 ELBERETH_REST_UNTIL = 0.85
+# jf_config.PACK_ROUND_FLOOR: a monster's worst one round on us (NetHack 3.6.6 monst.c: every attack hits for its max
+# dice; a weapon user's d6-d8 weapon as 8; x2 above speed 12, which can move twice in our engrave turn; +15 for a
+# poisonous sting). Unlisted kinds count 4.
+PACK_ROUND_DAMAGE = {
+    'jackal': 2, 'coyote': 4, 'fox': 6, 'sewer rat': 3, 'giant rat': 3, 'rabid rat': 8, 'wererat': 4, 'werejackal': 4,
+    'giant ant': 8, 'soldier ant': 40, 'fire ant': 32, 'killer bee': 18, 'hill orc': 8, 'Mordor orc': 8,
+    'Uruk-hai': 8, 'hobgoblin': 8, 'gnome': 6, 'gnome lord': 8, 'dwarf': 14, 'hobbit': 8, 'bugbear': 8,
+    'large kobold': 8, 'kobold lord': 8, 'rothe': 14, 'wolf': 8, 'warg': 12, 'little dog': 12, 'kitten': 12,
+    'pony': 16, 'giant bat': 12, 'homunculus': 6, 'manes': 10, 'lemure': 3, 'giant beetle': 18,
+}
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1256,7 +1266,28 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
+        # hypothesis: the rest starts only below 40% HP, but engraving gives every adjacent monster a free round (and
+        # ~28% of dust engravings come out misspelt: another round), so a group deals more than the 40% reserve before
+        # the engraving protects. Group spawners are what the XL7 grind meets once Dlvl 1's difficulty cap (1 + XL) / 2
+        # reaches 4 (parent: public s4/s11 rothe, s3 giant ant, s12 hill orc, all Dlvl 1 at XL7) and what the XL8 dive
+        # starts among (s7 soldier ant, s14 hill orc). With 2+ hostiles within 2 squares and HP under PACK_ROUND_BELOW,
+        # hide once HP no longer exceeds their summed worst round (PACK_ROUND_DAMAGE) -- it only moves the start
+        # earlier; the lone-monster, ignorer, blind, polymorph and can't-engrave exits below still apply.
+        # sources: https://nethackwiki.com/wiki/Rothe ('can hit quite hard, and appear in groups', 'respect Elbereth'),
+        #          https://nethackwiki.com/wiki/Elbereth (dust engravings: ~72.7% chance all letters come out right;
+        #          'you must not wait until you are one turn from death'), https://nethackwiki.com/wiki/Hill_orc,
+        #          https://nethackwiki.com/wiki/Tourist, https://forums.civfanatics.com/threads/nethack.256120/page-2
+        #          (players: deaths to 'a bunch of rothes or a's', survival 'shoots up' with Elbereth),
+        #          https://groups.google.com/g/rec.games.roguelike.nethack/c/q86z7hwNzT0 ('the number one cause of early
+        #          deaths is still plain physical damage'), NetHack 3.6.6 src/monst.c (attacks, speeds, G_SGROUP/LGROUP),
+        #          src/engrave.c (1 in 25 per dust letter wobbles), src/makemon.c (difficulty cap), past run
+        #          20261009-090421 #110/#216 PACK_ROUND_FLOOR (kept 2 of 2: held-out 0.1495 vs 0.1272, 0.1724 vs 0.1501)
+        pack_low = False
+        if jf_config.PACK_ROUND_FLOOR and not resting and bl.hitpoints < jf_config.PACK_ROUND_BELOW * bl.max_hitpoints:
+            pack = self._near_hostiles()
+            if len(pack) >= 2:
+                pack_low = bl.hitpoints <= sum(PACK_ROUND_DAMAGE.get(getattr(m[3], 'mname', ''), 4) for m in pack)
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling and not pack_low) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False
