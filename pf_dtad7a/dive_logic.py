@@ -104,6 +104,23 @@ WEAK_TURN_DAMAGE = {
     'hobbit': 11, 'manes': 10, 'Keystone Kop': 10, 'goblin': 9,
     'giant ant': 8, 'bat': 8, 'large kobold': 8, 'kobold lord': 8,
 }
+# PACK_ROUND_FLOOR (jf_config): a monster's max damage in one of our turns (NetHack 3.6.6 monst.c attack dice
+# max x attacks per turn at our speed 12); unlisted ones fall back to WEAK_TURN_DAMAGE, then 3 x (mlevel + 1)
+PACK_ROUND_DAMAGE = {
+    'jackal': 2, 'coyote': 3, 'fox': 3, 'sewer rat': 3, 'giant rat': 3, 'werejackal': 4, 'wererat': 4,
+    'wolf': 8, 'jackalwere': 4, 'ratwere': 4, 'Mordor orc': 12, 'Uruk-hai': 16, 'bugbear': 16,
+    'kobold': 10, 'gnome lord': 14, 'ape': 12, 'soldier ant': 40, 'soldier': 14, 'dingo': 4,
+}
+
+
+def pack_round_damage(mon):
+    name = getattr(mon, 'mname', '')
+    dmg = PACK_ROUND_DAMAGE.get(name, WEAK_TURN_DAMAGE.get(name))
+    if dmg is None:
+        dmg = max(4, 3 * (getattr(mon, 'mlevel', 0) + 1))
+    return dmg
+
+
 # breathers, spitters and casters: Elbereth doesn't stop them hurting you from a distance
 LAWFUL_MINIONS = ('Aleax', 'Angel', 'couatl', 'ki-rin', 'Archon')
 RANGED_MONSTERS = frozenset((
@@ -1285,7 +1302,27 @@ class DiveLogic:
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
-        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling) or \
+        # hypothesis: with 2+ hostiles within 2 squares the 40% trigger comes too late -- the engraving turn is a free
+        # round for every adjacent monster (and ~1 dust Elbereth in 4 comes out misspelt: another round), so a group
+        # deals more than the 40% reserve before the engraving protects. Hill orcs (G_LGROUP, d6 weapon + d6 each) and
+        # rothes (G_SGROUP, up to 14 a turn each) are this chain's top grind killers (public s3 hill orc x2, s12 and
+        # s1-mal rothe; dev 980397 hill orc x2, 980398 rothe x2, XL5-7 on Dlvl 1-3), next to jackal packs (s5) and a
+        # were's summoned jackals. Below 70% HP, start the Elbereth rest as soon as HP no longer exceeds the group's
+        # summed max one-round damage. Complements #1's WEAK_FLOOR_BY_DAMAGE, which covers the lone weak monster only.
+        # sources: https://nethackwiki.com/wiki/Elbereth ('you must not wait until you are one turn from death'),
+        #          https://www.steelypips.org/nethack/elbereth_faq.html ('while you are engraving, anything can and
+        #          will attack you'), https://groups.google.com/g/rec.games.roguelike.nethack/c/eKuX81R_QrM ('engrave
+        #          the E-word early and often'), https://nethackwiki.com/wiki/Rothe (small groups, 3 attacks),
+        #          https://nethackwiki.com/wiki/Hill_orc (large groups), https://nethackwiki.com/wiki/Tourist,
+        #          NetHack 3.6.6 src/monst.c attacks, src/makemon.c m_initgrp,
+        #          /refs/past_runs/20261011-093252/39.diff (kept on held-out 0.2792 vs 0.2492; same idea also kept as
+        #          #35/#44/#45/#59 there), /refs/past_runs/20261009-090421/216.diff
+        pack_low = False
+        if jf_config.PACK_ROUND_FLOOR and not resting and bl.hitpoints < 0.7 * bl.max_hitpoints:
+            pack = self._near_hostiles()
+            if len(pack) >= 2:
+                pack_low = bl.hitpoints <= sum(pack_round_damage(m[3]) for m in pack)
+        if (bl.hitpoints >= threshold * bl.max_hitpoints and not falling and not pack_low) or \
                 agent.current_level().dungeon_number == GEHENNOM:
             self._elbereth_resting = False
             yield False

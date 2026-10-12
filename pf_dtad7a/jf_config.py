@@ -390,6 +390,14 @@ WEAK_FLOOR_BY_DAMAGE = True
 REST_HOLD = True
 REST_HOLD_RADIUS = 7
 
+# hypothesis: with 2+ hostiles within 2 squares elbereth_rest's 40% trigger is too late (the engraving turn is a free
+# round for the whole group: hill orcs, rothes, jackals, a were's summons); start resting once HP <= the group's summed
+# max one-round damage, below 70% HP (dive_logic.pack_round_damage / elbereth_rest).
+# sources: https://nethackwiki.com/wiki/Elbereth, https://www.steelypips.org/nethack/elbereth_faq.html,
+#          https://groups.google.com/g/rec.games.roguelike.nethack/c/eKuX81R_QrM, https://nethackwiki.com/wiki/Rothe,
+#          /refs/past_runs/20261011-093252/39.diff (kept on held-out), /refs/past_runs/20261009-090421/216.diff
+PACK_ROUND_FLOOR = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
