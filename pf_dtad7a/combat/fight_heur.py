@@ -125,6 +125,14 @@ def ranged_priority(agent, dy, dx, monsters):
                 ret -= 6
                 if mon.mname == 'gas spore':  # only gas spore ?
                     ret -= 100
+                # hypothesis: a were creature regenerates 1 HP/turn (M1_REGEN) and summons rats/jackals,
+                # so bare-handed d2 fists never kill it; a point-blank +2 dart (d3+2) out-damages the
+                # regeneration and beats the melee priority (17) only for this monster class.
+                # sources: nethackwiki Wererat/Lycanthropy/Dart; mon.c mon_regen; mhitu.c were_summon;
+                # local early-loss logs (wererat deaths at Dlvl1, seeds 689004/689008/689016/12).
+                elif 'were' in mon.mname and launcher is None and ammo.object.name == 'dart' and \
+                        not agent.character.prop.polymorph and agent.inventory.items.main_hand is None:
+                    ret = 20
             # hypothesis: a gas spore's explosion (radius 1) that kills the pet costs -15 alignment
             # ("rumble of distant thunder"), after which every prayer fails and the character
             # starves (DT6A seed 1). Astra: kill spores from range only, away from pets.
@@ -455,6 +463,14 @@ def get_available_actions(agent, monsters):
 
 
 def decide_what_to_pickup(agent):
+    # hypothesis: were_unload (agent.py) drops the pack at Overtaxed in rat/jackal form, but this priority-15
+    # pickup took the thrown darts right back, so the form re-Overtaxed (cannot melee: uhitm.c check_capacity)
+    # and looped drop/pick-up ~10 times in 50 turns taking free hits; leaving items alone while polymorphed
+    # lets the unload stick, and the usual pickup collects the pile once we are human again
+    # sources: NetHack 3.6.6 hack.c weight_cap(), uhitm.c attack() check_capacity, https://nethackwiki.com/wiki/Wererat,
+    #          https://nethackwiki.com/wiki/Lycanthropy, local seed 689008 log (drops at T6462/6468/6537)
+    if agent.character.prop.polymorph:
+        return []
     # never a shop's goods: an unseen game picked up a for-sale dagger (Grimtooth), threw it, owed 2204
     # zorkmids and was killed by the shopkeeper
     projectiles_below_me = [i for i in agent.inventory.items_below_me
