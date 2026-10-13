@@ -254,6 +254,15 @@ TOUR_FAINT_PRAYER_GAP = 0
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
 LOWHP_EXACT = False
+# hypothesis: DT6A's non-critical 'HP < 12' prayer (HP above pray.c's critically_low_hp, e.g. 11/14) is a no-trouble
+# prayer, which pray.c can_pray only grants at prayer timeout 0; the bot prays it at a 500-turn gap, where rnz(350)
+# still exceeds the gap ~29% of the time: p_type 0 = 'You feel that X is displeased' / Luck -3 / ugangr, so the
+# critical-HP prayer 100 turns later never works (dev seeds: PRAY hp=11/14 gap=512, HP 2/14 three turns later, dead).
+# At a 1200 gap only ~5.5% fail, and a success keeps its pat_on_head chance (1/3: +5 max HP and full heal). Pray.c's
+# critical HP keeps the 500 gap. 0 = off (old behaviour). Not LOWHP_EXACT, which drops the soft prayer altogether.
+# sources: NetHack 3.6.6 src/pray.c can_pray (p_trouble == 0 needs u.ublesscnt == 0), pleased() pat_on_head case 2,
+#          rnz() in src/rnd.c, https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Luck
+NONCRIT_HP_PRAYER_GAP = 1200
 # hunger-prayer gaps while diving at depth >= DIVE_GAP_MIN_DEPTH (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP)
 DIVE_WEAK_PRAYER_GAP = 0
 DIVE_FAINT_PRAYER_GAP = 0

@@ -2448,8 +2448,15 @@ class Agent:
                        not self.character.prop.polymorph))
         if poly_buffer:
             low_hp = False
+        # hypothesis: see jf_config.NONCRIT_HP_PRAYER_GAP -- the 'HP < 12' remainder above pray.c's critical HP is a
+        # no-trouble prayer and needs the prayer timeout at 0, so it waits for a long gap instead of the 500 one
+        # sources: NetHack 3.6.6 src/pray.c can_pray / pleased, https://nethackwiki.com/wiki/Prayer
+        if low_hp and jf_config.NONCRIT_HP_PRAYER_GAP and not self._critically_low_hp():
+            low_hp_ok = self.is_safe_to_pray(jf_config.NONCRIT_HP_PRAYER_GAP)
+        else:
+            low_hp_ok = self.is_safe_to_pray(500)
         if (
-                (self.is_safe_to_pray(500) and low_hp)
+                (low_hp_ok and low_hp)
                 or self.fainting_prayer_due()
                 or self.threat_prayer_due()
                 or (not self.prayer_failed and self.blstats.hunger_state >= Hunger.WEAK and
@@ -2657,22 +2664,38 @@ class Agent:
         can't do that while carrying so much stuff'). Public s4 (5 food items) and jf16 s11 starved that
         way. arrange_items() is off while polymorphed, so nothing is picked up again until we change back;
         then the usual pickup logic collects the pile."""
-        if not jf_config.LYCAN_FIXES or not self.character.prop.polymorph or \
-                self.blstats.carrying_capacity < 4 or self.blstats.hunger_state < Hunger.WEAK:
+        # hypothesis: an Overtaxed (4) or Overloaded (5) were form cannot melee (uhitm.c attack() check_capacity
+        # 'You cannot fight while so heavily loaded'), eat (eat.c) or, at 5, move at all, so a Dlvl-1 grinder that
+        # turns into a rat mid-fight (s7: 191 move panics, then starved) is a helpless target long before it is
+        # Weak; one food ration (wt 20) is already Burdened for a wererat's ~14 capacity -- so unload at once at
+        # enc>=4 whatever the hunger, and if only food is left keep ONE unit of the most nutritious stack
+        # sources: https://nethackwiki.com/wiki/Lycanthropy, https://nethackwiki.com/wiki/Encumbrance (Overtaxed:
+        #          can't eat/melee; Overloaded: can't move; 'being a small creature can instantly overload you'),
+        #          NetHack 3.6.6 hack.c weight_cap(), uhitm.c, eat.c check_capacity(), /tmp/jflog/bot_s7.log
+        enc = self.blstats.carrying_capacity
+        if not jf_config.LYCAN_FIXES or not self.character.prop.polymorph or enc < 4:
             yield False
         food = self.edible_carried_food()
-        if not food:
-            yield False
         keep = set(id(i) for i in food)
         to_drop = [item for item in self.inventory.items
                    if id(item) not in keep and item.can_be_dropped_from_inventory() and
                    item.category != nh.COIN_CLASS and
                    not (item.is_container() and any(id(i) in keep for i in flatten_items([item])))]
+        counts = None
         if not to_drop:
-            yield False
+            stacks = [item for item in self.inventory.items
+                      if id(item) in keep and item.can_be_dropped_from_inventory()]
+            if not stacks:
+                yield False
+            best = max(stacks, key=lambda i: getattr(i.object, 'nutrition', 0) if i.is_unambiguous() else 0)
+            to_drop = [i for i in stacks if i is not best] + ([best] if best.count > 1 else [])
+            counts = [i.count for i in stacks if i is not best] + ([best.count - 1] if best.count > 1 else [])
+            if not to_drop:
+                yield False
         yield True
-        self.log(f'LYCAN were form Overloaded while hungry: dropping {len(to_drop)} items to eat')
-        self.inventory.drop(to_drop, smart=False)
+        self.log(f'LYCAN were form Overloaded (enc {enc}, hunger {self.blstats.hunger_state}): '
+                 f'dropping {len(to_drop)} item stacks')
+        self.inventory.drop(to_drop, counts=counts, smart=False)
 
     _TIN_SMELL = re.compile(r'It smells like (?:the )?([A-Za-z -]+?)\.')
     _BAD_TIN_WORDS = ('cockatrice', 'chickatrice', 'Medusa', 'green slime', 'were', 'little dog', 'large dog',
