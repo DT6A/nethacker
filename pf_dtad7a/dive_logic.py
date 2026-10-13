@@ -240,6 +240,16 @@ TOOL_RUN_XL = None
 # hunting dwarves on the way, digging in the main dungeon if it gets a pick-axe. Fires only in games
 # that are otherwise lost.
 RESCUE_DIVE = True
+# hypothesis: a failed prayer in the XL1-7 Dlvl-1 grind must not start the rescue dive at once. The rescue exists
+# because a failed prayer leaves the god angry / Luck < 0 and so no hunger prayer; that only matters once the
+# Tourist is Hungry with nothing edible. A Tourist that still carries food (it starts with several items and
+# eats them from inventory after a failed prayer) keeps levelling on Dlvl 1 instead of diving at XL1-3 with 8-12 HP
+# into Dlvl 2-4, where the dive search kills it. Same shape as LATE_RESCUE's test (Weak and no edible food).
+# sources: NetHack 3.6.6 src/pray.c (p_type 0 / angrygods: Luck -3, ugangr; prayer needs Luck >= 0 and god not
+#          angry; the hunger prayer is the only reason to rescue), https://nethackwiki.com/wiki/Prayer,
+#          https://nethackwiki.com/wiki/Tourist, comment above on 21 past rescue dives that never got past Dlvl 2-4,
+#          dev logs /tmp/diag29 (689002/689004/689012/689014: rescue dive at XL1-2 after a no-trouble prayer)
+RESCUE_NEEDS_HUNGER = True
 # The same later in the tour: a prayer failed (the god is angry or Luck < 0, so no more hunger prayers)
 # and the character is Weak with nothing to eat. The tour would starve on the spot (a clock-jf6 XL8
 # starved in the Mines 1700 turns after an unlucky prayer); the dive at least banks depth on the way.
@@ -883,6 +893,9 @@ class DiveLogic:
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
+        if rescue and RESCUE_NEEDS_HUNGER and not (agent.blstats.hunger_state >= Hunger.HUNGRY and
+                                                  not agent.edible_carried_food()):
+            rescue = False
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
         rescue = rescue or (EARLY_DIVE and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and
