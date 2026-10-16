@@ -218,6 +218,8 @@ class Inventory:
                 return False
             assert 'What do you want to wear?' in self.agent.message, self.agent.message
             self.agent.type_text(letter)
+            if jf_config.ROBUST_FIXES and self._wear_refused(item):
+                return False
             assert 'You finish your dressing maneuver.' in self.agent.message or \
                    'You are now wearing ' in self.agent.message or \
                    'Your foot is trapped!' in self.agent.message, self.agent.message
@@ -249,8 +251,45 @@ class Inventory:
                 self.agent.type_text(letter)
             if 'It is cursed.' in self.agent.message or 'They are cursed.' in self.agent.message:
                 return False
+            if jf_config.ROBUST_FIXES and self._wear_refused(item):
+                return False
             assert is_take_off_message(), self.agent.message
 
+        return True
+
+    # hypothesis: nhbot/nhbot_v3's ROBUST_FIXES wear/takeoff bullet -- do_wear.c's canwearobj()/select_off() can
+    # refuse a W/T without spending a turn (a welded two-hander blocking a suit/shirt/gloves; neither refusal marks
+    # the weapon cursed, so hands_welded() never learns why; a foot stuck in a bear trap or in the floor; slippery
+    # fingers). pf_vk_s23 had ROBUST_FIXES (added by a parent change for the dragon-scale parse bug) but never had
+    # this bullet, so wear_best_stuff retried the exact same refused slot forever -- a turn-less loop that (per
+    # nhbot's own ROBUST_FIXES2 watchdog comment) can burn thousands of steps with zero game-turn progress.
+    # sources: nhbot/jf_config.py:1241 ROBUST_FIXES comment (3rd bullet) and nhbot/item/inventory.py's
+    # _wear_refused/_WEAR_REFUSED_WELDED/_WEAR_REFUSED_BRIEF (the existing, already-proven fix) and
+    # wear_best_stuff's `_wear_blocked_until` gate; NetHack 3.6.6 src/do_wear.c canwearobj()/select_off() (these
+    # specific refusal messages return without calling useup()/nomul(), i.e. no game turn passes);
+    # nethackwiki.com/wiki/Welded (weld mechanics: these messages don't reveal a curse on their own).
+    _WEAR_REFUSED_WELDED = re.compile(r'You cannot do that while holding your |You cannot wear gloves over your |'
+                                      r'You are unable to take off your gloves while wielding |'
+                                      r'You cannot release your \w+ to take off ')
+    _WEAR_REFUSED_BRIEF = re.compile(r'Your foot is trapped!|Your feet are stuck in the |is attached to the buried ball!|'
+                                     r'bear trap prevents you from pulling your |and cannot pull your |'
+                                     r'are too slippery to pull on |are too slippery to take off')
+
+    def _wear_refused(self, item):
+        """A wear/take-off refusal: the item's armor slot waits (agent._wear_blocked_until, read by
+        wear_best_stuff) 1000 turns for a welded weapon, 20 for a trapped foot or slippery fingers."""
+        msg = self.agent.message or ''
+        if self._WEAR_REFUSED_WELDED.search(msg):
+            wait = 1000
+        elif self._WEAR_REFUSED_BRIEF.search(msg):
+            wait = 20
+        else:
+            return False
+        slot = getattr(item.objs[0], 'sub', None)
+        blocked = getattr(self.agent, '_wear_blocked_until', {})
+        blocked[slot] = self.agent.blstats.time + wait
+        self.agent._wear_blocked_until = blocked
+        self.agent.log(f'ROBUST wear/takeoff refused, slot {slot} waits {wait} turns: {msg[:80]!r}')
         return True
 
     def use_container(self, container, items_to_put, items_to_take, items_to_put_counts=None,
@@ -1240,6 +1279,37 @@ class Inventory:
             self.agent.step(A.Command.PUTON, gen())
         self.items.update(force=True)
 
+    @utils.debug_log('inventory.wear_oilskin_cloak')
+    @Strategy.wrap
+    def wear_oilskin_cloak(self):
+        """OILSKIN_GUARD: put on a carried, positively-identified not-cursed oilskin cloak when no cloak is worn.
+        # hypothesis: a non-cursed oilskin cloak makes the hero slip free of a grab roll outright (mhitu.c
+        # u_slip_free), stopping a giant eel/kraken/python wrap-grab before it can hold and drown the hero --
+        # water deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster (11/60
+        # parent-eval(+extra) seeds, Dlvl 25-27) after minotaurs. Like wear_life_saving/ARMOR_UP, gather_items
+        # (the only other caller that would wear it) never runs once diving, so a carried, identified oilskin
+        # cloak otherwise sits unworn through exactly the Castle-moat/Medusa depths it is needed at. Only a
+        # known not-cursed cloak is worn (never unknown-BUC), and only into an empty cloak slot, so this never
+        # commits to a cursed item or displaces an already-worn (possibly better) cloak.
+        # sources: nethackwiki.com/wiki/Oilskin_cloak ("a non-cursed oilskin cloak protects its wearer from all
+        # grabbing attacks ... including drowning attacks by sea monsters"); NetHack 3.6.6 src/mhitu.c
+        # u_slip_free() (skips the grab roll outright for a non-cursed slippery cloak, blocks it 2/3 of the
+        # time even cursed); this file's own wear_life_saving/ARMOR_UP comments document the identical
+        # "never worn while diving" dead-caller gap this reuses the fix pattern for.
+        """
+        if not jf_config.OILSKIN_GUARD or self.agent.hands_welded() or self.items.cloak is not None:
+            yield False
+            return
+        cloak = next((i for i in self.items if i.is_unambiguous() and i.object == O.from_name('oilskin cloak') and
+                      i.status in (Item.UNCURSED, Item.BLESSED) and not i.equipped), None)
+        if cloak is None:
+            yield False
+            return
+        yield True
+        self.agent.log(f'OILSKIN putting on {cloak.text!r}')
+        self.wear(cloak)
+        self.items.update(force=True)
+
     def _engrave_single_wand(self, item):
         """ Returns possible objects or None if current tile not suitable for identification."""
         # WISH_TELEPORT_ROUTE: a wish prompt during the engrave-test comes from a wand of wishing (>= 2 wishes)
@@ -1409,6 +1479,10 @@ class Inventory:
                         (getattr(self.items, name) is not None and getattr(self.items, name).status == Item.CURSED):
                     continue
                 additional_cond = True
+                if jf_config.ROBUST_FIXES:
+                    # a refused wear/take-off (see _wear_refused) waits before the slot is tried again
+                    additional_cond = self.agent.blstats.time >= \
+                        getattr(self.agent, '_wear_blocked_until', {}).get(slot, 0)
                 if slot == O.ARM_SHIELD:
                     additional_cond &= self.items.main_hand is None or not self.items.main_hand.objs[0].bi
                 if slot == O.ARM_GLOVES:
@@ -1423,16 +1497,20 @@ class Inventory:
                         yielded = True
                         yield True
                     if (slot == O.ARM_SHIRT or slot == O.ARM_SUIT) and self.items.cloak is not None:
-                        self.takeoff(self.items.cloak)
-                        break
-                    if slot == O.ARM_SHIRT and self.items.suit is not None:
-                        self.takeoff(self.items.suit)
-                        break
-                    if getattr(self.items, name) is not None:
-                        self.takeoff(getattr(self.items, name))
-                        break
-                    assert best_armorset[slot] is not None
-                    self.wear(best_armorset[slot])
+                        done = self.takeoff(self.items.cloak)
+                    elif slot == O.ARM_SHIRT and self.items.suit is not None:
+                        done = self.takeoff(self.items.suit)
+                    elif getattr(self.items, name) is not None:
+                        done = self.takeoff(getattr(self.items, name))
+                    else:
+                        assert best_armorset[slot] is not None
+                        done = self.wear(best_armorset[slot])
+                    if not done and jf_config.ROBUST_FIXES:
+                        # any refusal (the cloak or suit in the way, "Don't even bother.", a cursed item) passes
+                        # no turn: without a wait this slot's step repeats forever in this very loop
+                        blocked = getattr(self.agent, '_wear_blocked_until', {})
+                        blocked[slot] = max(blocked.get(slot, 0), self.agent.blstats.time + 20)
+                        self.agent._wear_blocked_until = blocked
                     break
             else:
                 break

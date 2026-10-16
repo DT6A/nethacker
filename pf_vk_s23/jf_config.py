@@ -149,6 +149,10 @@ KEEP_MAGIC_BOOTS = False
 # zap them (power.wish_text: GDSM, then an amulet of life saving worn at once, then a ring of levitation for
 # the Castle, then speed boots). ON (coordinator, train 2): it fires only in wish games (~1%).
 SPARE_WISHES = True
+# OILSKIN_GUARD: wear a carried, known not-cursed oilskin cloak when the cloak slot is empty (mhitu.c
+# u_slip_free: a non-cursed slippery cloak skips a grabbing attack's wrap/hug/drown roll outright). Water
+# deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster after minotaurs.
+OILSKIN_GUARD = True
 # a wished-for object is not formally identified (zap.c makewish: 'p - a granite ring'): name its appearance
 # after the wish (power.learn_wished). Without it SPARE_WISHES wished for an amulet of life saving again and
 # again and never wore one (base5-public s4, base5arm-jf16 s5), and castle_logic wished 3 rings of levitation,
@@ -304,6 +308,36 @@ CORPSE_TRACK = True
 CLAIM_CORPSES = True
 CLAIM_DIST = 3
 CLAIM_MAX_AGE = 15
+# hypothesis: this engine has none of nhbot/nhbot_v3's ROBUST_FIXES lane; it carries the same dragon-scales
+# plural-name bug they found and fixed (item_manager.parse_name never matched the game's 'set of <color>
+# dragon scales' / 'sets of ...' display text, so every look at dragon scales resolved to 'unknown'), plus
+# the wear/takeoff-refusal retry-loop bug (do_wear.c canwearobj()/select_off() can refuse a W/T without
+# spending a turn -- a welded two-hander, a foot stuck in a trap/the floor, slippery fingers -- so
+# wear_best_stuff retried the same refused slot forever). Porting both proven bullets here, already
+# individually measured non-negative on held-out seeds (0.3894/0.3894 and 0.3925/0.3894) in this run's history.
+# sources: nhbot/jf_config.py's ROBUST_FIXES comment, nhbot/item/item_manager.py's parse_name, and
+# nhbot/item/inventory.py's _wear_refused (the existing, already-proven fixes: eliminated PANIC loops in 12
+# deep dev games at Dlvl 19-29, and turn-less wear/takeoff retry spins); nethackwiki.com/wiki/Dragon_scales,
+# nethackwiki.com/wiki/Dragon_scale_mail, nethackwiki.com/wiki/Source:NetHack_3.4.3/src/objects.c (objnam.c
+# naming), nethackwiki.com/wiki/Welded, NetHack 3.6.6 do_wear.c (canwearobj/select_off); independent
+# confirmation that dragon-scale display/crash bugs are a recurring class across NetHack variants:
+# github.com/k21971/EvilHack doc/evilhack-changelog.md. Also /refs/history.md node #97 (dragon scales) and
+# #117 (wear/takeoff), each scored non-negative on held-out vs their own immediate parent.
+ROBUST_FIXES = True
+# hypothesis: the same parity gap also covers two more nhbot/nhbot_v3 ROBUST_FIXES2 bullets: (a) move()'s
+# diagonal-squeeze weight estimate (<=600) can be wrong, and the game then refuses the step with no turn
+# spent, so the BFS/replan loop retries the identical squeeze forever (nhbot's census: up to ~2000 panics in
+# 250 turns on one seed); (b) a worn punishment ball ('a heavy iron ball (chained to you)') or its chain ('an
+# iron chain') has no appearance text and matched nothing in parse_name's tables, always resolving to
+# 'unknown' (nhbot's census: 618 panics/630 turns on one Dlvl-4 seed, 383 panics on a Dlvl-29 castle seed).
+# Both are turn-wasting stall bugs, not strategy changes, and were each already measured non-negative on
+# held-out (0.3894/0.3894 and 0.3925/0.3894) as isolated ports onto this engine in this run's history.
+# sources: nhbot/jf_config.py's ROBUST_FIXES2 comment, nhbot/agent.py's move()/_squeeze_blocked()/bfs()
+# (can_squeeze), nhbot/item/item_manager.py's BALL_CLASS/CHAIN_CLASS entries; NetHack 3.6.6 src/hack.c
+# test_move()/cant_squeeze_thru(), nethackwiki.com/wiki/Squeeze, nethackwiki.com/wiki/Punishment;
+# /refs/history.md nodes #116 (squeeze) and #118 (ball/chain).
+ROBUST_FIXES2 = True
+SQUEEZE_REFUSED_TURNS = 100
 # hypothesis: a few corpses (centipede, cave spider, blue jelly, brown/red mold, quasit, shrieker, quivering blob)
 # are both risk-free to eat and grant intrinsic poison resistance (eat.c cpostfx POISON_RES), which stops a bitten/
 # stung death outright instead of just lowering its odds; today we only eat them incidentally while already hungry

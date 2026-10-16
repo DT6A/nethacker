@@ -927,6 +927,9 @@ class GlobalLogic:
                 # only prior caller) never runs once diving, so it sat unworn through exactly the Castle/Valley/
                 # Gehennom deaths it exists to prevent
                 self.agent.inventory.wear_life_saving(),
+                # OILSKIN_GUARD: a known not-cursed oilskin cloak prevents eel/kraken/python wrap-grab drowning
+                # outright (mhitu.c u_slip_free); same "never worn while diving" gap as wear_life_saving above
+                self.agent.inventory.wear_oilskin_cloak(),
             ])
             .preempt(self.agent, [
                 # boxed in by diagonal squeezes while carrying > 600 (jf_config.UNSQUEEZE)

@@ -111,6 +111,7 @@ class Agent:
         self._fight_stall = None       # (turn a contactless fight began, XP then, last fight2 turn) FIGHT_STALL_TURNS
         self._fight_ignored = {}       # (level key, glyph) -> [y, x, until turn, anywhere]: monsters fight2 let go
         self._fight_moves = []         # (turn, level key, position) of fight2's consecutive moves (FIGHT_STALL_MOVES)
+        self._squeeze_refused = None   # ROBUST_FIXES2: (turn, our weight estimate or None) of a refused squeeze
 
         self.last_cast_fail_turn = defaultdict(lambda: -float('inf'))
 
@@ -1666,8 +1667,29 @@ class Agent:
                     self.current_level().intact_doors[from_y, from_x] = True
                 elif 'diagonally into an intact doorway' in self.message:
                     self.current_level().intact_doors[expected_y, expected_x] = True
+                elif jf_config.ROBUST_FIXES2 and ('carrying too much to get through' in self.message or
+                                                  'body is too large to fit through' in self.message):
+                    # hack.c test_move: a diagonal squeeze refused without a turn; our weight estimate said it
+                    # fits, so the BFS kept planning it (see _squeeze_blocked)
+                    heavy = 'carrying too much' in self.message
+                    self._squeeze_refused = (self.blstats.time,
+                                             self.inventory.items.total_weight if heavy else None)
                 raise AgentPanic(f'agent position do not match after "move": '
                                  f'expected ({expected_y}, {expected_x}), got ({self.blstats.y}, {self.blstats.x})')
+
+    def _squeeze_blocked(self):
+        """ROBUST_FIXES2: the game refused a diagonal squeeze ('You are carrying too much to get through.': more than
+        600 weight by hack.c cant_squeeze_thru, which our estimate of unknown items missed; 'Your body is too large to
+        fit through.': a big polymorph form) -- no squeezing until our estimate drops below the refused one, or for
+        SQUEEZE_REFUSED_TURNS."""
+        refused = self._squeeze_refused
+        if refused is None:
+            return False
+        turn, weight = refused
+        if self.blstats.time - turn > jf_config.SQUEEZE_REFUSED_TURNS:
+            self._squeeze_refused = None
+            return False
+        return weight is None or self.inventory.items.total_weight >= weight
 
     def hands_welded(self):
         """engrave.c/do_wear.c freehand(): a cursed (welded) two-hander, or a cursed weapon with a shield,
@@ -1826,6 +1848,8 @@ class Agent:
             & ~level.intact_doors
         can_squeeze = (force_squeeze or self.inventory.items.total_weight <= 600) and \
             self.current_level().dungeon_number != Level.SOKOBAN
+        if can_squeeze and not force_squeeze and jf_config.ROBUST_FIXES2 and self._squeeze_blocked():
+            can_squeeze = False
         dis = utils.bfs(y, x,
                         walkable=walkable,
                         walkable_diagonally=walkable_diagonally,

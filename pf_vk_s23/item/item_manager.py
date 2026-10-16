@@ -4,7 +4,7 @@ import re
 import nle.nethack as nh
 from nle.nethack import actions as A
 
-from pf_vk_s23 import objects as O, utils
+from pf_vk_s23 import jf_config, objects as O, utils
 from pf_vk_s23.character import Character
 from pf_vk_s23.glyph import MON
 from pf_vk_s23.item import Item
@@ -527,6 +527,12 @@ class ItemManager:
             name = name[len('small '):]
         elif name == 'knives':
             name = 'knife'
+        elif jf_config.ROBUST_FIXES and name.endswith(' dragon scales') and \
+                (name.startswith('set of ') or name.startswith('sets of ')):
+            # objnam.c xname: 'set of <color> dragon scales' (makeplural: 'sets of ...'); objects.c names them
+            # '<color> dragon scales', so every look at them resolved to 'unknown' instead of the real item
+            # (ported from nhbot/nhbot_v3's ROBUST_FIXES, which found this caused PANIC loops in deep games)
+            name = name.split(' of ', 1)[1]
 
         # object identified (look on names)
         obj_ids = set()
@@ -558,6 +564,17 @@ class ItemManager:
             ('s', nh.FOOD_CLASS),
             ('s', nh.COIN_CLASS),
         ]
+        # hypothesis: a worn punishment ball ("a heavy iron ball (chained to you)") or its chain ("an iron
+        # chain") matches no prefix/suffix above (BALL_CLASS/CHAIN_CLASS have no appearance and aren't listed),
+        # so parse_name always fell through to the ambiguous-match branch and returned 'unknown' for them --
+        # the same failure mode dragon scales had before ROBUST_FIXES (see above); adding these two classes
+        # here should resolve a punishment ball/chain to their real identity instead.
+        # sources: nhbot/jf_config.py's ROBUST_FIXES2 comment (census of 5456 dev-game botlogs: 618 panics over
+        # 630 turns on Dlvl 4, 383 on the Dlvl-29 castle level) and nhbot/item/item_manager.py's existing,
+        # already-proven `if jf_config.ROBUST_FIXES2:` block (ported verbatim); nethackwiki.com/wiki/Punishment.
+        if jf_config.ROBUST_FIXES2:
+            prefixes = prefixes + [('', nh.BALL_CLASS), ('', nh.CHAIN_CLASS)]
+            suffixes = suffixes + [('s', nh.BALL_CLASS), ('s', nh.CHAIN_CLASS)]
         for i in range(nh.NUM_OBJECTS):
             for pref, c in prefixes:
                 if ord(nh.objclass(i).oc_class) == c:

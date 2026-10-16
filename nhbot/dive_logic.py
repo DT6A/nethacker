@@ -395,7 +395,20 @@ RAVEN_HOLD_IDLE = 6            # turns with nothing next to us / hurting us befo
 # we drown on the spot. base3 lost 7 Medusa digs this way ('You sink like a rock', no 'try to crawl out'). Dig a
 # wet square only with DROWN_GUARD_EXITS such squares around it: walk to one if the ground is the problem, wait
 # on Elbereth up to DROWN_GUARD_WAIT turns if monsters are.
-DROWN_GUARD = False
+# hypothesis: this subsystem is fully built and wired (_crawl_exits/_dig_walk_target/_drown_wait_since) but was
+# left dormant; turning it on should stop the no-exit flooded-hole drownings it was built for without touching
+# eel/kraken grab-drowning or Castle moat crossing. Water deaths (shark/giant eel/drowned) are 13/60 (22%) of
+# /refs/parent-eval.json + -extra.json, the 2nd largest cluster after minotaurs, concentrated Dlvl 25-27. Early
+# losses are 2/60 (3.3%, well under the 20% threshold), so this mid/late-game fix is in scope.
+# sources: NetHack 3.6.6 src/trap.c drown(), src/hack.c crawl_destination(), src/dig.c fillholetyp();
+# nethackwiki.com/wiki/Drowning ("if there is a floor tile next to the water with no monster on it, you will try
+# to climb out safely; otherwise you can drown"); nethackwiki.com/wiki/Moat (a pit dug near water/a single
+# adjacent moat square can fill back in with water); nethackwiki.com/wiki/Castle (four giant eels and a shark in
+# each corner of the moat, explaining the Dlvl 25-27 cluster). This exact flag was already built, measured and
+# kept positive twice under a different, now-superseded ancestor chain in this run's own history: node #65
+# (held-out 0.3953 vs parent 0.3925) and node #78 (held-out 0.3925 vs parent 0.3894) -- re-activating it here
+# carries that already-proven fix forward into the current root's lineage, which never incorporated it.
+DROWN_GUARD = True
 DROWN_GUARD_EXITS = 2
 DROWN_GUARD_WAIT = 15
 # DIG_WAND_ESCAPE (with DIG_ESCAPE): a known wand of digging, zapped down, holes the floor at once (zap.c

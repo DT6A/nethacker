@@ -176,6 +176,10 @@ BOOTS_KEEP = False
 # zap them (power.wish_text: GDSM, then an amulet of life saving worn at once, then a ring of levitation for
 # the Castle, then speed boots). ON (coordinator, train 2): it fires only in wish games (~1%).
 SPARE_WISHES = True
+# OILSKIN_GUARD: wear a carried, known not-cursed oilskin cloak when the cloak slot is empty (mhitu.c
+# u_slip_free: a non-cursed slippery cloak skips a grabbing attack's wrap/hug/drown roll outright). Water
+# deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster after minotaurs.
+OILSKIN_GUARD = True
 # a wished-for object is not formally identified (zap.c makewish: 'p - a granite ring'): name its appearance
 # after the wish (power.learn_wished). Without it SPARE_WISHES wished for an amulet of life saving again and
 # again and never wore one (base5-public s4, base5arm-jf16 s5), and castle_logic wished 3 rings of levitation,

@@ -1034,6 +1034,9 @@ class GlobalLogic:
                 # only prior caller) never runs once diving, so it sat unworn through exactly the Castle/Valley/
                 # Gehennom deaths it exists to prevent
                 self.agent.inventory.wear_life_saving(),
+                # OILSKIN_GUARD: a known not-cursed oilskin cloak prevents eel/kraken/python wrap-grab drowning
+                # outright (mhitu.c u_slip_free); same "never worn while diving" gap as wear_life_saving above
+                self.agent.inventory.wear_oilskin_cloak(),
                 # lift-ready (WAND_ENGRAVE_TEXT): once diving, re-test with text the wands the grind's test left unnamed
                 self.agent.inventory.wand_text_retest(),
                 # ARMOR_UP: the dig-dive never explores, so gather_items' wear_best_stuff never runs there (castle

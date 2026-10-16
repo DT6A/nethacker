@@ -1489,6 +1489,37 @@ class Inventory:
             self.agent.step(A.Command.PUTON, gen())
         self.items.update(force=True)
 
+    @utils.debug_log('inventory.wear_oilskin_cloak')
+    @Strategy.wrap
+    def wear_oilskin_cloak(self):
+        """OILSKIN_GUARD: put on a carried, positively-identified not-cursed oilskin cloak when no cloak is worn.
+        # hypothesis: a non-cursed oilskin cloak makes the hero slip free of a grab roll outright (mhitu.c
+        # u_slip_free), stopping a giant eel/kraken/python wrap-grab before it can hold and drown the hero --
+        # water deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster (11/60
+        # parent-eval(+extra) seeds, Dlvl 25-27) after minotaurs. Like wear_life_saving/ARMOR_UP, gather_items
+        # (the only other caller that would wear it) never runs once diving, so a carried, identified oilskin
+        # cloak otherwise sits unworn through exactly the Castle-moat/Medusa depths it is needed at. Only a
+        # known not-cursed cloak is worn (never unknown-BUC), and only into an empty cloak slot, so this never
+        # commits to a cursed item or displaces an already-worn (possibly better) cloak.
+        # sources: nethackwiki.com/wiki/Oilskin_cloak ("a non-cursed oilskin cloak protects its wearer from all
+        # grabbing attacks ... including drowning attacks by sea monsters"); NetHack 3.6.6 src/mhitu.c
+        # u_slip_free() (skips the grab roll outright for a non-cursed slippery cloak, blocks it 2/3 of the
+        # time even cursed); this file's own wear_life_saving/ARMOR_UP comments document the identical
+        # "never worn while diving" dead-caller gap this reuses the fix pattern for.
+        """
+        if not jf_config.OILSKIN_GUARD or self.agent.hands_welded() or self.items.cloak is not None:
+            yield False
+            return
+        cloak = next((i for i in self.items if i.is_unambiguous() and i.object == O.from_name('oilskin cloak') and
+                      i.status in (Item.UNCURSED, Item.BLESSED) and not i.equipped), None)
+        if cloak is None:
+            yield False
+            return
+        yield True
+        self.agent.log(f'OILSKIN putting on {cloak.text!r}')
+        self.wear(cloak)
+        self.items.update(force=True)
+
     def _engrave_single_wand(self, item):
         """ Returns possible objects or None if current tile not suitable for identification."""
         # WISH_TELEPORT_ROUTE: a wish prompt during the engrave-test comes from a wand of wishing (>= 2 wishes)
