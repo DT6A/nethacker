@@ -52,6 +52,8 @@ MINO_RANGE = 6            # react to a minotaur in view this close (Chebyshev); 
 MINO_CONSUME_RANGE = 5    # ...scrolls and self-teleports only this close: at first sight (mino-g1 jf16 s10 saw it at
                           # 4, dug on and read its teleport scroll only after the first 43-HP round)
 MINO_STAIRS_STEPS = 2     # walk to an up staircase this many steps away
+MINO_RAY_SAFE_RUN = 6     # MINO_RAY_ROOM: free squares from us (the minotaur's included) a ray needs to die out:
+                          # back on our square it has spent 2n+3 of its rn1(7,7) <= 13 range (zap.c dobuzz)
 MINO_STAIRS_AVOID = 1000  # turns the '>' we climbed onto is avoided (dig down elsewhere instead)
 MINO_ALERT_TURNS = 300    # after a minotaur sighting on a level, no rest there this long
 SLEEP_WINDOW = 150        # our sleep ray froze it for d(6,25) turns (zap.c sleep_monst): frozen until it acts or
@@ -538,7 +540,9 @@ class MinoGuard:
             (direction, dist, (sy, sx)), m = lines[0]
             wand, name = self._wand(('cold',))
             if wand is None and dist <= 1:
-                wand, name = self._wand(('fire', 'lightning'))
+                # MINO_RAY_ROOM: lightning only where its bounce dies out before it can come back through us
+                room = not jf_config.MINO_RAY_ROOM or self._free_run(sy, sx) >= MINO_RAY_SAFE_RUN
+                wand, name = self._wand(('fire', 'lightning') if room else ('fire',))
             if wand is not None:
                 yield ('zap', (wand, direction, m), f'known {name} at {dist}')
         # 10. an unknown wand at it

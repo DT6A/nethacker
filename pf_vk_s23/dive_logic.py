@@ -116,6 +116,26 @@ STUCK_EXPLORE_TURNS = 4000     # searching for a hidden way down before trying o
 # on her level, walking into the water). A '>' this close is still taken (it keeps an up staircase
 # under us on arrival).
 DIG_STAIRS_RADIUS = 8
+# hypothesis: with hostiles next to us a pick-axe hole barely progresses -- the apply itself digs nothing, the dig
+# occupation then runs one dig() per turn and monster_nearby() stops it after each (allmain.c moveloop), any attack
+# stops it outright (mhitu.c -> stop_occupation), and a human needs ~17-19 dig() calls of 10+rn2(5)+abon effort to
+# pass 250 (dig.c dig(); a dwarf doubles the running total each call, so ~4). Yet dig_first's DIG_ESCAPE digs (or
+# fights an @ from the spot) even with a known '>' a few steps away, and retreat_upstairs/elbereth_rest stand down
+# for it. And the pit the hole passes through (effort > 50, call 2 for a dwarf) holds us 2-5 turns with our view cut
+# to the next squares (dig.c digactualhole: set_utrap(rn1(4, 2), TT_PIT)), so a dwarf caught there by an @ fights
+# from the pit. STAIRS_OVER_DIG: with hostiles in view and no pit of ours yet, a main-line '>' within a few steps is
+# taken instead -- the plan already prefers one within DIG_STAIRS_RADIUS when nothing is in view (try_dig_down).
+# Elves, bees, ants and minotaurs have no M2_STALK, so they stay behind (dog.c keepdogs/levl_follower), and we land
+# on a '<' (a way back) instead of a random square. Parent games lost mid-dive this way: seed 1 dwa (fell into the
+# Big Room 2-3 squares from its '>', dug a pit, fought a Green-elf from it and died to its wand of lightning) and
+# hum-law 125977 (Dlvl 11, dug beside a wolf and a Green-elf).
+# sources: NetHack 3.6.6 src/allmain.c (moveloop occupation/monster_nearby), src/dig.c (dig, use_pick_axe2),
+# src/mondata.c levl_follower + src/monst.c (elves: M2_ELF|M2_COLLECT, no M2_STALK); nethackwiki.com/wiki/Big_Room
+# ("a pick-axe is too slow" there), nethackwiki.com/wiki/Follow, nethackwiki.com/wiki/Digging_for_victory; player
+# advice: rec.games.roguelike.nethack "Early Big Room Surviveability" (run for the stairs / dig with a wand, not a
+# pick), gamefaqs NetHack board "How to avoid moccasins, demons, bees and ants" (know where the stairs are).
+STAIRS_OVER_DIG = True
+STAIRS_OVER_DIG_STEPS = 6      # walking steps to the '>' (vs ~18 interrupted dig() calls for a human)
 # Dig before fighting: fight2 engages anything within 7 squares, but a hole takes a dwarf only 3-4 dig
 # steps and a monster interrupts the dig only once it attacks or first comes into view (monmove.c
 # disturb, mhitu.c): with no hostile within DIG_FIRST_RADIUS, keep digging out instead.
@@ -792,6 +812,7 @@ class DiveLogic:
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
+        self._stairs_walk_blocked_until = -1   # STAIRS_OVER_DIG: turn until which it doesn't walk to a '>'
         self._medusa_reroll_blocked_until = -1
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
         self._raven_cycles = 0             # RAVEN_CYCLE climbs off the raven island
@@ -2785,6 +2806,29 @@ class DiveLogic:
                     if 'fills with' in agent.message and key == self.medusa_level:
                         self._medusa_floods += 1
             return
+        if what == 'stairs':
+            y, x = arg
+            bl = agent.blstats
+            if (bl.y, bl.x) != (y, x):
+                agent.log(f'DIVE STAIRS_OVER_DIG walking to the > at {arg} instead of digging, hostiles at '
+                          f'{[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
+                start = (bl.y, bl.x)
+                try:
+                    agent.go_to(y, x, max_steps=1)
+                finally:
+                    if (agent.blstats.y, agent.blstats.x) == start:
+                        self._stairs_walk_blocked_until = agent.blstats.time + 5   # blocked: dig/fight meanwhile
+                return
+            agent.log(f'DIVE STAIRS_OVER_DIG going down stairs at {arg}, hostiles at '
+                      f'{[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
+            above = (level.key(), (y, x))
+            if ARRIVAL_FIX:
+                self._arrival_pending = (above[0], above[1], agent.blstats.time)
+            agent.move('>')
+            self._arrived = (agent.current_level().key(), agent.blstats.time, above)
+            if agent.current_level().key() == above[0]:
+                self._stairs_walk_blocked_until = agent.blstats.time + 5   # (not a way down after all)
+            return
         if what == 'step':
             agent.log(f'DIVE walking to dig at {arg}, hostiles at {[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
             start = (agent.blstats.y, agent.blstats.x)
@@ -2826,17 +2870,18 @@ class DiveLogic:
         radius = jf_config.AT_DIG_RADIUS if jf_config.AT_ELBERETH_FIX else 1
         close = adjacent + [m for m in monsters if max(abs(m[1] - bl.y), abs(m[2] - bl.x)) == 2 and 0 < m[0] <= 2] \
             if radius >= 2 else adjacent
+        stairs = self._stairs_over_dig(close, adjacent, wand)   # STAIRS_OVER_DIG: a '>' a few steps away
         if any(self._melee_ignores_elbereth(m[3]) for m in close):
             # an @ next to us: fight it. Digging beside it is futile: any attack, hit or miss, stops the dig
             # occupation before its next turn (mhitu.c hitmsg/missmu -> stop_occupation; allmain.c runs the
             # occupation only after the monsters' move), so a monster attacking every turn blocks all progress.
             # (dsafe-A jf16 s11 dug on in its pit beside a Grey-elf and a werewolf: 90 -> 12 HP, no hole.)
-            return self._wand_escape(wand)
+            return self._wand_escape(wand) or stairs
         if adjacent and agent._hurt_recently(2) and not self._elbereth_possible():
             # bitten while digging with no Elbereth under us and none to be had here (engrave cap, forbidden
             # square): every attack stops the dig, so a hole takes ~12 turns of free hits -- fight instead
             # (dsafe-t2 jf25 s11 dug on under a soldier ant and a large dog, 58 -> 16 HP in 5 turns)
-            return self._wand_escape(wand)
+            return self._wand_escape(wand) or stairs
         if WAND_FIRST and wand is not None and not self._in_own_pit() and not self._wand_waits():
             # with hostiles in view the wand's instant hole beats the pick's ~8 turns under attack (and a pit
             # that wipes our Elbereth); it is also the only escape of a dive without a pick-axe (base3arm-jf16
@@ -2846,6 +2891,8 @@ class DiveLogic:
             if zap is not None and self._wet_neighbours(bl.y, bl.x) == 0:
                 return zap
         tool = self.digging_tool()
+        if stairs is not None:
+            return stairs
         if tool is None:
             return None
         max_wet = self._dig_max_wet()
@@ -2930,6 +2977,31 @@ class DiveLogic:
                 and self._eel_engraved >= self._eel_hold_turn:
             return False
         return self._eel_engraved < turn   # at most one engraving per turn
+
+    def _stairs_over_dig(self, close, adjacent, wand):
+        """STAIRS_OVER_DIG: ('stairs', (y, x)) -- a known main-line '>' at most STAIRS_OVER_DIG_STEPS walking steps
+        away -- while hostiles are in view and we have no pit here yet; else None."""
+        agent = self.agent
+        bl = agent.blstats
+        if not STAIRS_OVER_DIG or bl.time < self._stairs_walk_blocked_until or not agent.get_visible_monsters():
+            return None
+        if (self.digging_tool() is None and wand is None) or self._in_own_pit() or self.levitating() or \
+                self.on_medusa_level():
+            return None   # (our own pit: the hole is a few dig() calls on, climbing out takes 2-7 turns)
+        # a dwarf's running total doubles each dig() call: on an Elbereth that holds them off, its hole is quicker
+        # a stalker next to us comes along on the stairs as through a hole (dog.c keepdogs: levl_follower)
+        if close and all(max(abs(int(m[1]) - int(bl.y)), abs(int(m[2]) - int(bl.x))) <= 1 and
+               getattr(m[3], 'mflags2', 0) & MON.M2_STALK for m in close):
+            return None
+        level = agent.current_level()
+        for d, y, x, kind in self.down_targets():
+            if kind != 'stairs' or d > STAIRS_OVER_DIG_STEPS:
+                continue
+            if level.dungeon_number == Level.DUNGEONS_OF_DOOM and bl.depth <= MINES_BRANCH_MAX_DEPTH and \
+                    (y, x) not in level.stair_destination:
+                continue   # it may be the Mines branch staircase
+            return ('stairs', (y, x))
+        return None
 
     def _wand_escape(self, wand):
         """('zap', wand) when a known wand of digging can hole the floor right here, else None (fight)."""
@@ -4388,8 +4460,47 @@ class DiveLogic:
                     agent.current_level().dungeon_number == Level.DUNGEONS_OF_DOOM:
                 self.castle.on_bottom(key)
 
+    def _deep_prayer_hold(self):
+        """jf_config.DEEP_PRAYER_READY: on an ordinary Dungeons of Doom level just above Medusa's (depth >=
+        DEEP_PRAYER_MIN_DEPTH; Medusa's level known to be deeper, or depth < MEDUSA_MIN_DEPTH while unseen) wait on an
+        Elbereth until DIVE_PRAYER_GAP turns have passed since the last prayer, so the emergency HP prayer works below
+        (pray.c: major trouble needs the timeout <= 200). True: acted (engraved or waited)."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        if not self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
+                bl.depth < jf_config.DEEP_PRAYER_MIN_DEPTH or self.castle.active() or self.on_medusa_level():
+            return False
+        if (self.medusa_level is None and bl.depth >= MEDUSA_MIN_DEPTH) or \
+                (self.medusa_level is not None and level.level_number >= self.medusa_level[1]):
+            return False   # Medusa's level or below (or maybe so): the deep plans run there
+        last = agent.last_prayer_turn
+        if last is None or agent.prayer_failed or bl.time - last >= DIVE_PRAYER_GAP:
+            return False
+        if bl.hunger_state >= Hunger.HUNGRY and agent.carried_food_nutrition() < DIVE_PRAYER_FOOD_MIN:
+            return False   # a wait would end in a hunger prayer (which restarts the clock anyway)
+        prop = agent.character.prop
+        if prop.blind or prop.polymorph or not agent.can_engrave():
+            return False   # no Elbereth to wait on
+        key = level.key()
+        waits = self.__dict__.setdefault('_deep_prayer_waits', {})
+        if key not in waits:
+            waits[key] = bl.time
+            agent.log(f'DEEP_PRAYER_READY waiting at depth {bl.depth}: {bl.time - last} turns since the last prayer')
+        if bl.time - waits[key] > jf_config.DEEP_PRAYER_MAX_WAIT:
+            return False
+        self._task('deep prayer wait')
+        if self._rest_elbereth():
+            return True
+        if (agent.inventory.engraving_below_me or '').lower() != 'elbereth':
+            return False   # the Elbereth tries on this square are spent: go on down
+        agent.search(10)
+        return True
+
     def descend(self):
         agent = self.agent
+        if jf_config.DEEP_PRAYER_READY and self._deep_prayer_hold():
+            return
         if self.try_dig_down():
             return
         targets = self.down_targets()

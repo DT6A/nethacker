@@ -1250,6 +1250,25 @@ STAIR_BOULDER_WAIT = 300
 # on a level where one was seen. cmp-main: minotaurs killed 23 of 90 games; 3 of the 7 dev-set maze deaths carried a
 # known item that ends the fight in one action (jf14 s0 genocide, jf16 s10 teleport scrolls, jf41 s13 teleport wand).
 MINO_GUARD = True
+# MINO_RAY_ROOM (mino_guard step 9): a known wand of lightning is zapped at a minotaur next to us only with
+# MINO_RAY_SAFE_RUN free squares along the ray (the minotaur's included), as castle_landing._pick_wand already does.
+# zap.c dobuzz: a ray runs rn1(7,7) = 7..13 squares, a wall reverses a straight one (one extra --range), and every hit
+# costs 2 more; back on our square it has spent 2n+3 with n free squares out, so a maze corridor (n of 1-4) brings it
+# home. A lightning bolt that hits us does 6d6 and blinds us for d(6,50) turns (zhitu -> flashburn), and the blind dive
+# that follows can neither read nor reliably write Elbereth; 6d6 a pass is a third of a minotaur's 15d8. Cold (a
+# Valkyrie resists its bounce) and fire (no blinding) stay as they were.
+# hypothesis: in the filler mazes most straight runs end in a wall within 1-5 squares, so the parent's adjacent
+# lightning zap usually bounces back through us; skipping it there (falling through to the unknown wand / unknown
+# scroll gambles) removes a self-inflicted ~21 HP and long blindness from the minotaur fight, the top killer of both
+# human Valkyries (8 hum-law and 7 hum-neu of 40 parent games, Dlvl 25-29). Parent diagnostic hum-law seed 12 (Dlvl 27): "MINO zapping 'a wand
+# of lightning' sw at the minotaur ... The bolt of lightning bounces! ... The bolt of lightning hits" took us 46 -> 7 HP
+# in one turn, and the next turn killed us.
+# sources: NetHack 3.6.6 src/zap.c dobuzz() (range rn1(7,7), range -= 2 per hit, make_bounce: --range and dx = -dx for
+# a straight ray), zhitu() ZT_LIGHTNING (d(6,6), flashburn d(nd,50)), src/mkmaze.c (filler maze corridors);
+# nethackwiki.com/wiki/Wand_of_lightning ("can blind you if it hits you ... bounces"), nethackwiki.com/wiki/Ray
+# (bouncing, range 7-13), nethackwiki.com/wiki/Minotaur (15HD, d(3,10) d(3,10) d(2,8)); this repo's
+# castle_landing._pick_wand ("lightning and magic missile only with room (lightning's bounce blinds us)").
+MINO_RAY_ROOM = True
 # MINO_TAME (mino_guard; research/deep_deaths.md, maze lane): an awake minotaur next to us and a KNOWN scroll of taming
 # that isn't known cursed -> read it (after the wand of digging, before every gamble). read.c SCR_TAMING calls maybe_tame
 # on each monster within 1 square (5 confused); resist() is rn2(100 + 9 - 15) < mr and a minotaur's MR is 0, so it never
@@ -1813,6 +1832,29 @@ AT_THREAT_MEMORY = 10               # turns an @ seen within the radius keeps ho
 AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer before we dig all the same
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
 AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
+
+# hypothesis: DEEP_PRAYER_READY (dive_logic._deep_prayer_hold) -- the dive's only prayer-readiness gate is at its start
+# (DIVE_PRAYER_GAP: a tool holder digs only >= 800 turns after its last prayer). A prayer made on the way down (Dlvl 5-20
+# crowds, a hunger prayer) restarts the clock (pray.c: prayer_timeout = rnz(350), median 350, 8.5% > 1000), and the
+# dive then digs into Medusa's level, the minotaur mazes and the castle -- where the deaths cluster (parent-eval: 47 of
+# 60 games end at Dlvl 24-29 -- minotaurs 3d10/3d10/2d8 at speed 15 ignore Elbereth, eels and sharks drown in one grab,
+# ravens swarm Medusa-3) -- with no emergency HP prayer, which needs the timeout <= 200 (pray.c can_pray: major
+# trouble). On the last ordinary room-and-corridor levels above Medusa (Dlvl >= DEEP_PRAYER_MIN_DEPTH, Medusa's level
+# known to be deeper, or Dlvl < MEDUSA_MIN_DEPTH while it is unseen) the dive now waits on an Elbereth (DIVE_REST's
+# _rest_elbereth: everything randomly generated there but @/A respects it) until DIVE_PRAYER_GAP turns have passed, so
+# the #0 answer of the deep guards (mino_guard's prayer, the low-HP prayer) is live for the first maul below; the wait
+# also heals. Not after a failed prayer, not Hungry without DIVE_PRAYER_FOOD_MIN food, never where no Elbereth can be
+# engraved, at most DEEP_PRAYER_MAX_WAIT turns per level; never on Medusa's level, in a maze, the castle or Gehennom.
+# A readiness check before the deep stage (prayer is this bot's main way out of a lost fight).
+# sources: port of /board/past_ideas/node-354.diff (#354, +0.0061 over its parent; #363 +0.0004); NetHack 3.6.6
+#   src/pray.c (can_pray: p_trouble > 0 ? u.ublesscnt > 200; pleased: u.ublesscnt = rnz(350)), src/rnd.c rnz;
+#   https://nethackwiki.com/wiki/Prayer ("with a major problem it is safe to pray with a timeout as high as 200");
+#   https://nethackwiki.com/wiki/Rnz ; https://nethackwiki.com/wiki/Maze (0-2 minotaurs per filler maze);
+#   https://nethackwiki.com/wiki/Minotaur ; https://nethackwiki.com/wiki/Valkyrie ; https://nethackwiki.com/wiki/Raven ;
+#   https://nethackwiki.com/wiki/Lessons_learned_the_hard_way (pray only when it can work).
+DEEP_PRAYER_READY = True
+DEEP_PRAYER_MIN_DEPTH = 20
+DEEP_PRAYER_MAX_WAIT = 1200
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

@@ -729,6 +729,29 @@ SOKOBAN_TRIP_TURNS = 8000
 # water by a python"); NetHack 3.6.6 mhitu.c (AD_WRAP: u.ustuck + is_pool at holder -> drowns you).
 PYTHON_HOLD = True
 
+# hypothesis: DEEP_PRAYER_READY (dive_logic._deep_prayer_hold) -- the dive's only prayer-readiness gate is at its start
+# (DIVE_PRAYER_GAP: a tool holder digs only >= 800 turns after its last prayer). A prayer made on the way down (Dlvl 5-20
+# crowds, a hunger prayer) restarts the clock (pray.c: prayer_timeout = rnz(350), median 350, 8.5% > 1000), and the
+# dive then digs into Medusa's level, the minotaur mazes and the castle -- where the deaths cluster (parent-eval: 47 of
+# 60 games end at Dlvl 24-29 -- minotaurs 3d10/3d10/2d8 at speed 15 ignore Elbereth, eels and sharks drown in one grab,
+# ravens swarm Medusa-3) -- with no emergency HP prayer, which needs the timeout <= 200 (pray.c can_pray: major
+# trouble). On the last ordinary room-and-corridor levels above Medusa (Dlvl >= DEEP_PRAYER_MIN_DEPTH, Medusa's level
+# known to be deeper, or Dlvl < MEDUSA_MIN_DEPTH while it is unseen) the dive now waits on an Elbereth (DIVE_REST's
+# _rest_elbereth: everything randomly generated there but @/A respects it) until DIVE_PRAYER_GAP turns have passed, so
+# the #0 answer of the deep guards (mino_guard's prayer, the low-HP prayer) is live for the first maul below; the wait
+# also heals. Not after a failed prayer, not Hungry without DIVE_PRAYER_FOOD_MIN food, never where no Elbereth can be
+# engraved, at most DEEP_PRAYER_MAX_WAIT turns per level; never on Medusa's level, in a maze, the castle or Gehennom.
+# A readiness check before the deep stage (prayer is this bot's main way out of a lost fight).
+# sources: port of /board/past_ideas/node-354.diff (#354, +0.0061 over its parent; #363 +0.0004); NetHack 3.6.6
+#   src/pray.c (can_pray: p_trouble > 0 ? u.ublesscnt > 200; pleased: u.ublesscnt = rnz(350)), src/rnd.c rnz;
+#   https://nethackwiki.com/wiki/Prayer ("with a major problem it is safe to pray with a timeout as high as 200");
+#   https://nethackwiki.com/wiki/Rnz ; https://nethackwiki.com/wiki/Maze (0-2 minotaurs per filler maze);
+#   https://nethackwiki.com/wiki/Minotaur ; https://nethackwiki.com/wiki/Valkyrie ; https://nethackwiki.com/wiki/Raven ;
+#   https://nethackwiki.com/wiki/Lessons_learned_the_hard_way (pray only when it can work).
+DEEP_PRAYER_READY = True
+DEEP_PRAYER_MIN_DEPTH = 20
+DEEP_PRAYER_MAX_WAIT = 1200
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
