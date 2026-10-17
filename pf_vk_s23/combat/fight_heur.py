@@ -243,6 +243,39 @@ def simulate_wand_path(agent, wand, monsters, dy, dx):
         yield y, x, hit_object, expected_hit_count
 
 
+# hypothesis: the ray planner credits a fire/cold/lightning/death/magic-missile ray against a monster that takes no
+#   damage from it (fire ant vs fire, liches & golems vs death, storm giant vs lightning...), so it spends charges
+#   (and risks bounces onto itself/pets) on no-op zaps instead of fighting/fleeing; resisted targets get no credit.
+# sources: NetHack 3.6.6 src/zap.c zhitm() (resists_fire/cold/elec, ZT_DEATH nonliving/is_demon/resists_magm,
+#   Death is healed), src/mondata.c resists_magm(), include/monflag.h (MR_*, M2_*), include/monsym.h (S_VORTEX,
+#   S_GOLEM); constants checked against nle.nethack.permonst; https://nethackwiki.com/wiki/Wand_of_fire ,
+#   https://nethackwiki.com/wiki/Wand_of_death , https://nethackwiki.com/wiki/Wand_of_lightning ;
+#   REUSES board nodes #260/#294/#281 (RESIST, positive vs parent in 6 of 8 placements)
+_RESIST_MR = {'fire': 0x01, 'cold': 0x02, 'lightning': 0x10}          # monflag.h MR_FIRE/MR_COLD/MR_ELEC
+_RESIST_MAGM = frozenset(('gray dragon', 'baby gray dragon', 'Angel', 'Chromatic Dragon', 'Oracle', 'Yeenoghu'))
+_M2_UNDEAD, _M2_DEMON, _S_VORTEX, _S_GOLEM = 0x2, 0x100, 22, 55
+
+
+def ray_resisted(mon, wand):
+    """RESIST_AWARE_ZAP: True when monster kind `mon` takes no damage from (identified) ray wand `wand`."""
+    try:
+        name = wand.objs[0].name
+        mname = getattr(mon, 'mname', '')
+        if name in _RESIST_MR:
+            return bool(int(getattr(mon, 'mresists', 0) or 0) & _RESIST_MR[name])
+        if name == 'magic missile':
+            return mname in _RESIST_MAGM
+        if name == 'death':
+            mlet = getattr(mon, 'mlet', '')
+            mlet = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else mlet
+            f2 = int(getattr(mon, 'mflags2', 0) or 0)
+            return bool(f2 & (_M2_UNDEAD | _M2_DEMON)) or mlet in (_S_VORTEX, _S_GOLEM) or \
+                mname in ('manes', 'Death') or mname in _RESIST_MAGM
+    except Exception:
+        return False
+    return False
+
+
 def get_potential_wand_usages(agent, monsters, dy, dx):
     ret = []
     if missiles_risk_the_watch(agent):
@@ -265,6 +298,8 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
                 priority -= p * 30
             elif monster is not None:
                 _, y, x, mon, _ = monster
+                if jf_config.RESIST_AWARE_ZAP and ray_resisted(mon, item):
+                    continue   # no damage to it (see ray_resisted): no credit, not a reason to zap
                 if mon.mname in WEAK_MONSTERS:
                     priority += min(p, 1) * 1
                 elif is_dangerous_monster(monster):

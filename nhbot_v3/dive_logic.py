@@ -1925,6 +1925,9 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
+        # LMINION_ONSCARY: lawful minions (every A) are 'directly resistant to magical scaring' in onscary()
+        if jf_config.LMINION_ONSCARY and self._lawful_minion(mon):
+            return True
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
@@ -1937,7 +1940,15 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
+        if jf_config.LMINION_ONSCARY and self._lawful_minion(mon):
+            return True
         return cls == MON.S_HUMAN or name == 'minotaur'
+
+    @staticmethod
+    def _lawful_minion(mon):
+        """LMINION_ONSCARY: an M2_MINION monster -- the A class (couatl, Aleax, Angel, ki-rin, Archon), all lawful --
+        is is_lminion() for monmove.c onscary, which ignores Elbereth and a scroll of scare monster for it."""
+        return bool(getattr(mon, 'mflags2', 0) & MON.M2_MINION)
 
     def _at_threat(self):
         """AT_THREAT_AVOID: the distance of the nearest hostile Elbereth-ignoring meleer that holds a new pit here -- in
@@ -3731,6 +3742,9 @@ class DiveLogic:
             # bitten while digging with no Elbereth under us and none to be had here (engrave cap, forbidden
             # square): every attack stops the dig, so a hole takes ~12 turns of free hits -- fight instead
             # (dsafe-t2 jf25 s11 dug on under a soldier ant and a large dog, 58 -> 16 HP in 5 turns)
+            if jf_config.RESERVE_BITE_GATE and wand is not None and self._wand_reserved() and \
+                    not self._bite_needs_wand(adjacent):
+                return None   # (see jf_config.RESERVE_BITE_GATE) a newt or jackal: fight2 kills it, the charge stays
             return self._wand_escape(wand)
         if jf_config.AT_THREAT_AVOID:
             holding, act = self._at_hold()
@@ -3899,6 +3913,21 @@ class DiveLogic:
         from our own pit (jf41 s13: pit dug, a titan's boulder in it, killed by the gremlin with the wand kept)."""
         bl = self.agent.blstats
         return bl.hitpoints < WAND_RESERVE_HP * bl.max_hitpoints and bool(self._near_hostiles(radius=2))
+
+    def _bite_needs_wand(self, adjacent):
+        """RESERVE_BITE_GATE: whether the hostiles next to us justify a reserved wand's zap above Medusa."""
+        if len(adjacent) >= 3:
+            return True   # a crowd: even weak biters add up while every attack stops the dig
+
+        def threat(m):
+            mon = m[3]
+            mmove = getattr(mon, 'mmove', 99)
+            if mmove == 0:
+                return False   # sessile molds and jellies only hurt us when we hit them; they never come after us
+            # makemon difficulty <= 2 at our speed or slower: newt, jackal, sewer rat, kobold, gnome, giant rat
+            return getattr(mon, 'difficulty', 99) > 2 or mmove > 12
+
+        return any(threat(m) for m in adjacent)
 
     def _wand_reserved(self):
         """WAND_RESERVE: above Medusa's level (or before it is known) the wand of digging waits while the pick-axe

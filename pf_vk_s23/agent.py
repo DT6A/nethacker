@@ -667,8 +667,10 @@ class Agent:
     def _update_level_items(self):
         level = self.current_level()
 
-        level.items[self.blstats.y, self.blstats.x] = self.inventory.items_below_me
-        level.item_count[self.blstats.y, self.blstats.x] = len(self.inventory.items_below_me)
+        # DEEP_BLIND_LOOK: a floor we skipped looking at while blind is unknown, not empty -- keep the square's memory
+        if not self.inventory._blind_look_skipped:
+            level.items[self.blstats.y, self.blstats.x] = self.inventory.items_below_me
+            level.item_count[self.blstats.y, self.blstats.x] = len(self.inventory.items_below_me)
 
         # TODO: optimize
         ignore_mask = utils.isin(self.glyphs, G.MONS, G.PETS)  # TODO: effects, etc
@@ -775,6 +777,9 @@ class Agent:
                     self.log(f'CORPSE kill {mname} recorded={recorded} was_at={was} bodies_now={body} '
                              f'me={(self.blstats.y, self.blstats.x)}')
 
+        # DEEP_BLIND_LOOK: an unlooked floor (blind) is no evidence the corpses under us are gone
+        if self.inventory._blind_look_skipped:
+            return
         old_possible_corpses = level.corpses_to_eat[self.blstats.y, self.blstats.x].copy()
         del level.corpses_to_eat[self.blstats.y, self.blstats.x]
 

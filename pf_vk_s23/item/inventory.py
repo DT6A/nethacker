@@ -47,6 +47,7 @@ class Inventory:
         self.items_below_me = None
         self.letters_below_me = None
         self.engraving_below_me = None
+        self._blind_look_skipped = False   # DEEP_BLIND_LOOK: a floor look was skipped while blind (redo on sight)
 
         self.skip_engrave_counter = 0
         self.scare_labels = set()     # scroll labels known to be scare monster in this game (power.note_dust_prompt)
@@ -120,13 +121,17 @@ class Inventory:
         self.item_manager.update()
         self.items.update()
 
-        if self._previous_blstats is None or \
+        # DEEP_BLIND_LOOK: sight is back on a square whose floor was never looked at -- look now (the engraving under
+        # us may be a good Elbereth that a blind '' would have us wipe and rewrite)
+        blind_redo = self._blind_look_skipped and not self.agent.character.prop.blind
+        if blind_redo or self._previous_blstats is None or \
                 (self._previous_blstats.y, self._previous_blstats.x, \
                  self._previous_blstats.level_number, self._previous_blstats.dungeon_number) != \
                 (self.agent.blstats.y, self.agent.blstats.x, \
                  self.agent.blstats.level_number, self.agent.blstats.dungeon_number) or \
                 (self.engraving_below_me is None or self.engraving_below_me.lower() == 'elbereth'):
-            assume_appropriate_message = self._previous_blstats is not None and not self.engraving_below_me
+            assume_appropriate_message = not blind_redo and self._previous_blstats is not None and \
+                not self.engraving_below_me
 
             self._previous_blstats = self.agent.blstats
             self.items_below_me = None
@@ -571,7 +576,40 @@ class Inventory:
             yield ' '
         assert not items
 
+    # hypothesis: blinded by a raven's claw (or a cobra's spit) deep in the dive, every ':' floor look is a real move
+    # -- invent.c look_here() returns !!Blind ("You try to feel what is lying here") -- and reads no dust engraving
+    # anyway (engrave.c read_engr_at: DUST is sensed only when !Blind). get_items_below_me runs after every step and
+    # every Elbereth (engrave() reads its work back), so a blinded digger hands the ravens/snakes a free turn per
+    # action; ravens are this engine's (val-dwa-law-fem) #2 killer (3/15 public seeds, Dlvl 24-25). nhbot and
+    # nhbot_v3 ship this exact skip (DEEP_BLIND_LOOK, on); pf_vk_s23 never had it. Skipping the look while blind at
+    # depth >= DEEP_BLIND_LOOK_DEPTH during the dive, and looking again as soon as sight returns, should cut those
+    # Medusa-depth raven deaths without changing any game before its first blind moment down there.
+    # sources: nhbot/item/inventory.py _blind_look_skip + nhbot/jf_config.py DEEP_BLIND_LOOK (F095: 34 of 45 fresh
+    # Medusa deaths spent 3-12 of their last 50 turns on blind looks; Dlvl>=21 subset 6 better / 4 worse);
+    # NetHack 3.6.6 src/invent.c look_here(), src/engrave.c read_engr_at(); https://nethackwiki.com/wiki/Raven;
+    # https://nethackwiki.com/wiki/Blindness; https://nethackwiki.com/wiki/Medusa%27s_Island
+    # Reuses node #233 (/board/past_ideas/node-233.diff: +0.0086 vs its parent, held-out +0.0063); this parent's eval
+    # still loses 3 of 20 val-dwa games to ravens (Dlvl 24-26).
+    def _blind_look_skip(self):
+        """DEEP_BLIND_LOOK: blind, ':' costs a turn and reads no dust engraving. Only while diving (the tour's pickup/
+        container bookkeeping needs the real floor) and only at depth >= DEEP_BLIND_LOOK_DEPTH: the floor counts as
+        empty and unengraved until sight returns, when update() looks again."""
+        if not self.agent.character.prop.blind:
+            return False
+        if not jf_config.WR_BLIND_LOOK and \
+                not (jf_config.DEEP_BLIND_LOOK and self.agent.blstats.depth >= jf_config.DEEP_BLIND_LOOK_DEPTH):
+            return False
+        dive = getattr(getattr(self.agent, 'global_logic', None), 'dive', None)
+        return dive is not None and dive.diving
+
     def get_items_below_me(self, assume_appropriate_message=False):
+        if self._blind_look_skip():
+            self._blind_look_skipped = True
+            self.items_below_me = []
+            self.letters_below_me = []
+            self.engraving_below_me = ''
+            return []
+        self._blind_look_skipped = False
         with self.agent.panic_if_position_changes():
             with self.agent.atom_operation():
                 if not assume_appropriate_message:

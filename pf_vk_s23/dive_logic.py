@@ -1522,6 +1522,9 @@ class DiveLogic:
         mlet = getattr(mon, 'mlet', '')
         cls = ord(mlet) if isinstance(mlet, str) and len(mlet) == 1 else -1
         name = getattr(mon, 'mname', '')
+        # LMINION_ONSCARY: lawful minions (every A) are 'directly resistant to magical scaring' in onscary()
+        if jf_config.LMINION_ONSCARY and self._lawful_minion(mon):
+            return True
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
@@ -1534,7 +1537,15 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
+        if jf_config.LMINION_ONSCARY and self._lawful_minion(mon):
+            return True
         return cls == MON.S_HUMAN or name == 'minotaur'
+
+    @staticmethod
+    def _lawful_minion(mon):
+        """LMINION_ONSCARY: an M2_MINION monster -- the A class (couatl, Aleax, Angel, ki-rin, Archon), all lawful --
+        is is_lminion() for monmove.c onscary, which ignores Elbereth and a scroll of scare monster for it."""
+        return bool(getattr(mon, 'mflags2', 0) & MON.M2_MINION)
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level

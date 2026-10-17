@@ -3,6 +3,14 @@
 Dev runs may override them with JF_CFG='{"TOUR_FIXES": false, ...}'; the arena never sets
 JF_CFG, so submissions always run these defaults.
 """
+
+# hypothesis: combination 3 of round 8 (node #340) -- the round's ideas that generalized best (held-out and/or dev up
+# over their own parent): RESIST_AWARE_ZAP (#301/#304: no ray credit vs a monster that resists it, zap.c zhitm),
+# RESERVE_BITE_GATE (#299: the reserved wand of digging is not spent on a trivial biter while digging; nhbot/nhbot_v3
+# only), LMINION_ONSCARY (#336, subsumes #322's LMINION_ELBERETH: every A ignores Elbereth, monmove.c onscary) and
+# DEEP_BLIND_LOOK for pf_vk_s23 (#321: no blind ':' turn deep in the dive, invent.c look_here). They touch disjoint
+# decisions (wand planner, dig-escape zap, Elbereth model, floor look), so their gains should add up.
+# sources: round ideas #301, #299, #336, #321 (see /board/round_ideas/node-<n>.diff and each flag's own comment below)
 import json
 import os
 
@@ -152,6 +160,22 @@ AT_DIG_RADIUS = 2
 # melee Elbereth-ignorers (AT_ELBERETH_FIX fights them, the dig escape stops digging beside them) and no Elbereth rest
 # is taken next to one (CASTLE_SCARE's scroll drop is unchanged: a scroll doesn't scare them either).
 LMINION_ELBERETH = True
+# hypothesis: LMINION_ONSCARY (dive_logic._ignores_elbereth) -- monmove.c onscary() returns FALSE for
+# is_lminion() (every A: couatl, Aleax, Angel, ki-rin, Archon -- M2_MINION, all lawful) before it looks at an Elbereth
+# engraving or a scroll of scare monster, so no A is ever scared by either. LMINION_ELBERETH above fixed only the melee half; the general Elbereth model
+# _ignores_elbereth still counted every A as scared, and its ~25 callers act on that: the Elbereth rest and the dive's
+# other rests/holds next to one, the last resort's 'Elbereth futile' test (it skips the desperate prayer and lets the
+# bot 'rest' on Elbereth beside the A instead -- agent.py LR_ELBERETH), the fainting-threat prayer, the prayer
+# death model (nhmodel/prayer.py drops an adjacent A's damage while we stand on Elbereth), the castle scare-scroll
+# holds. dev-eval val-hum-neu-fem died 'killed by a couatl' (Dlvl 22) and 'killed by an Aleax' (Dlvl 26); A's come
+# from the titan's summon nasties on Medusa-2, liches and the deep random pool. Counting them as ignorers everywhere
+# should turn those holds into the fight/flee/pray answers the bot already has for minotaurs and @.
+# sources: NetHack 3.6.6 src/monmove.c onscary() ("creatures who are directly resistant to magical scaring: Rodney,
+# lawful minions, Angels, the Riders ..."), include/mondata.h is_lminion/is_minion; https://nethackwiki.com/wiki/Elbereth
+# ("No monster represented by @ or A will respect the word"; is_lminion "equivalent to any capital A");
+# https://nethackwiki.com/wiki/Aleax ; https://nethackwiki.com/wiki/Couatl ; /board/past_ideas #322/#92/#133
+# (LMINION_ELBERETH melee-only parity ports, positive vs parent), here extended to the general model.
+LMINION_ONSCARY = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 # ON (train 3): castle A038 guard neutral (-0.002); harness 2 Grey-elves at 12/72 HP deaths 9/10 -> 3/10
@@ -794,6 +818,19 @@ MEDUSA_ZAP_FIRST = True
 # spe < 3, and a second recharge explodes it. So c + 2 wishes instead of c: a 1-charge wand (1 in 3) got only the
 # teleport-control ring before (tele_route.py).
 WISH_CHARGING_FIRST = True
+# hypothesis: above Medusa, WAND_RESERVE keeps the wand of digging, but _dig_escape_action's 'bitten with no Elbereth to
+# be had' branch (a welded cursed two-hander, the engrave cap, a forbidden square) still zapped it at any biter. A diagnostic
+# dive spent its charges on a newt, a jackal and a blue jelly under a welded cursed mattock, then had no instant hole when
+# it fell into the Dlvl 10 crowd, and died. A Valkyrie kills a difficulty-1/2 biter in a hit or two. Sessile molds and
+# jellies only hurt us when we hit them. So the zap would also move the dig only one level down and spend a charge
+# that Medusa's island (one action instead of ~8 pick turns among her snakes) and the minotaur mazes below need.
+# sources: https://nethackwiki.com/wiki/Wand_of_digging ; https://nethackwiki.com/wiki/Big_Room ;
+# https://nethackwiki.com/wiki/Medusa%27s_Island ; https://nethackwiki.com/wiki/Valkyrie ; NetHack 3.6.6 mhitu.c
+# (any attack calls stop_occupation) and makemon.c/monst.c (difficulty, mmove)
+# RESERVE_BITE_GATE (dive_logic._dig_escape_action / _bite_needs_wand): with the wand reserved (above Medusa's level, a
+# digging tool in hand, no _reserve_emergency: HP >= WAND_RESERVE_HP or nothing within 2), that zap needs a real threat
+# next to us: difficulty > 2, faster than speed 12, or 3+ adjacent hostiles. Otherwise fight2 fights it and keeps the charge.
+RESERVE_BITE_GATE = True
 # STALKER_ZAP_FIX (off pending an A/B; dive_logic._dig_escape_action): above Medusa, where WAND_RESERVE keeps the wand of
 # digging, its 'escape' zap at an adjacent Elbereth-ignorer is skipped when every such ignorer is next to us and M2_STALK
 # (soldiers, sergeants, lieutenants, captains, Aleax, couatl and the other 'A', Olog-hai, vampire lords): dog.c
@@ -1769,3 +1806,8 @@ if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# hypothesis: rays at monsters immune to them waste charges/turns (see combat/fight_heur.ray_resisted)
+# sources: NetHack 3.6.6 src/zap.c zhitm(), src/mondata.c resists_magm(); https://nethackwiki.com/wiki/Wand_of_death ;
+#   REUSES board nodes #260/#294/#281
+RESIST_AWARE_ZAP = True

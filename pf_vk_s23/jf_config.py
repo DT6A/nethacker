@@ -3,6 +3,14 @@
 Dev runs may override them with JF_CFG='{"TOUR_FIXES": false, ...}'; the arena never sets
 JF_CFG, so submissions always run these defaults.
 """
+
+# hypothesis: combination 3 of round 8 (node #340) -- the round's ideas that generalized best (held-out and/or dev up
+# over their own parent): RESIST_AWARE_ZAP (#301/#304: no ray credit vs a monster that resists it, zap.c zhitm),
+# RESERVE_BITE_GATE (#299: the reserved wand of digging is not spent on a trivial biter while digging; nhbot/nhbot_v3
+# only), LMINION_ONSCARY (#336, subsumes #322's LMINION_ELBERETH: every A ignores Elbereth, monmove.c onscary) and
+# DEEP_BLIND_LOOK for pf_vk_s23 (#321: no blind ':' turn deep in the dive, invent.c look_here). They touch disjoint
+# decisions (wand planner, dig-escape zap, Elbereth model, floor look), so their gains should add up.
+# sources: round ideas #301, #299, #336, #321 (see /board/round_ideas/node-<n>.diff and each flag's own comment below)
 import json
 import os
 
@@ -132,6 +140,22 @@ AT_ELBERETH_FIX = True
 AT_FOCUS = 10
 # with AT_ELBERETH_FIX: the dig out gives way to the fight for an ignorer this many steps away (1: adjacent only)
 AT_DIG_RADIUS = 2
+# hypothesis: LMINION_ONSCARY (dive_logic._ignores_elbereth, _melee_ignores_elbereth) -- monmove.c onscary() returns FALSE for
+# is_lminion() (every A: couatl, Aleax, Angel, ki-rin, Archon -- M2_MINION, all lawful) before it looks at an Elbereth
+# engraving or a scroll of scare monster, so no A is ever scared by either. This engine counted them as scared in both halves: the melee half is nhbot's LMINION_ELBERETH, and the general Elbereth model
+# _ignores_elbereth still counted every A as scared, and its ~25 callers act on that: the Elbereth rest and the dive's
+# other rests/holds next to one, the last resort's 'Elbereth futile' test (it skips the desperate prayer and lets the
+# bot 'rest' on Elbereth beside the A instead -- agent.py LR_ELBERETH), the fainting-threat prayer, the prayer
+# death model (nhmodel/prayer.py drops an adjacent A's damage while we stand on Elbereth), the castle scare-scroll
+# holds. dev-eval val-hum-neu-fem died 'killed by a couatl' (Dlvl 22) and 'killed by an Aleax' (Dlvl 26); A's come
+# from the titan's summon nasties on Medusa-2, liches and the deep random pool. Counting them as ignorers everywhere
+# should turn those holds into the fight/flee/pray answers the bot already has for minotaurs and @.
+# sources: NetHack 3.6.6 src/monmove.c onscary() ("creatures who are directly resistant to magical scaring: Rodney,
+# lawful minions, Angels, the Riders ..."), include/mondata.h is_lminion/is_minion; https://nethackwiki.com/wiki/Elbereth
+# ("No monster represented by @ or A will respect the word"; is_lminion "equivalent to any capital A");
+# https://nethackwiki.com/wiki/Aleax ; https://nethackwiki.com/wiki/Couatl ; /board/past_ideas #322/#92/#133
+# (LMINION_ELBERETH melee-only parity ports, positive vs parent), here extended to the general model.
+LMINION_ONSCARY = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 # ON (train 3): castle A038 guard neutral (-0.002); harness 2 Grey-elves at 12/72 HP deaths 9/10 -> 3/10
@@ -714,7 +738,20 @@ if _raw:
 # JSON object keys are strings
 GRIND_LEVELS = {int(_k): int(_v) for _k, _v in (GRIND_LEVELS or {}).items()}
 
+# DEEP_BLIND_LOOK (inventory._blind_look_skip, ported from nhbot/nhbot_v3 where it is on): while blind in the dive at
+# depth >= DEEP_BLIND_LOOK_DEPTH, skip the ':' floor look (a whole turn blind -- invent.c look_here -- that reads no
+# dust engraving: engrave.c read_engr_at) and look again once sight returns. WR_BLIND_LOOK: the same skip at any depth
+# (off, as in nhbot: neutral there, the Mines' blind moments reshuffle games).
+WR_BLIND_LOOK = False
+DEEP_BLIND_LOOK = True
+DEEP_BLIND_LOOK_DEPTH = 21
+
 if TOUR_FIXES is not None:
     EARLY_FIXES = LATE_FIXES = bool(TOUR_FIXES)
 if LATE_FIXES:
     HAZARD_FIXES = True
+
+# hypothesis: rays at monsters immune to them waste charges/turns (see combat/fight_heur.ray_resisted)
+# sources: NetHack 3.6.6 src/zap.c zhitm(), src/mondata.c resists_magm(); https://nethackwiki.com/wiki/Wand_of_death ;
+#   REUSES board nodes #260/#294/#281
+RESIST_AWARE_ZAP = True
