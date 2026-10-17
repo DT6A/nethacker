@@ -237,6 +237,24 @@ RAVEN_HOLD_IDLE = 6            # turns with nothing next to us / hurting us befo
 DROWN_GUARD = True
 DROWN_GUARD_EXITS = 2
 DROWN_GUARD_WAIT = 15
+# hypothesis: MEDUSA_FREEZE (ported from nhbot/nhbot_v3, which this engine never received) -- on Medusa's level,
+# freeze the dig square's moat neighbours with a known wand of cold before digging or zapping down. dig.c
+# fillholetyp() fills a fresh hole with water with probability n/(n+1) for n pool/moat neighbours and counts no ICE;
+# zap.c zap_over_floor(ZT_COLD) turns every pool/moat square on the ray's path into ICE (melting no sooner than
+# MIN_ICE_TIME = 50 turns, far longer than the dig). With no wet neighbour left the hole can't flood, so the
+# DROWN_GUARD walks/waits and the "drowned in deep water" floods (3 of val-dwa-law-fem's 20 parent games, Dlvl
+# 24-27) go away whenever a cold wand is known. One zap per wet neighbour (each lies in its own direction); the
+# ray also hits ravens/eels on its path (6d6) and a Valkyrie resists its bounce (intrinsic cold resistance).
+# COLD_RESERVE keeps fight2 from spending the known wand of cold on ordinary monsters before Medusa (the castle
+# crossing's _cold_step in castle_logic uses the same wand), except below half HP with a hostile within 2.
+# sources: nhbot/dive_logic.py MEDUSA_FREEZE/_freeze_action/COLD_RESERVE (same bot family, val-hum engines);
+# NetHack 3.6.6 src/dig.c fillholetyp(), src/zap.c zap_over_floor() ZT_COLD, src/timeout.c melt_ice timer;
+# nethackwiki.com/wiki/Wand_of_cold ("freezes water ... into ice"); nethackwiki.com/wiki/Medusa%27s_Island
+# (digging down beside water floods the hole); nethackwiki.com/wiki/Valkyrie (intrinsic cold resistance).
+MEDUSA_FREEZE = True
+MEDUSA_FREEZE_MAX = 8          # cold zaps per Medusa level
+COLD_RESERVE = True
+COLD_RESERVE_HP = 0.5          # below this share of max HP with a hostile within 2 the wand is fight2's again
 # DIG_WAND_ESCAPE (with DIG_ESCAPE): a known wand of digging, zapped down, holes the floor at once (zap.c
 # zap_dig -> dighole: one flood roll, no pit phase). Used where the pick-axe can't work -- an adjacent @, or
 # bitten with no Elbereth to be had -- and on Medusa's wet islands. (power: 4% of XL-8 castle arrivals carry
@@ -766,6 +784,8 @@ class DiveLogic:
         self._boulder_spin = None          # STAIR_BOULDER_FIX: (level key, boulder square, turn, calls) this turn
         self._home_search = {}             # level key -> turn the dive began searching it for its digger
         self.medusa_level = None           # level key of Medusa's level once seen (see MEDUSA_WET_SQUARES)
+        self._freeze_zaps = {}             # MEDUSA_FREEZE: level key -> cold zaps spent there
+        self._frozen_dirs = {}             # MEDUSA_FREEZE: (level key, y, x) -> directions zapped from there
         self._pit_at = None                # (level key, (y, x)) of the pit we dug and still stand in
         self._dig_applies = {}             # level key -> all pick-axe applies (DIG_TRY_FIX)
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
@@ -2742,6 +2762,15 @@ class DiveLogic:
         if what == 'reroll':
             self._medusa_reroll(arg)
             return
+        if what == 'freeze':
+            cold, d, delta = arg
+            key = level.key()
+            bl = agent.blstats
+            self._freeze_zaps[key] = self._freeze_zaps.get(key, 0) + 1
+            self._frozen_dirs.setdefault((key, bl.y, bl.x), set()).add(delta)
+            agent.log(f'DIVE MEDUSA_FREEZE zapping {cold.text!r} {d} at the moat next to our dig square')
+            agent.zap(cold, d)
+            return
         if what == 'zap':
             key = level.key()
             spot = (agent.blstats.y, agent.blstats.x)
@@ -2833,6 +2862,9 @@ class DiveLogic:
         if self._in_own_pit() or (not on_stairs and self._diggable_spot(bl.y, bl.x, max_wet)) or \
                 (level.objects[bl.y, bl.x] in (SS.S_pit, SS.S_spiked_pit) and
                  self._wet_neighbours(bl.y, bl.x) <= max_wet):
+            freeze = self._freeze_action()
+            if freeze is not None:
+                return freeze   # MEDUSA_FREEZE: no moat neighbour left -> no flood roll can come up wet
             if max_wet > 0 and wand is not None:
                 return ('zap', wand)
             if DROWN_GUARD and self._wet_neighbours(bl.y, bl.x) > 0:
@@ -4013,6 +4045,52 @@ class DiveLogic:
         around_known = level.objects[max(py - 1, 0):py + 2, max(px - 1, 0):px + 2]
         return int((utils.isin(around, WET) | utils.isin(around_known, WET)).sum())
 
+    def _cold_item(self):
+        """MEDUSA_FREEZE: a known wand of cold with charges (top-level: it is zapped by its letter), or None."""
+        agent = self.agent
+        for item in agent.inventory.items:
+            if item.category != nh.WAND_CLASS or not item.is_unambiguous() or \
+                    agent.inventory.is_known_empty(item) or item.comment == 'EMPT':
+                continue
+            if item.object.name == 'cold':
+                return item
+        return None
+
+    def cold_reserved(self, item):
+        """COLD_RESERVE (see there): True when fight2 must not zap this item at a monster."""
+        if not COLD_RESERVE or item.category != nh.WAND_CLASS or not item.is_unambiguous() or \
+                item.object.name != 'cold' or self.in_gehennom():
+            return False
+        bl = self.agent.blstats
+        return not (bl.hitpoints < COLD_RESERVE_HP * bl.max_hitpoints and self._near_hostiles(radius=2))
+
+    def _freeze_action(self):
+        """MEDUSA_FREEZE (see there): ('freeze', (wand, direction, delta)) toward a moat neighbour of our square
+        while one is left, else None. Each direction is zapped once per square: blind, or with a monster standing
+        on the new ice, the map still remembers the water there."""
+        if not (MEDUSA_FREEZE and self.on_medusa_level()):
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        if self._freeze_zaps.get(key, 0) >= MEDUSA_FREEZE_MAX:
+            return None
+        cold = self._cold_item()
+        if cold is None:
+            return None
+        bl = agent.blstats
+        h, w = level.objects.shape
+        done = self._frozen_dirs.get((key, bl.y, bl.x), set())
+        for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            y, x = bl.y + dy, bl.x + dx
+            if not (0 <= y < h and 0 <= x < w) or (dy, dx) in done:
+                continue
+            # a never-seen square next to us on Medusa's islands is one a raven or an eel has covered since we
+            # arrived -- open water; a ray over land does no harm
+            if agent.glyphs[y, x] in WET or level.objects[y, x] in WET or level.objects[y, x] == -1:
+                return ('freeze', (cold, agent.calc_direction(bl.y, bl.x, y, x), (dy, dx)))
+        return None
+
     def _diggable_spot(self, py, px, max_wet=0):
         agent = self.agent
         level = agent.current_level()
@@ -4105,9 +4183,17 @@ class DiveLogic:
                     return True
                 agent.search(1 if agent.get_visible_monsters() else 20)
                 return True
+            freeze = self._freeze_action()
+            if freeze is not None:
+                self._escape_act(freeze)   # MEDUSA_FREEZE: ice on the moat neighbours before the pick's flood rolls
+                return True
             self.dig_with_tool(tool)
             return True
         if self.rest_if_hurt():
+            return True
+        freeze = self._freeze_action()
+        if freeze is not None:
+            self._escape_act(freeze)   # MEDUSA_FREEZE: ice first, then the wand's one flood roll is dry
             return True
         agent.log(f'DIVE zapping {wand.text!r} down')
         agent.zap(wand, '>')

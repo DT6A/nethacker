@@ -7866,7 +7866,17 @@ class DiveLogic:
         agent = self.agent
         castle = self._castle_scare()
         if not castle and (not GEHENNOM_SCARE or not self.in_gehennom()):
-            yield False
+            # KNOWN_ITEMS_SCARE (known_items.py): the guard dropped our known scroll here against an @ -- hold on it
+            # (dig from it, or rest on it striking what stays next to us) for up to KNOWN_ITEMS_SCARE_HOLD turns;
+            # nothing else outside Gehennom (no drop from here)
+            ki_hold = jf_config.KNOWN_ITEMS_SCARE and self._scare_spot is not None and \
+                self._scare_spot == getattr(self, '_ki_scare_spot', None) and \
+                agent.blstats.time - (self._scare_drop_turn or 0) <= jf_config.KNOWN_ITEMS_SCARE_HOLD
+            if not ki_hold or not self.on_scare_scroll() or self._scare_hold() is None:
+                yield False
+            yield True
+            self._scare_hold_loop()
+            return
         bl = agent.blstats
         level = agent.current_level()
         pos = (bl.y, bl.x)

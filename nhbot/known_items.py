@@ -29,6 +29,8 @@ and no safe emergency prayer due (that goes first: mino_guard.MinoGuard._prayer_
   3. a known wand of teleportation at ourselves (the same levels);
   4. a known wand of digging down, unless an M2_STALK monster next to us would follow through the hole (jf47 s10's
      ice troll followed three zapped holes);
+  4b. KNOWN_ITEMS_SCARE: with an @ (or another Elbereth-ignoring meleer the scroll still scares) next to us, a known
+     scroll of scare monster dropped under us (then dive.gehennom_scare holds on it);
   5. a known potion of full or extra healing (plain healing only at critically low HP: 6d4);
   6. at the strongest attacker next to us: a known wand of sleep (or the engrave-tested 'sleep or death' pair, at
      critically low HP), a ray -- only with KNOWN_ITEMS_RAY_RUN free squares behind it or at critically low HP; a known
@@ -46,7 +48,7 @@ wand was empty); jf50 s14 unchanged (its wand of fire was known empty).
 """
 import nle.nethack as nh
 
-from . import castle_power, jf_config, utils
+from . import castle_power, jf_config, power, utils
 from . import objects as O
 from .combat.monster_utils import WEAK_MONSTERS
 from .glyph import G, MON
@@ -229,6 +231,10 @@ class KnownItemsGuard:
             wand = dive._dig_wand()
             if wand is not None and dive._wand_escape(wand) is not None:
                 yield ('zapdown', wand, 'known wand of digging')
+        # 4b. KNOWN_ITEMS_SCARE: a known scroll of scare monster under us against an Elbereth-ignoring meleer
+        scroll = self._scare_plan(adjacent)
+        if scroll is not None:
+            yield ('drop_scare', scroll, 'known scare monster')
         # 5. heal
         potion = self._heal_potion(critical)
         if potion is not None:
@@ -258,13 +264,16 @@ class KnownItemsGuard:
             # striking (no bounce) and the other plans stay open.
             ray_ok = self._free_run_behind(target, dy, dx) >= jf_config.RAY_CRIT_RUN
         name = getattr(target[3], 'mname', '?')
+        immune = self._immune_to(target)
         wand, wname = mino._wand(('sleep',))
-        if wand is None and critical:
+        if wand is not None and immune('sleep'):
+            wand = None   # KNOWN_ITEMS_RESIST: an elf, a vampire, a doppelganger sleeps through nothing
+        if wand is None and critical and not (immune('sleep') and immune('death')):
             wand, wname = mino._sleep_or_death(), 'sleep or death'
         if wand is not None and ray_ok:
             yield ('zap', (wand, direction, target), f'known {wname} at the {name}')
         wand, _ = mino._wand(('striking',))
-        if wand is not None:
+        if wand is not None and not immune('striking'):
             yield ('zap', (wand, direction, target), f'known striking at the {name}')
         # RAY_BOUNCE_FIX: cold and fire are rays too -- with a wall close behind the target the bolt bounces back
         # through us (6d6): 7 of our dev deaths were our own bounce (a5 arc-dwa s319: cold at an earth elemental).
@@ -272,16 +281,62 @@ class KnownItemsGuard:
         safe_run = not jf_config.RAY_BOUNCE_FIX or \
             self._free_run_behind(target, dy, dx) >= jf_config.KNOWN_ITEMS_RAY_RUN
         wand, _ = mino._wand(('cold',))
-        if wand is not None and not dive.cold_reserved(wand) and \
+        if wand is not None and not dive.cold_reserved(wand) and not immune('cold') and \
                 (safe_run or getattr(agent.character, 'role', None) == getattr(agent.character, 'VALKYRIE', -1)):
             yield ('zap', (wand, direction, target), f'known cold at the {name}')
         wand, _ = mino._wand(('fire',))
-        if wand is not None and safe_run:
+        if wand is not None and safe_run and not immune('fire'):
             yield ('zap', (wand, direction, target), f'known fire at the {name}')
         if ray_ok:
-            wand, wname = mino._wand(('lightning', 'magic missile'))
-            if wand is not None:
-                yield ('zap', (wand, direction, target), f'known {wname} at the {name}')
+            for wname in ('lightning', 'magic missile'):
+                wand, _ = mino._wand((wname,))
+                if wand is not None and not immune(wname):
+                    yield ('zap', (wand, direction, target), f'known {wname} at the {name}')
+                    break
+
+    # hypothesis: KNOWN_ITEMS_SCARE -- in mortal danger next to an @ (soldier, elf-lord, Woodland-elf, a hostile
+    # watchman, a player-monster) the guard had no answer that stops it short of a teleport, a hole or a kill: the
+    # dive's Elbereth doesn't stop @ humans and elves, and its known scroll of scare monster was only ever dropped
+    # for minotaurs (mino_guard) or at the castle (CASTLE_SCARE). Dropped under us the scroll scares them all, a
+    # scared monster doesn't melee (dochug: no mattacku while scared) and attacking from the square costs nothing
+    # (unlike Elbereth); then dive.gehennom_scare's hold digs down from it or rests on it.
+    # sources: NetHack 3.6.6 monmove.c onscary() (the scroll's only exemptions: Rodney, lawful minions, Angels,
+    # Riders, a shopkeeper in his shop, a priest in his temple; Elbereth also exempts S_HUMAN and minotaurs),
+    # monmove.c dochug/distfleeck (scared -> monflee, no mattacku), mon.c setmangry (the 'hypocrite' penalty is
+    # Elbereth's only); https://nethackwiki.com/wiki/Scroll_of_scare_monster, https://nethackwiki.com/wiki/Elbereth
+    _SCARE_EXEMPT = frozenset(('shopkeeper', 'aligned priest', 'high priest', 'Wizard of Yendor', 'Angel',
+                               'Death', 'Pestilence', 'Famine', 'unknown', 'minotaur'))
+
+    def _scare_plan(self, adjacent):
+        """KNOWN_ITEMS_SCARE: the known scroll of scare monster to drop under us, or None. Only with a meleer next to
+        us that Elbereth doesn't stop and the scroll does (no lawful minion, shopkeeper, priest, Rider; a minotaur is
+        mino_guard's), not on stairs (the climb / the descent), not in a shop (the shopkeeper would buy it), not
+        hallucinating (the names lie), and not where our dropped scroll already lies."""
+        if not jf_config.KNOWN_ITEMS_SCARE or not adjacent:
+            return None
+        agent = self.agent
+        dive = self.dive
+        if agent.character.prop.hallu:
+            return None
+        level = agent.current_level()
+        pos = (int(agent.blstats.y), int(agent.blstats.x))
+        if dive._scare_spot == (level.key(), pos) or level.shop[pos] or \
+                level.objects[pos] in G.STAIR_UP or level.objects[pos] in G.STAIR_DOWN:
+            return None
+        if not any(dive._melee_ignores_elbereth(m[3]) and not dive._lawful_minion(m[3]) and
+                   getattr(m[3], 'mname', 'unknown') not in self._SCARE_EXEMPT for m in adjacent):
+            return None
+        known, _ = power.scare_scrolls(agent)
+        return known[0] if known else None
+
+    @staticmethod
+    def _immune_to(target):
+        """KNOWN_ITEMS_RESIST: name -> True when a zap of wand type `name` does nothing to `target`'s kind."""
+        mon = target[3]
+
+        def immune(name):
+            return jf_config.KNOWN_ITEMS_RESIST and castle_power.zap_effect(mon, name) <= 0.0
+        return immune
 
     @staticmethod
     def _block_key(plan):
@@ -339,6 +394,16 @@ class KnownItemsGuard:
             return
         if kind == 'zapdown':
             dive._escape_act(('zap', arg))
+            return
+        if kind == 'drop_scare':
+            # (set before the drop: the end of its step runs the preempt checks -- the hold must find the spot)
+            dive._scare_spot = (key, (bl.y, bl.x))
+            dive._scare_drop_turn = bl.time
+            dive._ki_scare_spot = dive._scare_spot
+            dive._scare_dropped_keys = {agent.inventory._scroll_key(arg)}
+            agent.inventory.drop(arg, 1)
+            # never picked up again (a second pickup turns scare monster to dust)
+            agent.inventory._note_dropped([arg], [1], force=True)
             return
         if kind == 'quaff':
             agent.inventory.quaff(arg)

@@ -1488,6 +1488,27 @@ KNOWN_ITEMS = True
 KNOWN_ITEMS_BURST_TURNS = 2
 KNOWN_ITEMS_BURST_FRAC = 0.5
 KNOWN_ITEMS_RAY_RUN = 6      # free squares behind the target before a sleep/fire/lightning ray is safe from its bounce
+# hypothesis: KNOWN_ITEMS_RESIST (known_items._candidates step 6) -- at critical HP / a burst the guard zapped its known
+# wand at the strongest adjacent attacker without asking whether that kind is immune: a sleep ray at an elf-lord,
+# Elvenking, Grey-/Woodland-/Green-elf, vampire (lord) or doppelganger (all MR_SLEEP -- elves are 7 of the 60 parent
+# deaths, Dlvl 11-28), striking at a magic-resistant one ('Boing!'), fire/cold/lightning at a resistant one. That
+# spends the last action of a losing fight on nothing while the attacker swings again. Skipping an immune wand lets
+# the next real option run: another known wand that works, else emergency_strategy's prayer / last resort.
+# sources: NetHack 3.6.6 src/mon.c sleep_monst() (resists_sleep -> no effect), src/zap.c zhitm() ZT_SLEEP/ZT_FIRE/
+# ZT_COLD/ZT_ELEC and bhitm() WAN_STRIKING (resists_magm -> 'Boing!'), monst.c MR_SLEEP on every elf, vampires and the
+# doppelganger (checked against nle.nethack.permonst); https://nethackwiki.com/wiki/Wand_of_sleep ("most monsters ...
+# lack sleep resistance, save for zombies and elves"); https://nethackwiki.com/wiki/Elf-lord ,
+# https://nethackwiki.com/wiki/Elvenking ; the immunity table is castle_power.zap_effect (already used by the castle's
+# wand odds), so the same per-kind rules now govern the dive's emergency zaps.
+KNOWN_ITEMS_RESIST = True
+# hypothesis: KNOWN_ITEMS_SCARE (known_items._scare_plan, dive.gehennom_scare) -- in the guard's mortal danger with
+# an @ next to us (soldiers, elves, a hostile Watch: Elbereth doesn't stop S_HUMAN), drop a known scroll of scare
+# monster under us after the stairs/teleport/hole steps and before the healing quaff, then hold on it (dig from it,
+# or rest on it) for up to KNOWN_ITEMS_SCARE_HOLD turns: a scared monster doesn't melee.
+# sources: NetHack 3.6.6 monmove.c onscary/dochug/distfleeck, pickup.c (second pickup: dust);
+# https://nethackwiki.com/wiki/Scroll_of_scare_monster
+KNOWN_ITEMS_SCARE = True
+KNOWN_ITEMS_SCARE_HOLD = 400
 #
 # WELD_HOLD (with WELD_PRAY): welded to a cursed two-hander while diving (the first apply of a dwarvish mattock of
 # unknown BUC: 14% of dwarves' weapons are cursed) -> no free hand, so no Elbereth for the rest of the dive (engrave.c

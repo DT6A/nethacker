@@ -286,6 +286,12 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         targeted_monsters = set()
         if not item.is_offensive_usable_wand() or agent.inventory.is_known_empty(item):
             continue
+        # hypothesis: COLD_RESERVE (dive_logic): a known wand of cold spent on monsters is gone when Medusa's dig
+        # needs it to freeze the moat (MEDUSA_FREEZE) -- kept unless HP is low with a hostile close
+        # sources: nhbot/combat/fight_heur.py COLD_RESERVE; NetHack 3.6.6 dig.c fillholetyp, zap.c zap_over_floor
+        dive = getattr(getattr(agent, 'global_logic', None), 'dive', None)
+        if dive is not None and hasattr(dive, 'cold_reserved') and dive.cold_reserved(item):
+            continue
         priority = 0
         # print('--------------', dy, dx)
         for y, x, monster, p in simulate_wand_path(agent, item, monsters, dy, dx):
