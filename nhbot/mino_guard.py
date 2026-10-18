@@ -75,6 +75,22 @@ _PM_MINOTAUR = next(i for i in range(nh.NUMMONS) if nh.permonst(i).mname == 'min
 _MINO_GLYPHS = [off + _PM_MINOTAUR for off in (nh.GLYPH_MON_OFF, nh.GLYPH_PET_OFF, nh.GLYPH_DETECT_OFF,
                                                nh.GLYPH_RIDDEN_OFF)]
 _MINO_PERMONST = nh.permonst(_PM_MINOTAUR)
+# hypothesis: MINO_UNSEEN -- an invisible minotaur (or any minotaur while we are blind) never shows a minotaur glyph,
+# so the guard never fires and it hits for ~42 HP a turn until we die (parent public val-hum-neu-fem seed 2 and dev: 'killed
+# by an invisible minotaur', Dlvl 25). Its blows still name it: mhitu.c hitmsg prints AT_BUTT as "It butts!" when we can't
+# see the attacker, and mattacku map_invisible()s an 'I' on its square. A minotaur's claw/claw/butt is the only butt
+# there without a kick (unicorns) or bite (mumak), so an adjacent 'I' after such a blow is taken for it and the guard's
+# plan (dig out, up stairs, teleport, genocide, scare monster, wands down the line) runs against it as against a seen
+# one, instead of fight2 swinging blind at an 'I'.
+# sources: /board/past_ideas/node-367.diff and node-355.diff (MINO_UNSEEN, #355 +0.0070 / #367 public +0.0096 and
+# held-out up over their parents, never landed in a root; this is that port); NetHack 3.6.6 mhitu.c (hitmsg AT_BUTT
+# "%s butts!", Monnam -> "It" when unseen; mattacku map_invisible), monst.c (PM_MINOTAUR: AT_CLAW 3d10, AT_CLAW 3d10,
+# AT_BUTT 2d8, MR 0; unicorns AT_BUTT+AT_KICK, mumak AT_BUTT+AT_BITE), end.c done_in_by ("invisible " for minvis);
+# https://nethackwiki.com/wiki/Minotaur ; https://nethackwiki.com/wiki/Invisible ;
+# https://nethackwiki.com/wiki/Elbereth (minotaurs ignore it, so blind melee on Elbereth is no answer).
+_UNSEEN_BUTT = re.compile(r'(?:^|[.!?] )It butts!')
+_UNSEEN_OTHER = re.compile(r'(?:^|[.!?] )It (?:kicks|bites)!')   # a unicorn's / a mumak's butt comes with these
+UNSEEN_TURNS = 20         # an 'I' next to us is taken for the minotaur this long after its last unseen butt
 
 
 class MinoGuard:
@@ -94,6 +110,8 @@ class MinoGuard:
         self._blows = {}           # HORN_SCARE: level key -> turns we blew a scare instrument there
         self._near_prev = {}       # HORN_SCARE: level key -> (step, nearest awake minotaur now, at the step before)
         self._hp_prev = None       # HORN_SCARE: (step, our HP now, at the step before)
+        self._unseen_butt = {}     # MINO_UNSEEN: level key -> last turn an unseen attacker butted us
+        self._unseen_note = None
 
     # ------------------------------------------------------------------ state
 
@@ -161,8 +179,31 @@ class MinoGuard:
                                         agent.monster_tracker.peaceful_monster_mask[y, x]):
                 continue   # MINO_TAME: the minotaur our scroll of taming turned (a pet, or peaceful at worst)
             out.append((max(abs(y - int(bl.y)), abs(x - int(bl.x))), y, x, _MINO_PERMONST))
+        out.extend(self._unseen_minos())
         out.sort(key=lambda m: m[0])
         return out
+
+    def _unseen_minos(self):
+        """MINO_UNSEEN: the 'I' squares next to us while an unseen attacker that butts (the minotaur's AT_BUTT, mhitu.c
+        hitmsg 'It butts!') hit us on this level within UNSEEN_TURNS: [(1, y, x, permonst)]."""
+        if not jf_config.MINO_UNSEEN:
+            return []
+        agent = self.agent
+        key = agent.current_level().key()
+        stamp = (agent.step_count, key)
+        if self._unseen_note != stamp:
+            self._unseen_note = stamp
+            msg = agent.message or ''
+            if _UNSEEN_BUTT.search(msg) and not _UNSEEN_OTHER.search(msg):
+                self._unseen_butt[key] = agent.blstats.time
+        t = self._unseen_butt.get(key)
+        if t is None or agent.blstats.time - t > UNSEEN_TURNS:
+            return []
+        bl = agent.blstats
+        y0, x0 = int(bl.y), int(bl.x)
+        near = agent.glyphs[max(y0 - 1, 0):y0 + 2, max(x0 - 1, 0):x0 + 2] == nh.GLYPH_INVISIBLE
+        ys, xs = near.nonzero()
+        return [(1, int(y) + max(y0 - 1, 0), int(x) + max(x0 - 1, 0), _MINO_PERMONST) for y, x in zip(ys, xs)]
 
     def _frozen(self, m):
         t = self._asleep.get((self.agent.current_level().key(), (m[1], m[2])))
@@ -370,8 +411,8 @@ class MinoGuard:
     def _plan(self):
         """The guard's next action (kind, arg, why) or None: the first candidate not blocked by the loop guard.
         Side-effect free apart from bookkeeping: it runs as the preempt condition on every step."""
-        if not jf_config.MINO_GUARD or not utils.isin(self.agent.glyphs, _MINO_GLYPHS).any() or \
-                not self._in_scope():
+        if not jf_config.MINO_GUARD or not (utils.isin(self.agent.glyphs, _MINO_GLYPHS).any() or
+                                            self._unseen_minos()) or not self._in_scope():
             return None
         turn = self.agent.blstats.time
         for plan in self._candidates():

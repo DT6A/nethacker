@@ -811,3 +811,15 @@ if LATE_FIXES:
 # sources: NetHack 3.6.6 src/zap.c zhitm(), src/mondata.c resists_magm(); https://nethackwiki.com/wiki/Wand_of_death ;
 #   REUSES board nodes #260/#294/#281
 RESIST_AWARE_ZAP = True
+
+# FLAYER_GUARD (flayer_guard.py): a (master) mind flayer within 2 squares whose tentacles could eat our brain to death
+# over a melee (Int vs tentacles x 1/8 with a helmet) -> a known wand of digging down, else Elbereth (outside Gehennom)
+# held without swinging (dig_first may dig on from it), else the up stairs under us.
+# hypothesis: 'killed by brainlessness' (parent val-hum-neu-fem public s7 Dlvl 29, val-dwa-law-fem dev Dlvl 25) comes from
+# meleeing a flayer the dive files as an Elbereth-ignorer (RANGED_MONSTERS: its psychic blast, harmless to a seeing hero
+# without extrinsic telepathy); onscary() scares both flayers outside Gehennom and a scared monster never tentacles us.
+# sources: NetHack 3.6.6 src/mhitu.c AD_DRIN (uarmh && rn2(8) blocks), src/eat.c eat_brains (dies at ABASE(A_INT) <=
+# ATTRMIN), src/monmove.c onscary/dochug (scared -> no mattacku; psychic blast needs Blind_telepat/Unblind_telepat),
+# src/monst.c PM_MIND_FLAYER/PM_MASTER_MIND_FLAYER; https://nethackwiki.com/wiki/Mind_flayer ;
+# https://nethackwiki.com/wiki/Elbereth
+FLAYER_GUARD = True

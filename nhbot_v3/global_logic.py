@@ -13,7 +13,7 @@ from . import castle_power
 from . import castle_cross
 from . import castle_front
 from . import castle_landing
-from . import mino_guard
+from . import flayer_guard, mino_guard
 from . import known_items
 from . import opp_items
 from . import tele_route
@@ -288,6 +288,7 @@ class GlobalLogic:
         self.dive = DiveLogic(agent)
         self.landing = castle_landing.LandingGuard(self.dive)   # jf_config.LANDING_GUARD (valley-exit)
         self.mino = mino_guard.MinoGuard(self.dive)   # jf_config.MINO_GUARD (minotaur lane)
+        self.flayer = flayer_guard.FlayerGuard(self.dive, self.mino)   # jf_config.FLAYER_GUARD (mind flayer lane)
         self.known = known_items.KnownItemsGuard(self.dive, self.mino)   # jf_config.KNOWN_ITEMS (dive-audit)
         # Knight only (kni_steed.py): feed the saddled pony so hunger never turns it on us
         self.steed = SteedKeeper(agent)
@@ -1205,6 +1206,12 @@ class GlobalLogic:
             # lets a due emergency prayer go first (below the minotaur guard, which has its own item plan)
             .preempt(self.agent, [
                 self.known.strategy(),
+            ])
+            # mind flayer lane (FLAYER_GUARD, flayer_guard.py): a flayer whose tentacles could eat our brain to death ->
+            # a known digging wand down, Elbereth held without swinging, the up stairs under us; above the emergency
+            # (it lets a due prayer go first), below the minotaur guard
+            .preempt(self.agent, [
+                self.flayer.strategy(),
             ])
             # minotaur lane (MINO_GUARD, mino_guard.py): a minotaur in view -- a known way out first (digging down, the
             # up stairs, teleport/sleep/polymorph at it, teleport ourselves, genocide, scare monster), then gambles;

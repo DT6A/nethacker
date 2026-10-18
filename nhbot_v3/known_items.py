@@ -245,7 +245,14 @@ class KnownItemsGuard:
         from .combat import fight_heur
         if fight_heur.missiles_risk_the_watch(agent):
             return
-        target = max(adjacent, key=lambda m: getattr(m[3], 'mlevel', 0))
+        if jf_config.KNOWN_ITEMS_TARGET:
+            # hypothesis: KNOWN_ITEMS_TARGET -- zap the attacker that hurts most: monstr difficulty, the ignorer on Elbereth
+            # sources: NetHack 3.6.6 src/makemon.c mstrength(), src/monmove.c onscary(); https://nethackwiki.com/wiki/Difficulty
+            on_elb = self._on_elbereth()
+            target = max(adjacent, key=lambda m: (on_elb and dive._melee_ignores_elbereth(m[3]),
+                                                  getattr(m[3], 'difficulty', 0), getattr(m[3], 'mlevel', 0)))
+        else:
+            target = max(adjacent, key=lambda m: getattr(m[3], 'mlevel', 0))
         if self._on_elbereth() and not dive._melee_ignores_elbereth(target[3]):
             return   # a zap at a monster our Elbereth scares deletes the engraving (mon.c setmangry: 'hypocrite', -5 align)
         pos = (int(bl.y), int(bl.x))

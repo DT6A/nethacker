@@ -1192,6 +1192,12 @@ STAIR_BOULDER_WAIT = 300
 # on a level where one was seen. cmp-main: minotaurs killed 23 of 90 games; 3 of the 7 dev-set maze deaths carried a
 # known item that ends the fight in one action (jf14 s0 genocide, jf16 s10 teleport scrolls, jf41 s13 teleport wand).
 MINO_GUARD = True
+# MINO_UNSEEN (mino_guard.py): an unseen attacker that butts ('It butts!', mhitu.c hitmsg AT_BUTT) with no kick or bite
+# is a minotaur (invisible, or we are blind): the 'I' next to us gets the guard's plan as a seen minotaur would.
+# hypothesis: 'killed by an invisible minotaur' (parent val-hum-neu-fem seed 2) is a death the glyph-only guard never answers.
+# sources: /board/nodes/node-444.json (#444 MINO_UNSEEN, also #355/#367/#382/#450); NetHack 3.6.6 mhitu.c
+# hitmsg/mattacku, monst.c PM_MINOTAUR; https://nethackwiki.com/wiki/Minotaur ; https://nethackwiki.com/wiki/Invisible
+MINO_UNSEEN = True
 # MINO_RAY_ROOM (mino_guard step 9): a known wand of lightning is zapped at a minotaur next to us only with
 # MINO_RAY_SAFE_RUN free squares along the ray (the minotaur's included), as castle_landing._pick_wand already does.
 # zap.c dobuzz: a ray runs rn1(7,7) = 7..13 squares, a wall reverses a straight one (one extra --range), and every hit
@@ -1507,6 +1513,18 @@ KNOWN_ITEMS = True
 KNOWN_ITEMS_BURST_TURNS = 2
 KNOWN_ITEMS_BURST_FRAC = 0.5
 KNOWN_ITEMS_RAY_RUN = 6      # free squares behind the target before a sleep/fire/lightning ray is safe from its bounce
+# hypothesis: KNOWN_ITEMS_TARGET (known_items._candidates step 6) -- the burst/critical zap aimed at the adjacent
+# attacker with the highest bare mlevel, ties broken by list order. mlevel ignores what makes an attacker deadly now:
+# hum-law x125977 Dlvl 11 zapped 'known cold at the wolf' twice (wolf and Green-elf both level 5) while the Green-elf,
+# with weapon hits and no fear of the Elbereth just written, took it from 45 to 6 HP and killed it. monstr difficulty
+# (makemon.c mstrength: level plus speed, AC, attack-type, multi-attack and big-damage bonuses) ranks the Green-elf 7
+# over the wolf 6, a soldier ant 6 over a gnome lord, a leprechaun 4 under a wolf. On an Elbereth square the step gave
+# up whenever the top-ranked attacker was one the engraving scares, even with an ignorer (@, minotaur) hitting us next
+# to it; there it now aims at the ignorer -- the scared one is not the one doing damage.
+# sources: NetHack 3.6.6 src/makemon.c mstrength() / include/monst.h difficulty (nle.nethack.permonst.difficulty),
+# src/monmove.c onscary() (@ humans, minotaurs, shopkeepers/guards/priests ignore Elbereth);
+# https://nethackwiki.com/wiki/Difficulty ; https://nethackwiki.com/wiki/Elbereth
+KNOWN_ITEMS_TARGET = True
 # hypothesis: KNOWN_ITEMS_RESIST (known_items._candidates step 6) -- at critical HP / a burst the guard zapped its known
 # wand at the strongest adjacent attacker without asking whether that kind is immune: a sleep ray at an elf-lord,
 # Elvenking, Grey-/Woodland-/Green-elf, vampire (lord) or doppelganger (all MR_SLEEP -- elves are 7 of the 60 parent
@@ -1699,3 +1717,15 @@ if LATE_FIXES:
 # sources: NetHack 3.6.6 src/zap.c zhitm(), src/mondata.c resists_magm(); https://nethackwiki.com/wiki/Wand_of_death ;
 #   REUSES board nodes #260/#294/#281
 RESIST_AWARE_ZAP = True
+
+# FLAYER_GUARD (flayer_guard.py): a (master) mind flayer within 2 squares whose tentacles could eat our brain to death
+# over a melee (Int vs tentacles x 1/8 with a helmet) -> a known wand of digging down, else Elbereth (outside Gehennom)
+# held without swinging (dig_first may dig on from it), else the up stairs under us.
+# hypothesis: 'killed by brainlessness' (parent val-hum-neu-fem public s7 Dlvl 29, val-dwa-law-fem dev Dlvl 25) comes from
+# meleeing a flayer the dive files as an Elbereth-ignorer (RANGED_MONSTERS: its psychic blast, harmless to a seeing hero
+# without extrinsic telepathy); onscary() scares both flayers outside Gehennom and a scared monster never tentacles us.
+# sources: NetHack 3.6.6 src/mhitu.c AD_DRIN (uarmh && rn2(8) blocks), src/eat.c eat_brains (dies at ABASE(A_INT) <=
+# ATTRMIN), src/monmove.c onscary/dochug (scared -> no mattacku; psychic blast needs Blind_telepat/Unblind_telepat),
+# src/monst.c PM_MIND_FLAYER/PM_MASTER_MIND_FLAYER; https://nethackwiki.com/wiki/Mind_flayer ;
+# https://nethackwiki.com/wiki/Elbereth
+FLAYER_GUARD = True
