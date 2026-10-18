@@ -3426,6 +3426,15 @@ class Agent:
                 self.log(f'EMERGENCY deadly status {deadly:#x}: praying')
                 self.pray()
                 return
+            # UNIHORN_CURE: no safe prayer -- an uncursed unicorn horn cures food poisoning / illness (apply.c
+            # use_unihorn: SICK is a fixable trouble), one apply per turn until it takes
+            if deadly & (nh.BL_MASK_FOODPOIS | nh.BL_MASK_TERMILL):
+                gl = self.global_logic
+                horn = gl.unihorn_usable(['sick'])
+                if horn is not None:
+                    yield True
+                    gl.apply_unihorn(horn, 'sick')
+                    return
 
         # a were form's HP is only a buffer: at 0 we rehumanize with the HP we had before (polyself.c), so
         # low form HP is no reason to spend healing, a prayer or the last resort (jf16 s11 and jf25 s9 prayed

@@ -1359,8 +1359,14 @@ class CastlePassage:
         msg = agent.message
         if 'swings itself around you' in msg or 'cannot escape from' in msg:
             self._held_turn = agent.blstats.time
-        if self._held_turn is not None and agent.blstats.time - self._held_turn <= 3 and self._attack_holder():
-            return
+        if self._held_turn is not None and agent.blstats.time - self._held_turn <= 3:
+            if jf_config.CFP_EEL:
+                # on foot a held hero writes Elbereth (the holder lets go), see castle_cross.held_elbereth
+                from . import castle_cross
+                if castle_cross.held_elbereth(self):
+                    return
+            if self._attack_holder():
+                return
         if self._stuck > 80:
             self._give_up(f'no progress at {pos}')
             agent.search()
@@ -1671,6 +1677,11 @@ class CastlePassage:
             self._set_state('coming down to kick the door')
             self._stop_levitating()
             return
+        if jf_config.CFP_EEL:
+            # the eels next to this square before the kick that wakes them (see castle_cross.door_sea_fight)
+            from . import castle_cross
+            if castle_cross.door_sea_fight(self):
+                return
         if jf_config.BREACH_DOOR:
             # on Elbereth only what ignores it is worth a blow (hitting a scared monster erases it: mon.c setmangry)
             near = [m for m in self._hostiles_near(1) if self.dive._ignores_elbereth(m[3])]

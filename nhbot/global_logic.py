@@ -147,6 +147,15 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
+        # UNIHORN_CURE: one unicorn horn not known cursed (a killed unicorn's is always uncursed) -- the cure
+        # GlobalLogic.unihorn_cure applies; tools are otherwise only taken in the late by-weight pass
+        if jf_config.UNIHORN_CURE:
+            for item in items:
+                if item.category == nh.TOOL_CLASS and item.is_unambiguous() and \
+                        item.object == O.from_name('unicorn horn') and item.status != Item.CURSED:
+                    add_item(item, count=1)
+                    break
+
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):
@@ -457,6 +466,102 @@ class GlobalLogic:
             self.milestone = Milestone(int(self.milestone) + 1)
             raise AgentPanic('sokomap unsolvable')
 
+    # hypothesis: blindness (raven claws, cobra spit, the potion tests), confusion, stun and hallucination were only ever
+    # waited out by pressing '.' (250-800 turns after a potion) or fought through -- a stunned or confused hero moves,
+    # digs and swings in random directions (beside water: drowning) and garbles Elbereth, a blind one can't see what
+    # comes. An uncursed unicorn horn fixes rn2(d(2,2)) of them per apply (apply.c use_unihorn: ~65%, blessed ~77%)
+    # and a killed unicorn's horn is always uncursed, so keep one and apply it the moment one of these is on and
+    # nothing is next to us (blindness: nothing within 2, not hurt lately, never on Medusa's level where blindness is
+    # the gaze defence); food poisoning / terminal illness when prayer isn't safe (agent.emergency_strategy).
+    # sources: https://nethackwiki.com/wiki/Unicorn_horn ; https://nethackwiki.com/wiki/Stun ; NetHack 3.6.6
+    # src/apply.c use_unihorn() (fixable troubles, d(2,2)/d(2,4) count, cursed horn effects) ; rec.games.roguelike.nethack
+    # 'newbie question: Unicorns and their horns' (groups.google.com/g/rec.games.roguelike.nethack/c/9EdfXhpUH8c) ;
+    # nhbot dive_logic DEEP_ITEMS _deep_unihorn_item (the apply template)
+    # REUSES (node #486): #475 / #461 / #449 (this unihorn lane, +0.0100 / +0.0085 / +0.0037 over their parents);
+    # https://gamefaqs.gamespot.com/boards/582497-nethack-1987/23198531?page=11 (players: 'unlimited use', keep a spare)
+    _CURSED_UNIHORN = ('deathly sick', 'cloud of darkness', 'suddenly feel confused', 'suddenly feel trippy',
+                       'You stagger', 'so cosmic', 'You feel weak!', 'You feel stupid!', 'You feel foolish!',
+                       'You feel clumsy!', 'You feel fragile!', 'You feel repulsive!', 'deaf')
+    _UNIHORN_MAX_TRIES = 12   # one trouble the horn can't touch (cream, venom, an eyeless form): stop, wait it out
+
+    def unihorn_item(self):
+        if not jf_config.UNIHORN_CURE:
+            return None
+        if not hasattr(self, '_unihorn_bad'):
+            self._unihorn_bad = set()
+            self._unihorn_tries = 0
+        for it in self.agent.inventory.items:
+            if it.category == nh.TOOL_CLASS and it.is_unambiguous() and it.object == O.from_name('unicorn horn') and \
+                    it.status != Item.CURSED and 'unpaid' not in (it.text or '') and it.text not in self._unihorn_bad:
+                return it
+        return None
+
+    def _unihorn_blind_ok(self):
+        """Blindness the horn can fix and we want fixed: not a worn blindfold/towel (FEYE), not Medusa's level."""
+        if self.dive.on_medusa_level():
+            return False
+        for it in self.agent.inventory.items:
+            if it.category == nh.TOOL_CLASS and 'being worn' in (it.text or '') and \
+                    any(n in (it.text or '') for n in ('blindfold', 'towel')):
+                return False
+        return True
+
+    def unihorn_troubles(self, calm=True):
+        """The horn-fixable troubles on now: conf/stun/hallu, and blindness under _unihorn_blind_ok."""
+        prop = self.agent.character.prop
+        troubles = []
+        if prop.confusion:
+            troubles.append('conf')
+        if prop.stun:
+            troubles.append('stun')
+        if prop.hallu:
+            troubles.append('hallu')
+        if prop.blind and self._unihorn_blind_ok() and \
+                (not calm or (not self.dive._near_hostiles(2) and not self.agent._hurt_recently(5))):
+            troubles.append('blind')
+        return troubles
+
+    def apply_unihorn(self, item, reason):
+        agent = self.agent
+        self._unihorn_tries += 1
+        letter = agent.inventory.items.get_letter(item)
+        agent.log(f'UNIHORN_CURE {reason}: applying {item.text!r} (try {self._unihorn_tries})')
+
+        def gen():
+            if 'What do you want to use or apply?' not in agent.single_message:
+                return
+            yield letter
+
+        with agent.atom_operation():
+            agent.step(A.Command.APPLY, gen())
+        msg = agent.message or ''
+        if any(m in msg for m in self._CURSED_UNIHORN):
+            agent.log(f'UNIHORN_CURE cursed horn: {msg[:80]!r}')
+            self._unihorn_bad.add(item.text)
+
+    def unihorn_usable(self, troubles):
+        horn = self.unihorn_item()
+        if horn is None:
+            return None
+        if not troubles:
+            self._unihorn_tries = 0
+            return None
+        if self._unihorn_tries >= self._UNIHORN_MAX_TRIES:
+            return None
+        return horn
+
+    @Strategy.wrap
+    def unihorn_cure(self):
+        agent = self.agent
+        troubles = self.unihorn_troubles(calm=True)
+        horn = self.unihorn_usable(troubles)
+        # a hostile next to us (or a hit just now) is fought or fled first: the horn only when it's quiet
+        if horn is None or self.dive._near_hostiles(1) or agent._hurt_recently(2):
+            yield False
+            return
+        yield True
+        self.apply_unihorn(horn, '+'.join(troubles))
+
     @Strategy.wrap
     def wait_out_unexpected_state_strategy(self):
         yielded = False
@@ -483,6 +588,12 @@ class GlobalLogic:
                 yield True
                 yielded = True
 
+            # UNIHORN_CURE: a usable horn cures instead of waiting the trouble out
+            troubles = self.unihorn_troubles(calm=False)
+            horn = self.unihorn_usable(troubles)
+            if horn is not None:
+                self.apply_unihorn(horn, 'wait ' + '+'.join(troubles))
+                continue
             self.agent.direction('.')
 
         if not yielded:
@@ -1100,6 +1211,10 @@ class GlobalLogic:
             # astra's survival layer, only once diving (the tour keeps the elite's proven behaviour)
             .preempt(self.agent, [
                 self.dive.elbereth_rest().condition(lambda: self.dive.diving or jf_config.SURVIVAL_IN_TOUR),
+            ])
+            # UNIHORN_CURE: blind/confused/stunned/hallucinating with nothing next to us: apply the unicorn horn
+            .preempt(self.agent, [
+                self.unihorn_cure(),
             ])
             .preempt(self.agent, [
                 # Medusa-3 only (RAVEN_CYCLE): off the raven island to heal, back for a fresh dig

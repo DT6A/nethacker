@@ -1513,6 +1513,18 @@ KNOWN_ITEMS = True
 KNOWN_ITEMS_BURST_TURNS = 2
 KNOWN_ITEMS_BURST_FRAC = 0.5
 KNOWN_ITEMS_RAY_RUN = 6      # free squares behind the target before a sleep/fire/lightning ray is safe from its bounce
+# hypothesis: KNOWN_ITEMS_TARGET (known_items._candidates step 6) -- the burst/critical zap aimed at the adjacent
+# attacker with the highest bare mlevel, ties broken by list order. mlevel ignores what makes an attacker deadly now:
+# hum-law x125977 Dlvl 11 zapped 'known cold at the wolf' twice (wolf and Green-elf both level 5) while the Green-elf,
+# with weapon hits and no fear of the Elbereth just written, took it from 45 to 6 HP and killed it. monstr difficulty
+# (makemon.c mstrength: level plus speed, AC, attack-type, multi-attack and big-damage bonuses) ranks the Green-elf 7
+# over the wolf 6, a soldier ant 6 over a gnome lord, a leprechaun 4 under a wolf. On an Elbereth square the step gave
+# up whenever the top-ranked attacker was one the engraving scares, even with an ignorer (@, minotaur) hitting us next
+# to it; there it now aims at the ignorer -- the scared one is not the one doing damage.
+# sources: NetHack 3.6.6 src/makemon.c mstrength() / include/monst.h difficulty (nle.nethack.permonst.difficulty),
+# src/monmove.c onscary() (@ humans, minotaurs, shopkeepers/guards/priests ignore Elbereth);
+# https://nethackwiki.com/wiki/Difficulty ; https://nethackwiki.com/wiki/Elbereth
+KNOWN_ITEMS_TARGET = True
 # hypothesis: KNOWN_ITEMS_RESIST (known_items._candidates step 6) -- at critical HP / a burst the guard zapped its known
 # wand at the strongest adjacent attacker without asking whether that kind is immune: a sleep ray at an elf-lord,
 # Elvenking, Grey-/Woodland-/Green-elf, vampire (lord) or doppelganger (all MR_SLEEP -- elves are 7 of the 60 parent

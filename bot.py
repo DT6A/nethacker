@@ -12,6 +12,15 @@ os.environ.setdefault("NUMBA_CACHE_DIR", str(_cache_root / "numba"))
 
 import roles  # noqa: E402
 
+# hypothesis: combination 2 of round 14 -- the strongest single ideas of the round, each with its own gain over its
+# parent and on disjoint code: CFP_EEL (#537, pf_vk_s23 castle: Elbereth when wrapped by a sea monster on foot),
+# KNOWN_ITEMS (#535, pf_vk_s23: known escape/healing items before the unknown-item last resort in mortal danger),
+# UNIHORN_CURE (#549, all three Valkyrie engines: apply a unicorn horn for blind/conf/stun/halluc/sickness) and
+# RETREAT_DOWN (#542, all three dive_logics: a low-HP retreat may take an equally close unvisited '>'). They fix
+# different deaths (moat drownings, burst deaths with known items unused, status-impaired wandering, mid-dive retreats),
+# so their gains should add up.
+# sources: round ideas #537, #535, #549, #542 (/board/round_ideas/node-*.diff; per-idea sources in each jf_config flag)
+
 # identity prefix -> specialist engine adapter (from daglar-dragomirov/nethacker@e29eb82, chosen there on held-out
 # games): Healers on vlomshakov's engines, Samurai on daglar's v35. Every other identity plays the main engine, nhbot.
 # Human Priests left PetrAnokhin's pf_pa for nhbot (eL1fe's spell bundle casts their healing): +0.053 +- 0.022 per game

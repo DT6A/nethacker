@@ -123,6 +123,23 @@ BOSS_MONSTERS = ('minotaur', 'ettin', 'titan', 'lich', 'demilich', 'master lich'
                  'energy vortex', 'black dragon', 'red dragon', 'white dragon', 'blue dragon',
                  'green dragon', 'yellow dragon', 'orange dragon', 'silver dragon', 'gray dragon')
 ARRIVAL_RETREAT_REST = 150     # turns to wait upstairs before trying that staircase again
+# hypothesis: RETREAT_DOWN -- a low-HP retreat (retreat_upstairs) only ever looks for a '<', and walks to it even with
+# a main-line '>' as close or closer. Both staircases shed the same pursuers: only an adjacent M2_STALK monster
+# follows a level change, whichever way it goes (dog.c keepdogs -> mondata.c levl_follower), so the elves, ants,
+# soldiers, minotaurs and trolls that kill mid-dive stay behind either way. Going up banks nothing, and the dive must
+# later come back down past the same fight (ARRIVAL_RETREAT_REST holds that staircase 150 turns); going down banks
+# +1 depth at once -- the score is max depth -- and lands on that level's '<', a way back up. STAIRS_OVER_DIG (the
+# same trade made while digging) needs a digging tool or wand and never runs in Gehennom or on undiggable levels,
+# so a tool-less dive always walked up. Only while diving and for a low-HP / fast-loss retreat (not a crowded
+# arrival), a '>' within the same reach that is no farther than the nearest '<' (or the only stairs in reach) and
+# leads to an unvisited level; never a possible Mines branch '>', nor onto Medusa's level (MEDUSA_ENTRY_REST rests
+# for that one) or the raven island.
+# sources: port of past node #413 RETREAT_DOWN (held-out +0.0122, score +0.0017 vs its parent); NetHack 3.6.6
+# src/dog.c (keepdogs), src/mondata.c (levl_follower), src/do.c (goto_level: u_on_upstairs);
+# nethackwiki.com/wiki/Follower ("follow you ... if it happens to be next to you when you change levels ... regardless
+# of how you changed levels"), nethackwiki.com/wiki/Staircase, nethackwiki.com/wiki/Valkyrie ("smart retreating");
+# player advice: en.wikibooks.org/wiki/NetHack/Staying_Alive ("you can also escape through the down staircase").
+RETREAT_DOWN = True
 # ARRIVAL_FIX: the crowded-arrival retreat almost never fired (31 retreats in 2678 dive stairs descents over
 # base/base2/base3/dsafe runs). descend() recorded the arrival AFTER agent.move('>'), but move() ends an atomic
 # operation whose update_state() runs the preempt checks, so anything preempting on arrival (fight2 with monsters
@@ -2671,9 +2688,29 @@ class DiveLogic:
             p = self._arrival_square[1]
             if 0 <= dis[p] <= reach and p not in ups:
                 ups.append(p)
-        if not ups:
+        down = self._retreat_down_target(dis, reach, ups) if crowd is None else None
+        if not ups and down is None:
             yield False
         yield True
+        if down is not None:
+            # RETREAT_DOWN: the same escape, one level deeper banked
+            y, x = down
+            agent.log(f'RETREAT downstairs at hp {bl.hitpoints}/{bl.max_hitpoints} to the > at {down}')
+            start = (bl.y, bl.x, level.key())
+            try:
+                if (bl.y, bl.x) != (y, x):
+                    agent.go_to(y, x, max_steps=1)
+                if (agent.blstats.y, agent.blstats.x) == (y, x):
+                    above = (level.key(), (y, x))
+                    if ARRIVAL_FIX:
+                        self._arrival_pending = (above[0], above[1], agent.blstats.time)
+                    agent.move('>')
+                    if agent.current_level().key() != above[0]:
+                        self._arrived = (agent.current_level().key(), agent.blstats.time, above)
+            finally:
+                if (agent.blstats.y, agent.blstats.x, agent.current_level().key()) == start:
+                    self._retreat_blocked_until = agent.blstats.time + 15
+            return
         y, x = min(ups, key=lambda p: dis[p])
         agent.log(f'RETREAT upstairs at hp {bl.hitpoints}/{bl.max_hitpoints}')
         # don't come straight back down the same staircase into the same fight
@@ -2688,6 +2725,35 @@ class DiveLogic:
         finally:
             if (agent.blstats.y, agent.blstats.x, agent.current_level().key()) == start:
                 self._retreat_blocked_until = agent.blstats.time + 15
+
+    def _retreat_down_target(self, dis, reach, ups):
+        """RETREAT_DOWN: the (y, x) of a main-line '>' to retreat down instead of up -- within `reach`, onto an unvisited
+        level that can't be Medusa's or the raven island, and no farther than the nearest '<' in `ups` -- else None."""
+        if not (RETREAT_DOWN and self.diving):
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        if level.dungeon_number not in MAIN_LINE or self._raven_level_below():
+            return None
+        below = (level.dungeon_number, level.level_number + 1)
+        if below in agent.levels:
+            return None   # nothing to bank there
+        if level.dungeon_number == Level.DUNGEONS_OF_DOOM:
+            if self.medusa_level is not None:
+                if tuple(int(v) for v in self.medusa_level) == below:
+                    return None
+            elif below[1] >= MEDUSA_MIN_DEPTH and utils.isin(level.objects, DOORWAYS).any():
+                return None   # (no doors: a maze filler, we fell past her level already)
+        up = min((dis[p] for p in ups), default=None)
+        for d, y, x, kind in self.down_targets():
+            if kind != 'stairs' or d > reach or (up is not None and d > up):
+                continue
+            if level.stair_destination.get((y, x)) is not None:
+                continue
+            if level.dungeon_number == Level.DUNGEONS_OF_DOOM and agent.blstats.depth <= MINES_BRANCH_MAX_DEPTH:
+                continue   # it may be the Mines branch staircase
+            return (y, x)
+        return None
 
     # ---------------------------------------------------------------- mines
 

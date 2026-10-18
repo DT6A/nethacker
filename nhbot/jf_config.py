@@ -1904,3 +1904,17 @@ RESIST_AWARE_ZAP = True
 # src/monst.c PM_MIND_FLAYER/PM_MASTER_MIND_FLAYER; https://nethackwiki.com/wiki/Mind_flayer ;
 # https://nethackwiki.com/wiki/Elbereth
 FLAYER_GUARD = True
+
+# hypothesis: UNIHORN_CURE (global_logic.unihorn_cure; node #549, on the #522 MINO_DOWNSTAIRS -> #531 PASSTUNE
+# chain) -- keep one unicorn horn not known cursed and apply it (apply.c use_unihorn: an uncursed horn fixes rn2(d(2,2))
+# of the fixable troubles per apply) when blind / confused / stunned / hallucinating with nothing next to us, instead of
+# pressing '.' through the wait-out, and for food poisoning / terminal illness when prayer isn't safe
+# (agent.emergency_strategy). Here it also feeds this chain's minotaur guard: mino_guard._in_scope is off while we
+# hallucinate and a blind hero sees no minotaur glyph, so a cured hero gets the MINO_* lanes back before the next maze
+# landing, and a hero waiting at the castle (#531) is not left blind/stunned beside the moat; a stunned/confused one stops digging/walking in random directions beside water (castle/Medusa drownings).
+# Blindness is left alone on Medusa's level (it is the gaze defence) and under a worn blindfold/towel.
+# sources: https://nethackwiki.com/wiki/Unicorn_horn ; https://nethackwiki.com/wiki/Stun ;
+#   https://nethackwiki.com/wiki/Hallucination ; NetHack 3.6.6 src/apply.c use_unihorn() (fixable troubles,
+#   d(2,2)/d(2,4) counts, cursed effects); REUSES /board/past_ideas #475 (+0.0100), #461 (+0.0085), #449 (+0.0037),
+#   #411 (+0.0029), #469, #486, this round's #534 and #538 (+0.0036 over #529, dev +0.0152), ported unchanged in its logic.
+UNIHORN_CURE = True

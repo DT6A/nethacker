@@ -976,3 +976,93 @@ def _invis_step(castle):
             agent.step(A.Command.PUTON, gen())
         agent.inventory.items.update(force=True)
     _log(castle, f'invisibility: {agent.message[:90]!r}')
+
+
+# ------------------------------------------------------------------------------------------------ CFP_EEL
+# (ported from nhbot/castle_cross.py; see jf_config.CFP_EEL)
+
+def _sea_targets(castle):
+    """Hostile monsters (or a remembered unseen one: it just bit us) on the moat squares next to us."""
+    agent = castle.agent
+    mx, my = castle._pos()
+    out = []
+    for dx, dy in DIRS8:
+        n = (mx + dx, my + dy)
+        if not _wet(castle, *n) or not castle._monster_at(*n):
+            continue
+        y, x = to_bot(*n)
+        if agent.monster_tracker.peaceful_monster_mask[y, x]:
+            continue
+        out.append(n)
+    return out
+
+
+def _sea_hit(castle, n, what):
+    """A known beam wand first (CFP_ZAP: teleportation sends it elsewhere on the moat, striking never bounces), else
+    the real weapon (the dig leaves the pick in hand)."""
+    agent = castle.agent
+    y, x = to_bot(*n)
+    d = agent.calc_direction(agent.blstats.y, agent.blstats.x, y, x)
+    if blocker_zap(castle, n[0], n[1], d):
+        return
+    if not castle._tries.get('wielded'):
+        castle._tries['wielded'] = 1
+        if agent.wield_best_melee_weapon():
+            return
+    castle._set_state(f'cfp: {what} {n}')
+    with agent.atom_operation():
+        agent.step(A.Command.FIGHT)
+        agent.direction(d)
+
+
+def held_elbereth(castle):
+    """CFP_EEL: held by a giant eel (castle_logic saw 'swings itself around you' / 'cannot escape') while on foot:
+    write Elbereth instead of hitting back. The next touch of a holder in the water drowns us (mhitu.c AD_WRAP); a
+    scared holder lets go (monmove.c distfleeck -> monflee -> release_hero) and doesn't attack, while one blow kills
+    a 5HD eel only sometimes. True: engraved (or waiting on the engraving)."""
+    agent = castle.agent
+    if castle.levitating() or agent.character.prop.blind or not agent.can_engrave():
+        return False
+    t = castle._tries
+    if (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+        if 'You get released' in (agent.message or ''):
+            return False
+        # written and still held: the holder hasn't moved yet (a giant eel is speed 9, we are 12+). Wait for its move --
+        # scared, it lets go without attacking; a blow from this square erases the engraving (mon.c setmangry) and its
+        # next touch drowns us
+        if t.get('cfp_held_wait', 0) >= 8:
+            return False
+        t['cfp_held_wait'] = t.get('cfp_held_wait', 0) + 1
+        castle._set_state('cfp: held on Elbereth: waiting for the holder to let go')
+        agent.search()
+        return True
+    if t.get('cfp_held_elbereth', 0) >= 12:
+        return False
+    t['cfp_held_elbereth'] = t.get('cfp_held_elbereth', 0) + 1
+    castle._set_state('cfp: held by a sea monster on foot: Elbereth')
+    agent.engrave('Elbereth')
+    _log(castle, f'held at {castle._pos()}: Elbereth -> {agent.message[:80]!r}')
+    return True
+
+
+def door_sea_fight(castle):
+    """CFP_EEL, on foot in front of the locked back door (57,08), nothing left but kicking: a sea monster in view next
+    to us (the east eels start at (57,07)/(57,09), both next to this square) is fought before the next kick. Every
+    kick wakes them (dokick.c wake_nearby) and wipes the Elbereth under us (u_wipe_engr), and a wrap there drowns us
+    one step from the trap door -- castle_logic's _fight_adjacent skips the water. True: acted."""
+    agent = castle.agent
+    if castle.levitating():
+        return False
+    if (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+        # (a sea monster next to our Elbereth is fleeing -- it keeps fleeing after the kick wipes the letters -- and
+        # hitting it from here would erase it: mon.c setmangry 'You feel like a hypocrite', alignment -5)
+        return False
+    targets = _sea_targets(castle)
+    if not targets:
+        return False
+    t = castle._tries
+    if t.get('cfp_door_sea', 0) >= 60:
+        return False
+    t['cfp_door_sea'] = t.get('cfp_door_sea', 0) + 1
+    _sea_hit(castle, targets[0], 'at the back door: hitting the sea monster at')
+    return True

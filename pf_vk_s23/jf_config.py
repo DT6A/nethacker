@@ -661,6 +661,24 @@ CFP_PRUSH = False
 # blocks it and comes off first): monmove.c set_apparxy makes a monster that can't see us guess our square each time we
 # move (ours 1 time in 3, else a random accessible neighbour), so sharks, eels and minotaurs land ~40-55% of their melee
 CFP_INVIS = False
+# REUSES: #472 / #487 / #459 (this port beat its parent each time: +0.0099, +0.0005, +0.0055; held-out up in all
+# placements) -- node #537 re-applies it on the #510 -> #524 MEDUSA_EARTH chain: MEDUSA_EARTH answers the Medusa-level
+# floods, this the castle moat's wraps (disjoint code: castle_logic/castle_cross only).
+# hypothesis: CFP_EEL (ported from nhbot/nhbot_v3, where it is ON; this engine had no answer to a wrap but blows). At the
+# castle, held on foot by a sea monster (castle_logic saw 'swings itself around you' / 'cannot escape'), write Elbereth
+# instead of hitting the holder: its next touch drowns us at any HP (mhitu.c AD_WRAP: u.ustuck, !Amphibious) and one blow
+# rarely kills a 5HD eel, while a scared holder lets go and doesn't attack (monmove.c dochug onscary -> monflee ->
+# release_hero, 'You get released!'). And in front of the locked back door (57,08) a sea monster in view next to us is
+# fought before the next kick, which wakes the east eels (dokick.c wake_nearby) and wipes our Elbereth. Targets the
+# dwarf's castle drownings (parent public seed 11: 'drowned in a moat by a giant eel', Dlvl 28; s4 shark, Dlvl 27).
+# sources: /board/past_ideas/node-472.diff (#472's diff, ported here); nhbot/castle_cross.py held_elbereth/door_sea_fight + nhbot/jf_config.py CFP_EEL (harness eel drownings 6 -> 2
+# over 56 paired castle games); NetHack 3.6.6 src/mhitu.c (AD_WRAP drowning), src/monmove.c monflee (release_hero);
+# https://nethackwiki.com/wiki/Giant_eel (0 MR: scaring 'forces it to let go if it has grabbed you') ;
+# https://nethackwiki.com/wiki/Talk:Holding_attack (held beside water: drowned on the eel's next hit, even at AC -81) ;
+# https://groups.google.com/g/rec.games.roguelike.nethack/c/7QiTNHOHFxM ('exactly one turn to save yourself') ;
+# NetHack-3.6.6_Released src/monmove.c monflee() -> release_hero() ('You get released!') ;
+# https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Castle
+CFP_EEL = True
 
 # --- power-route (power_route.py): teleport control + a level-teleport trigger from what the dive carries ---
 # TC_ROUTE (off): learn which ring gives teleport control from the game's prompts ('Where do you want to be
@@ -784,6 +802,24 @@ MINO_UNSEEN = True
 # dobuzz (range rn1(7,7), -2 per hit, a straight ray reverses at a wall), zhitu ZT_LIGHTNING (d(6,6), flashburn);
 # https://nethackwiki.com/wiki/Wand_of_lightning; https://nethackwiki.com/wiki/Ray
 MINO_RAY_ROOM = True
+# hypothesis: KNOWN_ITEMS (known_items.py, node #535) -- this engine is the only one without the known-item emergency
+# layer: in mortal danger while diving -- critically low HP, or a burst (the HP lost over the last
+# KNOWN_ITEMS_BURST_TURNS turns >= what is left, below KNOWN_ITEMS_BURST_FRAC of max HP: a soldier group, elf-lord
+# volley or troll skips straight over pray.c's 1/7 trigger) -- with no emergency prayer due and no minotaur in view
+# (mino_guard's), it climbs the up stairs under us, reads a known scroll of teleportation, zaps a known wand of
+# teleportation at itself or digging down, quaffs known full/extra healing, or zaps known sleep/striking/cold/fire/
+# lightning/magic missile at the strongest adjacent attacker (KNOWN_ITEMS_TARGET: by monstr difficulty, never a
+# resisted type, rays only with KNOWN_ITEMS_RAY_RUN free squares behind it) -- instead of dying with the item unused or
+# the last resort's unknown-item gambles.
+# sources: nhbot/jf_config.py KNOWN_ITEMS* + nhbot/known_items.py (the human engines' shipping guard, ported);
+# /board/past_ideas/node-456.diff, node-465.diff, node-476.diff (earlier pf ports, positive over their parents, never
+# in a root); https://nethackwiki.com/wiki/Escape_item ; https://nethackwiki.com/wiki/Standard_strategy ; NetHack 3.6.6
+# zap.c buzz/zhitm, makemon.c mstrength, mon.c setmangry
+KNOWN_ITEMS = True
+KNOWN_ITEMS_BURST_TURNS = 2
+KNOWN_ITEMS_BURST_FRAC = 0.5
+KNOWN_ITEMS_RAY_RUN = 6      # free squares behind the target before a sleep/fire/lightning ray is safe from its bounce
+KNOWN_ITEMS_TARGET = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
@@ -823,3 +859,17 @@ RESIST_AWARE_ZAP = True
 # src/monst.c PM_MIND_FLAYER/PM_MASTER_MIND_FLAYER; https://nethackwiki.com/wiki/Mind_flayer ;
 # https://nethackwiki.com/wiki/Elbereth
 FLAYER_GUARD = True
+
+# hypothesis: UNIHORN_CURE (global_logic.unihorn_cure; node #549, on the #522 MINO_DOWNSTAIRS -> #531 PASSTUNE
+# chain) -- keep one unicorn horn not known cursed and apply it (apply.c use_unihorn: an uncursed horn fixes rn2(d(2,2))
+# of the fixable troubles per apply) when blind / confused / stunned / hallucinating with nothing next to us, instead of
+# pressing '.' through the wait-out, and for food poisoning / terminal illness when prayer isn't safe
+# (agent.emergency_strategy). Here it also feeds this chain's minotaur guard: mino_guard._in_scope is off while we
+# hallucinate and a blind hero sees no minotaur glyph, so a cured hero gets the MINO_* lanes back before the next maze
+# landing, and a hero waiting at the castle (#531) is not left blind/stunned beside the moat; a stunned/confused one stops digging/walking in random directions beside water (castle/Medusa drownings).
+# Blindness is left alone on Medusa's level (it is the gaze defence) and under a worn blindfold/towel.
+# sources: https://nethackwiki.com/wiki/Unicorn_horn ; https://nethackwiki.com/wiki/Stun ;
+#   https://nethackwiki.com/wiki/Hallucination ; NetHack 3.6.6 src/apply.c use_unihorn() (fixable troubles,
+#   d(2,2)/d(2,4) counts, cursed effects); REUSES /board/past_ideas #475 (+0.0100), #461 (+0.0085), #449 (+0.0037),
+#   #411 (+0.0029), #469, #486, this round's #534 and #538 (+0.0036 over #529, dev +0.0152), ported unchanged in its logic.
+UNIHORN_CURE = True
