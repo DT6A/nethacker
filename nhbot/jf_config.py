@@ -176,6 +176,47 @@ LMINION_ELBERETH = True
 # https://nethackwiki.com/wiki/Aleax ; https://nethackwiki.com/wiki/Couatl ; /board/past_ideas #322/#92/#133
 # (LMINION_ELBERETH melee-only parity ports, positive vs parent), here extended to the general model.
 LMINION_ONSCARY = True
+# hypothesis: ADJACENT_SCARE_FIX (dive_logic._ignores_elbereth) -- RANGED_MONSTERS ("breathers, spitters and casters")
+# also lists the energy vortex and the yellow and black lights, so every _ignores_elbereth caller took Elbereth as
+# futile beside them. None of the three hurts from a distance: their attacks are AT_ENGL x2 + passive AT_NONE (vortex)
+# and AT_EXPL (lights), and engulfing and exploding both run only inside mattacku(), which dochug() never calls for a
+# monster distfleeck() found scared; onscary() has no exception for them (eyeless monsters respect it). Calling them
+# ignorers sent the Elbereth rest, the last resort's 'Elbereth futile' test (desperate prayer, unknown wands, or melee
+# instead of engraving) and the fainting-threat prayer the wrong way. Meleeing a vortex costs the passive d(lvl+1,4)
+# shock on every blow it survives (uhitm.c passive), its engulf drains energy and, after expulsion, can destroy wands
+# and rings; a light's explosion blinds (10d20 turns) or hallucinates us. Parent val-hum-neu-fem s12 was 'killed by an
+# energy vortex' (Dlvl 13, 0.257). With the flag they count as scared, like the other non-@ melee-only monsters.
+# sources: /refs/history/621.diff (#621, +0.0056 over its parent #612, public/held-out/dev all up; ported here onto
+# #609 -> #614); /board/past_ideas/node-387.diff (#387, +0.0036 over its parent, public +0.0071; never rooted);
+# NetHack 3.6.6 src/monst.c (energy vortex AT_ENGL AD_ELEC 1d6, AT_ENGL AD_DREN 2d6, AT_NONE AD_ELEC 0d4; yellow light
+# AT_EXPL AD_BLND 10d20; black light AT_EXPL AD_HALU 10d12), src/monmove.c dochug() ('if (inrange && ... && !scared
+# && tmp != 3) if (mattacku(mtmp)) return 1; /* monster died (e.g. exploded) */'), distfleeck(), onscary(),
+# src/mhitu.c mattacku() (AT_ENGL -> gulpmu, AT_EXPL -> explmu), src/uhitm.c passive();
+# https://nethackwiki.com/wiki/Elbereth (only @, A, minotaurs, shopkeepers/guards/priests, the Wizard and the Riders
+# ignore it; 'eyeless monsters ... will respect Elbereth'); https://nethackwiki.com/wiki/Energy_vortex ('scaring
+# tools such as a bugle can also work for keeping one at bay'; passive 'triggers when it is attacked and not killed
+# in melee'); https://nethackwiki.com/wiki/Yellow_light
+ADJACENT_SCARE_FIX = True
+# hypothesis: RANGED_SOURCE_FIX (dive_logic._ignores_elbereth) -- the Elbereth-futility test counts every S_DRAGON and
+# a hand list of 'breathers, spitters and casters' as hurting us from a distance. monst.c says otherwise for some:
+# the nine baby dragons have a single AT_BITE 2d6 and no breath; the kobold shaman, orc shaman, gnomish wizard and
+# golden naga attack only with AT_MAGC AD_SPEL, which at range (mattacku -> buzzmu) does nothing, and castmu casts
+# only undirected spells (cure/haste self, disappear, aggravate) unless we are adjacent -- summon nasties needs
+# spellnum >= 15 from rn2(m_lvl), out of reach for them (adj_lev caps m_lvl at 3/2 the base: 3, 4, 4, 15). onscary()
+# has no exception for any of them, and a scared monster never runs mattacku (dochug), so Elbereth holds them all
+# off; calling them ignorers turned the Elbereth rest, the last resort's Elbereth test and the threat prayer away
+# from it. Conversely the iron golem (AT_WEAP 4d10, AT_BREA AD_DRST 4d6) breathes poison when lined up -- zap.c
+# ZT_POISON_GAS -> poisoned(.., 15): 1 in 15 instadeath without poison resistance, plus a poison-cloud trail since
+# 3.6.1 -- yet was counted as one Elbereth stops; it now counts as ranged like the winter wolf or the dragons.
+# sources: NetHack 3.6.6 src/monst.c (PM_BABY_*_DRAGON, PM_KOBOLD_SHAMAN, PM_ORC_SHAMAN, PM_GNOMISH_WIZARD,
+# PM_GOLDEN_NAGA, PM_IRON_GOLEM), src/mhitu.c mattacku/buzzmu, src/mcastu.c castmu/choose_magic_spell/
+# is_undirected_spell, src/makemon.c adj_lev, src/monmove.c dochug/onscary, src/zap.c zhitu, src/mhitu.c poisoned;
+# https://nethackwiki.com/wiki/Monster_spell ("scared ... or not adjacent ... will only use non-directed spells";
+# summon nasties minimum level 16); https://nethackwiki.com/wiki/Baby_dragon ("Baby dragons do not have breath
+# attacks"); https://nethackwiki.com/wiki/Iron_golem ; https://nethackwiki.com/wiki/Poison (poison blast 1/15
+# deadly); https://nethackwiki.com/wiki/Elbereth ; https://nethack.fandom.com/wiki/Elbereth (a dragon next to you
+# melees rather than breathes, so Elbereth stops it altogether)
+RANGED_SOURCE_FIX = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 # ON (train 3): castle A038 guard neutral (-0.002); harness 2 Grey-elves at 12/72 HP deaths 9/10 -> 3/10

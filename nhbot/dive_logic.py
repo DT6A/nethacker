@@ -103,6 +103,14 @@ RANGED_MONSTERS = frozenset((
     'kobold shaman', 'orc shaman', 'gnomish wizard', 'energy vortex', 'yellow light', 'black light',
     'mind flayer', 'master mind flayer', 'titan', 'couatl', 'ki-rin', 'Aleax', 'Angel',
     'nalfeshnee', 'pit fiend', 'balrog', 'djinni', 'storm giant'))
+# ADJACENT_SCARE_FIX (jf_config): RANGED_MONSTERS entries whose every attack is an engulf, an explosion or a
+# passive (monst.c) -- all inside mattacku(), which a scared monster never runs (monmove.c dochug)
+ADJACENT_ONLY_MONSTERS = frozenset(('energy vortex', 'yellow light', 'black light'))
+# RANGED_SOURCE_FIX (jf_config): monst.c's attack table against the list above -- the AD_SPEL casters whose level never
+# reaches summon nasties (mcastu.c choose_magic_spell: spellnum = rn2(m_lvl) >= 15; adj_lev caps m_lvl at 3/2 the base)
+# have no damage from a distance, and the iron golem breathes poison (AT_BREA AD_DRST) like a winter wolf breathes cold
+NO_RANGED_HARM_CASTERS = frozenset(('kobold shaman', 'orc shaman', 'gnomish wizard', 'golden naga'))
+SOURCE_BREATHERS = frozenset(('iron golem',))
 # XP farm: under-levelled on a fully explored level, wait on the up staircase (escape route)
 # for random spawns instead of descending. 0 disables.
 FARM_TURNS = 0
@@ -1994,6 +2002,21 @@ class DiveLogic:
         # LMINION_ONSCARY: lawful minions (every A) are 'directly resistant to magical scaring' in onscary()
         if jf_config.LMINION_ONSCARY and self._lawful_minion(mon):
             return True
+        # hypothesis: ADJACENT_SCARE_FIX -- an engulfer or exploder hurts only from next to us, and a scared one doesn't
+        # attack, so Elbereth holds it off like any other non-@ melee monster (see jf_config.ADJACENT_SCARE_FIX)
+        # sources: NetHack 3.6.6 src/monmove.c dochug() (mattacku only if !scared), src/mhitu.c mattacku()
+        if jf_config.ADJACENT_SCARE_FIX and name in ADJACENT_ONLY_MONSTERS:
+            return False
+        # hypothesis: RANGED_SOURCE_FIX -- 'hurts from a distance' comes from monst.c's real attacks, not the class or a
+        # guess: a baby dragon only bites (no breath) and a low caster's spells need us adjacent, so a scared one of
+        # either does nothing and Elbereth holds it; an iron golem's poison breath reaches us on Elbereth
+        # sources: NetHack 3.6.6 src/monst.c, src/mhitu.c mattacku (AT_MAGC at range: buzzmu, nothing for AD_SPEL),
+        # src/mcastu.c castmu/choose_magic_spell, src/monmove.c dochug/onscary; see jf_config.RANGED_SOURCE_FIX
+        if jf_config.RANGED_SOURCE_FIX:
+            if name in NO_RANGED_HARM_CASTERS or (cls == MON.S_DRAGON and name.startswith('baby ')):
+                return False
+            if name in SOURCE_BREATHERS:
+                return True
         return cls in (MON.S_HUMAN, MON.S_DRAGON) or name in ('minotaur', 'unknown') or name in RANGED_MONSTERS
 
     def _melee_ignores_elbereth(self, mon):
