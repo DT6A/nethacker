@@ -512,6 +512,15 @@ LR_ELBERETH = False
 REST_FIGHT_WEAK = False
 # never kill a gas spore whose blast reaches any @ (or anything in Minetown); its melee is filtered out of fight2
 SPORE_SAFE = False
+# hypothesis: SPORE_TRAP_FIX (fight_heur.melee_monster_priority) -- the trapped-by-a-gas-spore melee tested
+#   `hitpoints / max_hitpoints`, a ratio that is truthy at any HP above 0, so a dwarf boxed in by a lone spore hit it
+#   at any HP and ate the 4d6 (up to 24) blast. A spore never attacks (its only attack is AT_BOOM, on death), so
+#   waiting for it to drift off costs nothing; the melee now happens only when HP > 24 (the blast cannot kill us),
+#   as nhbot and nhbot_v3 already do.
+# sources: NetHack 3.6.6 src/monst.c gas spore ATTK(AT_BOOM, AD_PHYS, 4, 6); src/explode.c explode(); src/mon.c
+#   corpse_chance() gas spore explosion; https://nethackwiki.com/wiki/Gas_spore ; nhbot/nhbot_v3 fight_heur.py
+#   SPORE_TRAP_FIX; past idea node #573 (same port, +0.0030 over its parent on score/public/held-out/dev)
+SPORE_TRAP_FIX = True
 # a floating eye is hit blindfolded (blindfold/towel on, F-attack, off again), else by a throw, else as before
 # ON (train 3.4, grind-combat A063): blindfold/towel on before meleeing a floating eye (jf16 s12 replay: no freeze, no rock-mole death)
 FEYE_BLIND = True
@@ -873,3 +882,15 @@ FLAYER_GUARD = True
 #   d(2,2)/d(2,4) counts, cursed effects); REUSES /board/past_ideas #475 (+0.0100), #461 (+0.0085), #449 (+0.0037),
 #   #411 (+0.0029), #469, #486, this round's #534 and #538 (+0.0036 over #529, dev +0.0152), ported unchanged in its logic.
 UNIHORN_CURE = True
+
+# hypothesis: ALTAR_NO_ENGRAVE (agent.can_engrave; parity port of nhbot's flag) -- engrave.c doengrave on an altar square
+#   writes nothing ('You make a motion towards the altar with your fingertip.') and calls pray.c altar_wrath: on a
+#   cross-aligned altar 'Thou shalt pay, infidel!' and Luck -1 (1 in 20: -2), on our own -1 alignment and -1 Wis. With
+#   Luck < 0 every prayer is 'too naughty' (pray.c can_pray: p_type 1, nothing fixed) until Luck times out, so the
+#   low-HP prayer that usually follows a useless Elbereth fails too and we die praying. This engine never checked the
+#   altar; with the flag no Elbereth is attempted on a known altar (the holds and fight2 then step off it or fight).
+# sources: NetHack 3.6.6 src/engrave.c doengrave (IS_ALTAR -> altar_wrath), src/pray.c altar_wrath/can_pray;
+#   https://nethackwiki.com/wiki/Altar ; https://nethackwiki.com/wiki/Luck ; https://nethackwiki.com/wiki/Prayer ;
+#   nhbot/jf_config.py ALTAR_NO_ENGRAVE + nhbot/agent.py can_engrave; /board/past_ideas #232/#280/#330/#293/#262/
+#   #282/#497 (this port beat its own parent in all seven placements, never reached a root)
+ALTAR_NO_ENGRAVE = True

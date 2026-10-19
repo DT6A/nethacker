@@ -1735,7 +1735,18 @@ class Agent:
             return False  # TODO: only for handless monsters (which cannot write)
         if self.no_free_hand():
             return False
+        if jf_config.ALTAR_NO_ENGRAVE and self._on_altar():
+            return False   # engrave.c: altar_wrath, Luck -1, and the next prayer fails
         return (self.blstats.y, self.blstats.x) != self._forbidden_engrave_position
+
+    def _on_altar(self):
+        """ALTAR_NO_ENGRAVE: we stand on a known altar (our glyph hides it; the level map remembers it)."""
+        try:
+            level = self.current_level()
+            y, x = int(self.blstats.y), int(self.blstats.x)
+            return (y, x) in level.altars or level.objects[y, x] in G.ALTAR
+        except Exception:
+            return False
 
     def engrave(self, text):
         assert '\r' not in text

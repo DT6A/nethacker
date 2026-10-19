@@ -1743,3 +1743,15 @@ FLAYER_GUARD = True
 #   d(2,2)/d(2,4) counts, cursed effects); REUSES /board/past_ideas #475 (+0.0100), #461 (+0.0085), #449 (+0.0037),
 #   #411 (+0.0029), #469, #486, this round's #534 and #538 (+0.0036 over #529, dev +0.0152), ported unchanged in its logic.
 UNIHORN_CURE = True
+
+# hypothesis: ALTAR_NO_ENGRAVE (agent.can_engrave; parity port of nhbot's flag) -- engrave.c doengrave on an altar square
+#   writes nothing ('You make a motion towards the altar with your fingertip.') and calls pray.c altar_wrath: on a
+#   cross-aligned altar 'Thou shalt pay, infidel!' and Luck -1 (1 in 20: -2), on our own -1 alignment and -1 Wis. With
+#   Luck < 0 every prayer is 'too naughty' (pray.c can_pray: p_type 1, nothing fixed) until Luck times out, so the
+#   low-HP prayer that usually follows a useless Elbereth fails too and we die praying. This engine never checked the
+#   altar; with the flag no Elbereth is attempted on a known altar (the holds and fight2 then step off it or fight).
+# sources: NetHack 3.6.6 src/engrave.c doengrave (IS_ALTAR -> altar_wrath), src/pray.c altar_wrath/can_pray;
+#   https://nethackwiki.com/wiki/Altar ; https://nethackwiki.com/wiki/Luck ; https://nethackwiki.com/wiki/Prayer ;
+#   nhbot/jf_config.py ALTAR_NO_ENGRAVE + nhbot/agent.py can_engrave; /board/past_ideas #232/#280/#330/#293/#262/
+#   #282/#497 (this port beat its own parent in all seven placements, never reached a root)
+ALTAR_NO_ENGRAVE = True

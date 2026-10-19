@@ -838,6 +838,22 @@ MINES_STUCK_TURNS = 1500
 # ON (train 2): with HUNT_V2 (pick-camp1); the camp ran in 12 dives and ended with a tool in 10
 MINES_CAMP = True
 MINES_CAMP_TURNS = 8000
+# MINES_CAMP_GIVE_UP: a non-dwarf/gnome camp whose budget ends with no digging tool gives the Mines route up
+# (mines_done) and goes back to the main dive, instead of "on down the Mines" to Mines' End and back up.
+# hypothesis: use_mines() stays true after the camp's budget (mines_done is only set at Mines' End), so a human
+# tool-less dive stair-dives Mines levels 5-13 whose gnomes, dwarves, hill orcs and soldier ants are hostile to it
+# (makemon.c peace_minded: the Mines' racial peace MINES_ROUTE was written for is for dwarf/gnome heroes only; a
+# neutral human meets hostile gnomes too), down past Minetown to the dead-end Mines' End and then climbs all of it
+# again -- thousands of turns at Dlvl 10-13 that bank nothing the main dive won't pass anyway (its deaths are at
+# Dlvl 22-29). Parent val-hum-neu died at Dlvl 13 after 13k turns (energy vortex), well short of Medusa.
+# sources: reuses #490 / #590 (and #187, #306, #351, #398): this same give-up beat its parent in all six placements
+# (+0.0052, +0.0013, +0.0048, +0.0016, +0.0035, +0.0034 score), never committed to a root; NetHack 3.6.6 makemon.c
+# peace_minded + race_peaceful, dungeon.def (Mines: 8-9 levels from Dlvl 2-4); https://nethackwiki.com/wiki/Gnomish_Mines
+# ("a mines level is often substantially harder than a level of the main dungeon"; the lower Mines "*much* more
+# dangerous"); https://nethackwiki.com/wiki/Valkyrie (only dwarves get a guaranteed peaceful Mines);
+# https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F (players: "I'd probably skip Mine's end",
+# "I tried for Mine's end, but I realize how stupid that is now")
+MINES_CAMP_GIVE_UP = True
 # RETURN_FIX (off): return_to_main_dungeon also knows the up stairs by their recorded destination, and a dive
 # boxed in with a digging tool digs sideways out (see _dig_out)
 RETURN_FIX = False
@@ -5974,7 +5990,12 @@ class DiveLogic:
                       f'{MINES_CAMP_TURNS} turns)')
         if t - self._camp_start > MINES_CAMP_TURNS:
             self._camp_over = True
-            agent.log('CAMP: budget spent, on down the Mines')
+            if MINES_CAMP_GIVE_UP and agent.character.race not in (Character.DWARF, Character.GNOME):
+                # MINES_CAMP_GIVE_UP: no tool in the camp's budget -- leave the hostile Mines for the main dive
+                self.mines_done = True
+                agent.log('CAMP: budget spent, no tool found, giving the hostile Mines route up')
+            else:
+                agent.log('CAMP: budget spent, on down the Mines')
             return False
         return True
 
