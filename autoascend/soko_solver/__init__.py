@@ -49,10 +49,12 @@ def convert_map(text):
     mapping = {'<': EMPTY, '>': START, '.': EMPTY, '?': EMPTY, '+': EMPTY,
                '0': BOULDER, '-': WALL, '|': WALL, ' ': IGNORE, '^': TARGET}
     ret = []
+    # hypothesis: the map strings carry a fixed 4-column code indent that the precomputed answer moves do not, so keeping it misaligns every push and the solver fails on its first move; dropping it lets all 8 maps replay.
+    # sources: https://nethackwiki.com/wiki/Sokoban ; offline replay of every answer list on SokoMap (all 8 maps pass after the strip, all fail on the first move without it) ; /board/claims/node-73.md
     for line in text.splitlines():
         if not line:
             continue
-        ret.append([mapping[l] for l in line])
+        ret.append([mapping[l] for l in line[4:]])
     ret = np.array(ret)
     assert len(list(zip(*(ret == TARGET).nonzero()))) == 1
     start = list(zip(*(ret == START).nonzero()))

@@ -730,9 +730,18 @@ class Agent:
             self.stats_logger.log_event('container_untrap_fail')
             return self.message
 
+    # hypothesis: prayer is major trouble at NetHack 3.6.6's critically_low_hp() (HP <= 5, or HP*divisor <= min(maxHP, 15*XL), divisor 5/6/7/8/9 by XL), not the fixed 1/7; the initial prayer timeout is 300 and major trouble is fixed at timeout <= 200, so the first prayer is safe from turn 100, not 300.
+    # sources: https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/pray.c ; https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/allmain.c ; https://nethackwiki.com/wiki/Trouble ; https://nethackwiki.com/wiki/Prayer_timeout
+    def critically_low_hp(self):
+        hp, max_hp, xl = self.blstats.hitpoints, self.blstats.max_hitpoints, self.blstats.experience_level
+        if hp <= 5:
+            return True
+        divisor = 5 if xl <= 5 else 6 if xl <= 13 else 7 if xl <= 21 else 8 if xl <= 29 else 9
+        return hp * divisor <= min(max_hp, 15 * xl)
+
     def is_safe_to_pray(self, limit=500):
         return (
-                (self.last_prayer_turn is None and self.blstats.time > 300) or
+                (self.last_prayer_turn is None and self.blstats.time >= 100) or
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
@@ -1431,11 +1440,8 @@ class Agent:
             self.inventory.quaff(items[0])
             return
 
-        # hypothesis: pray only in NetHack's major trouble (HP <= 5 or HP*7 <= max HP, or Weak+). Between max/7 and max/5 a prayer is no trouble, so with a live prayer timeout it angers the god and resets the timeout the real emergency needs.
-        # sources: https://nethackwiki.com/wiki/Prayer ; https://www.steelypips.org/nethack/pray.txt ; https://nethackwiki.com/wiki/Prayer_timeout ; https://nethackwiki.com/wiki/Major_trouble
-        major_hp_trouble = self.blstats.hitpoints <= 5 or self.blstats.hitpoints * 7 <= self.blstats.max_hitpoints
         if (
-                (self.is_safe_to_pray(500) and major_hp_trouble)
+                (self.is_safe_to_pray(500) and self.critically_low_hp())
                 or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.WEAK)
         ):
             yield True

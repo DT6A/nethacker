@@ -47,6 +47,7 @@ class Inventory:
         self.engraving_below_me = None
 
         self.skip_engrave_counter = 0
+        self.stuck_armor = set()
 
     def on_panic(self):
         self.items_below_me = None
@@ -1158,19 +1159,30 @@ class Inventory:
 
         return possible_wand_types
 
+    def _armor_locked(self, slot, item):
+        return item is not None and (item.status == Item.CURSED or (slot, item.objs[0].name) in self.stuck_armor)
+
+    def _take_off_or_lock(self, slot, item):
+        if not self.takeoff(item):
+            self.stuck_armor.add((slot, item.objs[0].name))
+
+    # hypothesis: wearing unambiguous armour of unknown curse status (dwarf and floor armour, e.g. dwarvish iron helm
+    # or mithril-coat) raises AC, which the bot carries but never wears; a piece the game won't take off is locked.
+    # sources: https://nethackwiki.com/wiki/Armor (12.31% of random armour cursed); https://nethackwiki.com/wiki/Cursed;
+    # https://nethackwiki.com/wiki/Dunce_cap (autocursing conical hat, excluded by is_unambiguous())
     @utils.debug_log('inventory.wear_best_stuff')
     @Strategy.wrap
     def wear_best_stuff(self):
         yielded = False
         while 1:
-            best_armorset = self.get_best_armorset()
+            best_armorset = self.get_best_armorset(allow_unknown_status=True)
 
             # TODO: twoweapon
             for slot, name in [(O.ARM_SHIELD, 'off_hand'), (O.ARM_HELM, 'helm'), (O.ARM_GLOVES, 'gloves'),
                                (O.ARM_BOOTS, 'boots'), (O.ARM_SHIRT, 'shirt'), (O.ARM_SUIT, 'suit'),
                                (O.ARM_CLOAK, 'cloak')]:
-                if best_armorset[slot] == getattr(self.items, name) or \
-                        (getattr(self.items, name) is not None and getattr(self.items, name).status == Item.CURSED):
+                worn = getattr(self.items, name)
+                if best_armorset[slot] == worn or self._armor_locked(slot, worn):
                     continue
                 additional_cond = True
                 if slot == O.ARM_SHIELD:
@@ -1178,22 +1190,22 @@ class Inventory:
                 if slot == O.ARM_GLOVES:
                     additional_cond &= self.items.main_hand is None or self.items.main_hand.status != Item.CURSED
                 if slot == O.ARM_SHIRT or slot == O.ARM_SUIT:
-                    additional_cond &= self.items.cloak is None or self.items.cloak.status != Item.CURSED
+                    additional_cond &= self.items.cloak is None or not self._armor_locked(O.ARM_CLOAK, self.items.cloak)
                 if slot == O.ARM_SHIRT:
-                    additional_cond &= self.items.suit is None or self.items.suit.status != Item.CURSED
+                    additional_cond &= self.items.suit is None or not self._armor_locked(O.ARM_SUIT, self.items.suit)
 
                 if additional_cond:
                     if not yielded:
                         yielded = True
                         yield True
                     if (slot == O.ARM_SHIRT or slot == O.ARM_SUIT) and self.items.cloak is not None:
-                        self.takeoff(self.items.cloak)
+                        self._take_off_or_lock(O.ARM_CLOAK, self.items.cloak)
                         break
                     if slot == O.ARM_SHIRT and self.items.suit is not None:
-                        self.takeoff(self.items.suit)
+                        self._take_off_or_lock(O.ARM_SUIT, self.items.suit)
                         break
-                    if getattr(self.items, name) is not None:
-                        self.takeoff(getattr(self.items, name))
+                    if worn is not None:
+                        self._take_off_or_lock(slot, worn)
                         break
                     assert best_armorset[slot] is not None
                     self.wear(best_armorset[slot])

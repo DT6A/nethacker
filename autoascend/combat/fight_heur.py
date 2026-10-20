@@ -6,7 +6,7 @@ from scipy import signal
 
 from ..glyph import G
 from ..utils import adjacent
-from .monster_utils import is_monster_faster, is_dangerous_monster, \
+from .monster_utils import is_monster_faster, is_dangerous_monster, ignores_elbereth, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
@@ -210,10 +210,14 @@ def elbereth_action(agent, monsters):
             continue
         if not adjacent((my, mx), (agent.blstats.y, agent.blstats.x)):
             continue
+        if ignores_elbereth(monster):
+            return []
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
-        if mon in WEAK_MONSTERS:
+        # hypothesis: WEAK_MONSTERS holds names, so `mon in WEAK_MONSTERS` on the monster object was always False and newts, lichens, shriekers and grid bugs counted as full Elbereth threats; at low HP the hero then engraves and waits instead of killing one.
+        # sources: https://nethackwiki.com/wiki/Elbereth ; https://nethackwiki.com/wiki/Lichen ; https://nethackwiki.com/wiki/Newt ; https://nethackwiki.com/wiki/Talk:Elbereth ; GameFAQs NetHack 1987 board "Ok, seriously, what are the golden rules for the Early Stage of the game?" (https://gamefaqs.gamespot.com/boards/582497-nethack-1987/59952741?page=2)
+        if mon.mname in WEAK_MONSTERS:
             adj_monsters_count += 0.1 * multiplier
             continue
         adj_monsters_count += 1 * multiplier
@@ -227,7 +231,9 @@ def elbereth_action(agent, monsters):
 
 
 def wait_action(agent, monsters):
-    if agent.inventory.engraving_below_me.lower() == 'elbereth':
+    if agent.inventory.engraving_below_me.lower() == 'elbereth' and not any(
+            ignores_elbereth(monster) and adjacent((monster[1], monster[2]), (agent.blstats.y, agent.blstats.x))
+            for monster in monsters):
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         return [(priority, ('wait',))]
@@ -242,7 +248,7 @@ def get_available_actions(agent, monsters):
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and not ignores_elbereth(monster):
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
@@ -254,7 +260,7 @@ def get_available_actions(agent, monsters):
             ranged_pr = ranged_priority(agent, dy, dx, monsters)
             if ranged_pr is not None:
                 pri, y, x, monster = ranged_pr
-                if agent.inventory.engraving_below_me.lower() == 'elbereth':
+                if agent.inventory.engraving_below_me.lower() == 'elbereth' and not ignores_elbereth(monster):
                     pri -= 100
                 if all(monster[3].mname in ONLY_RANGED_SLOW_MONSTERS for monster in monsters):
                     pri += 10

@@ -1,3 +1,5 @@
+# hypothesis: combination of the round's best chain (#45 armour, #48 Elbereth vs @/minotaur, #56 blind/confused fight-back) with #78 (Sokoban map indent), #58 (pray.c critically_low_hp), #77 (no Sokoban pick-axe) and #70 (WEAK_MONSTERS name test): each touches its own code path, so together they add armour use, survival in early fights and a Sokoban solver that replays.
+# sources: round ideas #45, #48, #56 (chain to node #56), #78, #58, #77, #70 (/board/round_ideas/node-<n>.diff); each change keeps its own hypothesis and sources comment.
 from enum import IntEnum, auto
 
 import nle.nethack as nh
@@ -202,20 +204,9 @@ class GlobalLogic:
                     if self.agent.bfs()[ty + dy, tx + dx] != -1:
                         self.agent.go_to(ty + dy, tx + dx, debug_tiles_args=dict(color=(255, 255, 255), is_path=True))
                         continue
-                    else:
-                        pickaxe = None
-                        for item in flatten_items(self.agent.inventory.items):
-                            if item.is_unambiguous() and \
-                                    item.object in [O.from_name('pick-axe'), O.from_name('dwarvish mattock')]:
-                                pickaxe = item
-                                break
-                        if pickaxe is not None:
-                            with self.agent.atom_operation():
-                                pickaxe = self.agent.inventory.move_to_inventory(pickaxe)
-                                self.agent.step(A.Command.APPLY)
-                                self.agent.type_text(self.agent.inventory.items.get_letter(pickaxe))
-                                self.agent.direction(direction)
-                            return True
+                    # hypothesis: a blocked Sokoban push must not be solved by breaking the boulder with a pick-axe: that is forbidden, and it costs -1 Luck until the level is solved, which blocks successful prayer.
+                    # sources: https://nethackwiki.com/wiki/Sokoban (Luck penalties: breaking a boulder; stuck boulders: destroy a boulder with a pick-axe, force bolt or wand of striking is a luck penalty); https://nethackwiki.com/wiki/Luck (negative Luck blocks prayer results); https://nethackwiki.com/wiki/Pick-axe (applying a pick-axe to a stuck boulder costs -1 Luck in Sokoban); https://nethack.fandom.com/wiki/Sokoban
+                    return False
                 else:
                     return True
 
@@ -314,6 +305,12 @@ class GlobalLogic:
             self.milestone = Milestone(int(self.milestone) + 1)
             raise AgentPanic('sokomap unsolvable')
 
+    def _hostile_adjacent(self):
+        y, x = self.agent.blstats.y, self.agent.blstats.x
+        return any(utils.adjacent((y, x), (my, mx)) for _, my, mx, *_ in self.agent.get_visible_monsters())
+
+    # hypothesis: a blind, confused, stunned, hallucinating or polymorphed hero that is being hit searches in place until the status ends (a yellow light blinds for 10d20 turns), so the adjacent monster kills it without a blow back or a prayer; yielding to fight2 and emergency_strategy as soon as a hostile is adjacent (and waiting again once none is) stops that passive death.
+    # sources: https://nethackwiki.com/wiki/Blindness (monsters that attack a blind hero are marked with an I; moving into or searching next to an I attacks it) ; https://nethackwiki.com/wiki/Yellow_light (explosion blinds for 10d20 turns) ; https://nethackwiki.com/wiki/Talk:Blindness (player discussion: moving into an I marker attacks it without confirmation) ; https://www.quartertothree.com/fp/2011/05/23/nethack-dead-again/ (player blinded by a yellow light, killed while wandering blind) ; /refs/history/32 (same yield-out-of-the-wait fix, +0.014 on its own parent)
     @Strategy.wrap
     def wait_out_unexpected_state_strategy(self):
         yielded = False
@@ -323,6 +320,8 @@ class GlobalLogic:
                 self.agent.character.prop.stun or
                 self.agent.character.prop.hallu or
                 self.agent.character.prop.polymorph):
+            if self._hostile_adjacent():
+                break
             if not yielded:
                 yield True
                 yielded = True
