@@ -15,7 +15,7 @@ from .character import Character
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
 from .exploration_logic import ExplorationLogic
 from .global_logic import GlobalLogic
-from .glyph import MON, C, Hunger, G, SHOP
+from .glyph import MON, C, Hunger, G, SHOP, SS
 from .item import Item, flatten_items
 from .item.inventory import Inventory
 from .level import Level
@@ -974,13 +974,47 @@ class Agent:
 
         return ret
 
-    def bfs(self, y=None, x=None):
+    # hypothesis: a level pocket whose only link to the stairs is an already-seen trap square
+    # (Mines filler levels carry 6 random traps and have narrow 1-tile necks) traps the bot for
+    # good: the trap-free bfs says the stairs are unreachable, so level travel falls back to
+    # wall searching forever (parent seed 2: '>' in view on Mines level 2, 6000 turns of
+    # searching at XL 9 / AC -7, starvation, hunger prayers that angered Tyr, killed by a
+    # Woodland-elf). Players simply walk over a known trap that blocks the way (a known trap
+    # is often escaped outright, e.g. a known bear trap 4/5 of the time; pits cost 1-6 HP and
+    # a few turns); only traps that wreck the game or the route are never crossed.
+    # sources: https://nethackwiki.com/wiki/Trap ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+    #   https://nethackwiki.com/wiki/Beartrap ; https://nethackwiki.com/wiki/Pit ;
+    #   https://nethackwiki.com/wiki/Prayer ; player discussions:
+    #   https://groups.google.com/g/rec.games.roguelike.nethack/c/jlGs5v1OOIE (bear trap: just keep
+    #   moving) and https://steamcommunity.com/app/341390/discussions/0/606068060837145595/
+    #   (stuck without reaching the stairs); diagnosed by replaying parent seed 2 (bfs map dump).
+    # hypothesis: #295 opened a 50-turn window after any trap-crossing stair route in which EVERY
+    # bfs (fight movement, item gathering, exploration, the next level) walked over known traps,
+    # and it crossed the traps that hurt most: a known trap still fires 4 times in 5 (trap.c
+    # dotrap: a seen trap is escaped only on !rn2(5)). Land mine d16 + wounded legs, sleeping gas
+    # up to 25 helpless turns, a magic trap's monster flash (fate < 10: rnd(4) monsters around the
+    # hero), fire trap, rolling boulder and a statue trap's live monster are never worth a shortcut;
+    # pits, bear traps, webs, squeaky boards, rust/arrow/dart/teleport traps are. Crossing is now
+    # limited to the stair walk's own path (go_to(cross_known_traps=True)), so fights and gathering
+    # keep the trap-free bfs; #295's diagnosed pocket fix still works.
+    # sources: https://nethackwiki.com/wiki/Land_mine ; https://nethackwiki.com/wiki/Sleeping_gas_trap ;
+    #   https://nethackwiki.com/wiki/Magic_trap ; https://nethackwiki.com/wiki/Dart_trap ;
+    #   https://nethackwiki.com/wiki/Trap (seen traps escaped 1/5) ; NetHack 3.6.6 src/trap.c dotrap(),
+    #   domagictrap(); /board/nodes/node-295.json (held-out 0.4232 -> 0.3006 vs root #221)
+    NEVER_CROSS_TRAPS = frozenset({SS.S_polymorph_trap, SS.S_level_teleporter, SS.S_magic_portal,
+                                   SS.S_hole, SS.S_trap_door,
+                                   SS.S_land_mine, SS.S_sleeping_gas_trap, SS.S_magic_trap,
+                                   SS.S_fire_trap, SS.S_rolling_boulder_trap, SS.S_statue_trap})
+
+    def bfs(self, y=None, x=None, cross_known_traps=False):
         if y is None:
             y = self.blstats.y
         if x is None:
             x = self.blstats.x
 
-        if self.last_bfs_step == self.step_count and y == self.blstats.y and x == self.blstats.x:
+        use_cache = not cross_known_traps
+
+        if use_cache and self.last_bfs_step == self.step_count and y == self.blstats.y and x == self.blstats.x:
             return self.last_bfs_dis.copy()
 
         level = self.current_level()
@@ -990,7 +1024,10 @@ class Agent:
                    ~level.forbidden
 
         if self._last_turn - self._allow_walking_through_traps_turn > 50:
-            walkable &= ~utils.isin(level.objects, G.TRAPS)
+            if cross_known_traps:
+                walkable &= ~utils.isin(level.objects, self.NEVER_CROSS_TRAPS)
+            else:
+                walkable &= ~utils.isin(level.objects, G.TRAPS)
 
         for my, mx in list(zip(*np.nonzero(utils.isin(self.glyphs, G.MONS)))):
             mon = MON.permonst(self.glyphs[my][mx])
@@ -1004,7 +1041,7 @@ class Agent:
                                     self.current_level().dungeon_number != Level.SOKOBAN,
                         )
 
-        if y == self.blstats.y and x == self.blstats.x:
+        if use_cache and y == self.blstats.y and x == self.blstats.x:
             self.last_bfs_dis = dis
             self.last_bfs_step = self.step_count
 
@@ -1057,12 +1094,12 @@ class Agent:
             return True
 
     def go_to(self, y, x, stop_one_before=False, max_steps=None,
-              debug_tiles_args=None, callback=lambda: False, fast=False):
+              debug_tiles_args=None, callback=lambda: False, fast=False, cross_known_traps=False):
         assert not stop_one_before or (self.blstats.y != y or self.blstats.x != x)
         assert max_steps is None or not fast
 
-        if stop_one_before and self.bfs()[y, x] == -1:
-            dis = self.bfs()
+        if stop_one_before and self.bfs(cross_known_traps=cross_known_traps)[y, x] == -1:
+            dis = self.bfs(cross_known_traps=cross_known_traps)
             best_p = None
             for ny, nx in self.neighbors(y, x):
                 if dis[ny, nx] != -1 and (best_p is None or dis[best_p] > dis[ny, nx]):
@@ -1072,17 +1109,17 @@ class Agent:
             y, x = best_p
             stop_one_before = False
 
-        assert self.bfs()[y, x] != -1
+        assert self.bfs(cross_known_traps=cross_known_traps)[y, x] != -1
 
         if callback():
             return
         steps_taken = 0
         cont = True
         while cont and (self.blstats.y, self.blstats.x) != (y, x):
-            dis = self.bfs()
+            dis = self.bfs(cross_known_traps=cross_known_traps)
             if dis[y, x] == -1:
                 raise AgentPanic('end point is no longer accessible')
-            path = self.path(self.blstats.y, self.blstats.x, y, x)
+            path = self.path(self.blstats.y, self.blstats.x, y, x, dis=dis)
             orig_path = path
             path = path[1:]
             if stop_one_before:

@@ -192,9 +192,22 @@ class ExplorationLogic:
 
     @Strategy.wrap
     def go_to_strategy(self, y, x, *args, **kwargs):
-        if self.agent.bfs()[y, x] == -1 or (self.agent.blstats.y, self.agent.blstats.x) == (y, x):
+        if (self.agent.blstats.y, self.agent.blstats.x) == (y, x):
             yield False
+        cross_traps = False
+        if self.agent.bfs()[y, x] == -1:
+            # hypothesis: stairs cut off only by known traps are reached by walking across them
+            # (see Agent.NEVER_CROSS_TRAPS) instead of searching the pocket's walls until starving.
+            # sources: https://nethackwiki.com/wiki/Trap ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+            #   parent seed 2 replay (Mines level 2: '>' seen, only link a known trap, 6000 turns stuck)
+            if self.agent.blstats.hitpoints * 2 < self.agent.blstats.max_hitpoints or \
+                    self.agent.bfs(cross_known_traps=True)[y, x] == -1:
+                yield False
+            cross_traps = True
         yield True
+        if cross_traps:
+            # only this walk's own path crosses the traps (see Agent.NEVER_CROSS_TRAPS)
+            kwargs['cross_known_traps'] = True
         return self.agent.go_to(y, x, *args, **kwargs)
 
     @Strategy.wrap
