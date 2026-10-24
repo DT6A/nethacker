@@ -9,6 +9,7 @@ import numpy as np
 from nle.nethack import actions as A
 
 from . import combat
+from . import objects as O
 from . import utils
 from .character import Character
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
@@ -1498,14 +1499,69 @@ class Agent:
     def eat_from_inventory(self):
         if self.blstats.hunger_state < Hunger.HUNGRY:
             yield False
-        for item in flatten_items(self.inventory.items):
+        lizard_id = MON.from_name('lizard') - nh.GLYPH_MON_OFF
+        # the lizard corpse is the stoning cure (cure_stoning): eat it only as the last food, when Weak
+        for item in sorted(flatten_items(self.inventory.items),
+                           key=lambda i: i.is_corpse() and i.monster_id == lizard_id):
             if item.category == nh.FOOD_CLASS and \
                     item.objs[0].name != 'sprig of wolfsbane' and \
                     (not item.is_corpse() or
                      item.monster_id in [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'lichen']]):
+                if item.is_corpse() and item.monster_id == lizard_id and self.blstats.hunger_state < Hunger.WEAK:
+                    continue
                 yield True
                 self.inventory.eat(item)
                 return
+        yield False
+
+    # hypothesis: delayed stoning (a cockatrice's or chickatrice's hiss after its touch, status "Stone") kills in 5 turns
+    # with only ~2 actions left, and the bot had no answer to it (parent public seeds 8 and 11, XL 12 and XL 10 on
+    # Dlvl 10 and 7: "petrified by a cockatrice"). Biting a carried lizard corpse or an acidic corpse, or quaffing a
+    # known potion of acid, cures it without the prayer; without one, praying is the last chance (stoning is a major
+    # trouble, fixed when the prayer timeout is <= 200), tried even when the timeout looks too high since the hero
+    # dies anyway. Strong games that used to end here keep levelling.
+    # sources: https://nethackwiki.com/wiki/Stoning (timeline "You are slowing down." -> statue; cures: lizard or acidic
+    # corpse bite, potion of acid, successful prayer; hiss 1/3 x 1/10, always on a new moon without a lizard) ;
+    # https://nethackwiki.com/wiki/Lizard (one bite cures, corpses never rot, players always carry one) ;
+    # https://nethackwiki.com/wiki/Prayer (major trouble: safe at timeout <= 200) ; https://www.steelypips.org/nethack/instadeath.html ;
+    # NetHack 3.6.6 src/pray.c in_trouble() TROUBLE_STONED, src/eat.c cprefx() fix_petrification() ;
+    # /refs/history/186.diff, #159, #63 (same idea, each beat its own parent on overall score) ;
+    # /refs/top/c49b46fdffa0.diff and 19b32afa430c.diff (top programs: emergency lizard bite / prayer for deadly status)
+    @utils.debug_log('cure_stoning')
+    @Strategy.wrap
+    def cure_stoning(self):
+        if not self.character.prop.stoned:
+            yield False
+
+        lizard_id = MON.from_name('lizard') - nh.GLYPH_MON_OFF
+        acidic = []
+        for item in flatten_items(self.inventory.items):
+            if item.category != nh.FOOD_CLASS or not item.is_corpse() or item.monster_id is None:
+                continue
+            if item.monster_id == lizard_id:
+                acidic.insert(0, item)
+            elif MON.permonst(item.monster_id + nh.GLYPH_MON_OFF).mflags1 & MON.M1_ACID and \
+                    item.comment != 'old':
+                acidic.append(item)
+        if acidic:
+            yield True
+            self.inventory.eat(acidic[0])
+            return
+
+        for item in flatten_items(self.inventory.items):
+            if item.category == nh.POTION_CLASS and item.is_unambiguous() and \
+                    item.object == O.from_name('acid', nh.POTION_CLASS):
+                yield True
+                self.inventory.quaff(item)
+                return
+
+        # prayer never works in Gehennom (dungeon number 1)
+        if self.current_level().dungeon_number != 1 and \
+                (self.last_prayer_turn is None or self.blstats.time - self.last_prayer_turn > 5):
+            yield True
+            self.pray()
+            return
+
         yield False
 
     @utils.debug_log('cure_disease')

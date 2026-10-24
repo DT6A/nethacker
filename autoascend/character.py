@@ -81,6 +81,13 @@ class Property:
         return 'Blind' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
 
     @property
+    def stoned(self):
+        # status condition bit (BL_MASK_STONE); the tty bottom line may be cut off at 80 columns
+        cond = int(self.agent.last_observation['blstats'][nh.NLE_BL_CONDITION])
+        return bool(cond & nh.BL_MASK_STONE) or \
+            ' Stone' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+
+    @property
     def polymorph(self):
         if not nh.glyph_is_monster(self.agent.glyphs[self.agent.blstats.y, self.agent.blstats.x]):
             return False

@@ -118,6 +118,13 @@ class ItemPriority(ItemPriorityBase):
                            key=lambda x: -x.nutrition_per_weight() - 1000 * (x.objs[0].name == 'sprig of wolfsbane')):
             add_item(item)
 
+        # keep one lizard corpse (weight 10, never rots): the bite that cures stoning (agent.cure_stoning)
+        lizard_id = MON.from_name('lizard') - nh.GLYPH_MON_OFF
+        if not any(i.is_corpse() and i.monster_id == lizard_id for i in forced_items):
+            for item in filter(lambda i: i.is_corpse() and i.monster_id == lizard_id, items):
+                add_item(item, count=1)
+                break
+
         if self._take_sacrificial_corpses:
             for item in filter(self.agent.global_logic.can_sacrify, items):
                 add_item(item)
@@ -644,6 +651,12 @@ class GlobalLogic:
             return False
 
         mname = MON.permonst(item.monster_id + nh.GLYPH_MON_OFF).mname
+        # hypothesis: picking up or offering a cockatrice/chickatrice corpse without worn gloves stones the hero at once,
+        # so such corpses are never taken for sacrifice.
+        # sources: NetHack 3.6.6 src/pickup.c fatal_corpse_mistake() ; https://nethackwiki.com/wiki/Cockatrice_corpse ;
+        # /refs/history.md #182/#94 (same guard)
+        if mname in ('cockatrice', 'chickatrice') and self.agent.inventory.items.gloves is None:
+            return False
         if (mname == 'pony' and self.agent.character.role in [Character.KNIGHT, Character.BARBARIAN]) or \
                 (mname == 'kitten' and self.agent.character.role == [Character.BARBARIAN, Character.WIZARD]) or \
                 (mname == 'little dog' and item.naming):  # little dogs are always named
@@ -1005,5 +1018,8 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.emergency_strategy(),
+            ])
+            .preempt(self.agent, [
+                self.agent.cure_stoning(),
             ])
         )
