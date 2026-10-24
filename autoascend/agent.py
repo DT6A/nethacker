@@ -35,6 +35,7 @@ class Agent:
         self.all_panics = []
         self._recovered_errors = 0
         self._pass_turn_after_error = False
+        self._cyclic_panic_recoveries = 0
 
         self.on_update = []
         self.levels = {}
@@ -1601,12 +1602,27 @@ class Agent:
                     inactivity_counter = 0
 
                 if inactivity_counter >= 5:
-                    try:
-                        panics = sorted({p.args[0] for p in self.all_panics[-5:]})
-                    except (TypeError, IndexError):
-                        panics = 'UNKNOWN'
+                    # hypothesis: a strategy that panics before passing game time (retreat_upstairs walking into a
+                    # monster's square: "Monster on a next tile when moving") repeats the same panic forever; raising
+                    # here killed the agent thread, and the arena then answers ESC until NLE's no-progress abort ends
+                    # a live game (parent public seed 1 ends alive on Dlvl 3, XL 7, turn 6869). Passing one game turn
+                    # lets the monster move or the situation change, so the game goes on; only an endless cycle
+                    # (200 recoveries) still ends the thread.
+                    # sources: /refs/history/191.diff (#191: held-out 0.310 -> 0.358) ; /board/nodes/node-205.json
+                    # (same port on #185: public 0.297 -> 0.372) ;
+                    # https://raw.githubusercontent.com/facebookresearch/nle/main/nle/env/tasks.py (_check_abort:
+                    # 10,000 steps without a turn end the episode)
+                    self._cyclic_panic_recoveries += 1
+                    if self._cyclic_panic_recoveries <= 200:
+                        inactivity_counter = 0
+                        self._pass_turn_after_error = True
+                    else:
+                        try:
+                            panics = sorted({p.args[0] for p in self.all_panics[-5:]})
+                        except (TypeError, IndexError):
+                            panics = 'UNKNOWN'
 
-                    raise RuntimeError(f'Cyclic Panic: {panics}')
+                        raise RuntimeError(f'Cyclic Panic: {panics}')
 
                 try:
                     try:

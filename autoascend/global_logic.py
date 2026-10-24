@@ -68,6 +68,13 @@ class ItemPriority(ItemPriorityBase):
                 bag = item  # TODO: select the best
                 add_item(bag)
 
+        # the Sokoban prize may be a bag of holding of unknown (or cursed) status; nothing is ever put in a bag (to_bag is
+        # always False), so carrying it is safe, and picking it up is what records the prize (see sokoban_top_done)
+        if self.agent.current_level().dungeon_number == Level.SOKOBAN:
+            for item in items:
+                if item is not bag and item.is_container() and item.objs[0].desc == 'bag':
+                    add_item(item)
+
         if self._drop_gold_till_turn < self.agent.blstats.time:
             for item in items:
                 if item.category == nh.COIN_CLASS:
@@ -177,6 +184,111 @@ class GlobalLogic:
         self._retreat_rest_level = None
         self._retreat_cooldown_until = 0
 
+        self._soko_top_arrival_turn = None
+        self._soko_top_traps_seen = False
+        self._soko_top_items_check = (None, True)  # (turn, items left)
+        self._soko_checked_boulders = {}  # level key -> set of (y, x) boulders already searched next to
+        self._soko_progress = {}  # level key -> (index of the matched map, number of answer moves already done)
+        self._soko_unreachable_waits = {}  # (level key, answer move index) -> rounds waited for its push square
+
+    # hypothesis: SOLVE_SOKOBAN ends on arrival at the top level, because its only test is "no closed door in view" and
+    # the premapped top level shows no closed door from the stairs until the solver has run, so the 3/15 public games
+    # that reach it (seeds 6, 11, 14) leave it unsolved and never take the prize (+0.05 level, +0.25 prize). Ending the
+    # milestone only once its holes are filled, no reachable closed door or unseen area is left (closets opened, zoo
+    # cleared), no boulder-shaped giant mimic is left unchecked and nothing wanted lies on the floor makes the bot solve
+    # the top level, clear the zoo and pick up the bag of holding / amulet of reflection; a 4000-turn cap and the stall
+    # escalation in on_stall keep it from getting stuck there.
+    # sources: /refs/history/153.diff + /refs/history/144.diff (#153/#144: this completion test, neutral in their chains
+    # because no game reached the top level; here 3 public games do); https://nethackwiki.com/wiki/Sokoban (prize in a
+    # top-level closet on a burnt Elbereth and a cursed scroll of scare monster, status random);
+    # https://nethackwiki.com/wiki/Sokoban_Level_4a (zoo behind a locked door, closets on the left);
+    # NetHack 3.6.6 dat/sokoban.des (soko1-1/soko1-2 are premapped and place two 'giant mimic' with m_object "boulder");
+    # NetHack 3.6.6 src/invent.c addinv_core1 (the prize achievement is recorded when it enters the inventory)
+    def sokoban_top_done(self):
+        level = self.agent.current_level()
+        if level.key() != (Level.SOKOBAN, 1):
+            return False
+
+        turn = self.agent.blstats.time
+        if self._soko_top_arrival_turn is None:
+            self._soko_top_arrival_turn = turn
+        if turn - self._soko_top_arrival_turn > 4000:
+            return True
+
+        if utils.isin(level.objects, G.TRAPS).any():
+            self._soko_top_traps_seen = True
+            return False
+        if not self._soko_top_traps_seen and turn - self._soko_top_arrival_turn < 200:
+            return False
+
+        # the same frontier explore1 visits: unseen stone and closed (not given up) doors next to a reachable square
+        reachable = self.agent.bfs() != -1
+        stone = ~level.seen & utils.isin(self.agent.glyphs, G.STONE)
+        doors = utils.isin(self.agent.glyphs, G.DOOR_CLOSED) & (level.door_open_count < 4)
+        to_visit = np.zeros_like(stone)
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dy != 0 or dx != 0:
+                    to_visit |= utils.translate(stone, dy, dx)
+                    if dx == 0 or dy == 0:
+                        to_visit |= utils.translate(doors, dy, dx)
+        if (to_visit & reachable).any():
+            return False
+
+        if self._soko_mimic_targets():
+            return False
+
+        if self._soko_top_items_check[0] != turn:
+            inventory = self.agent.inventory
+            items_left = inventory.go_to_unchecked_containers().check_condition() or \
+                         inventory.check_items().check_condition() or \
+                         inventory.go_to_item_to_pickup().check_condition()
+            self._soko_top_items_check = (turn, items_left)
+        return not self._soko_top_items_check[1]
+
+    def _soko_mimic_targets(self):
+        # boulders on the solved top level that were not searched next to yet and have a reachable neighbour
+        level = self.agent.current_level()
+        if level.key() != (Level.SOKOBAN, 1) or utils.isin(level.objects, G.TRAPS).any():
+            return []
+        checked = self._soko_checked_boulders.setdefault(level.key(), set())
+        dis = self.agent.bfs()
+        targets = []
+        for y, x in zip(*utils.isin(self.agent.glyphs, G.BOULDER).nonzero()):
+            if (y, x) in checked:
+                continue
+            if any(dis[ny, nx] != -1 for ny, nx in self.agent.neighbors(y, x, shuffle=False)):
+                targets.append((y, x, dis))
+        return targets
+
+    # hypothesis: both top Sokoban levels hide two giant mimics disguised as boulders; once the holes are filled the
+    # solver no longer touches boulders, so a mimic left in the corridor to the zoo blocks it (the bot will not push a
+    # "boulder" off the solved map) and one met by bumping it sticks to a level-10ish hero for 3d6/3d6 per turn. Searching
+    # next to every reachable leftover boulder always reveals a disguised mimic (dosearch0 calls seemimic without a luck
+    # roll), so fight2 fights it on the bot's terms and the path to the closets opens.
+    # sources: NetHack 3.6.6 dat/sokoban.des (soko1-1/soko1-2: MONSTER 'giant mimic', random, m_object "boulder") and
+    # src/detect.c dosearch0 (adjacent M_AP_OBJECT mimic -> seemimic, unconditional);
+    # https://groups.google.com/g/rec.games.roguelike.nethack/c/WKAs-c0J7hg ("LEAVE the GIANT mimics ALONE!!!", player
+    # discussion of Sokoban boulder mimics killing heroes); https://nethackwiki.com/wiki/Talk:Mimic (player discussion:
+    # search to reveal boulder mimics in Sokoban); https://github.com/NetHack/NetHack/commit/13abd42d6ae674e9c2a079bf03066f59b9dfbfb8
+    # and https://github.com/NetHack/NetHack/commit/e379b245d4ebd613957a1ddf1124d892041c0cb0 (mimic boulder disguise rules)
+    @utils.debug_log('revealing sokoban mimics')
+    @Strategy.wrap
+    def reveal_sokoban_mimics_strategy(self):
+        targets = self._soko_mimic_targets()
+        if not targets:
+            yield False
+        yield True
+        level = self.agent.current_level()
+        checked = self._soko_checked_boulders.setdefault(level.key(), set())
+        y, x, dis = min(targets, key=lambda t: min(t[2][ny, nx] for ny, nx in self.agent.neighbors(t[0], t[1], shuffle=False)
+                                                   if t[2][ny, nx] != -1))
+        checked.add((y, x))
+        if not utils.adjacent((self.agent.blstats.y, self.agent.blstats.x), (y, x)):
+            self.agent.go_to(y, x, stop_one_before=True)
+        if utils.adjacent((self.agent.blstats.y, self.agent.blstats.x), (y, x)):
+            self.agent.search(3)
+
     def update(self):
         if not self.agent.character.prop.hallu:
             if utils.isin(self.agent.glyphs, G.ORACLE).any():
@@ -256,11 +368,28 @@ class GlobalLogic:
             self.milestone = Milestone(int(self.milestone) + 1)
             raise AgentPanic('sokomap unsolvable')
 
+        # hypothesis: the solver forgot where it was in the answer: every preemption (fight2, eating, a panic) restarts
+        # this strategy, which replayed the answer from move 0 and executed the first move whose boulder "looked"
+        # present -- a subset test that is almost always true once boulders have dropped into holes -- so it pushed
+        # boulders back along their path and deadlocked the level (parent public seed 8: after a fight in soko4-2 it
+        # pushed the corridor boulder back left, packed two boulders in the row-2 corridor and dropped the level;
+        # 4 of the 8 public games that enter Sokoban never finish its first level). Keeping the answer index per
+        # level and fast-forwarding the model to it on every restart makes the replay resume where it stopped; a
+        # needed push whose square is out of reach (a monster in the corridor) is waited for instead of skipped,
+        # because a skipped push leaves its boulder behind for good. Expected: more Sokoban levels solved (+0.05
+        # each), more games at the top level for #180's prize logic (+0.25), and the zoo's experience.
+        # sources: offline replay of all 8 answers in soko_solver/maps.py against NetHack 3.6.6 dat/sokoban.des
+        # (real boulders, pits and holes; https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/sokoban.des):
+        # restarting from move 0 after every push leaves 6/8 levels unsolved (soko4-2 even when restarting every 10
+        # pushes), resuming from the saved index solves 8/8 with every push square reachable; parent seed 8 trace
+        # (pushes logged per move); https://nethackwiki.com/wiki/Sokoban (boulders fill pits/holes and vanish);
+        # https://nethackwiki.com/wiki/Sokoban_Level_1a / Sokoban_Level_1b
+        level_key = self.agent.current_level().key()
         failed_pushes = 0
         blocked_rounds = 0
         while 1:
             wall_map = utils.isin(self.agent.current_level().objects, G.WALL)
-            for smap, answer in soko_solver.maps.items():
+            for map_index, (smap, answer) in enumerate(soko_solver.maps.items()):
                 sokomap = soko_solver.convert_map(smap)
                 offset = np.array(min(zip(*wall_map.nonzero()))) - \
                          np.array(min(zip(*(sokomap.sokomap == soko_solver.WALL).nonzero())))
@@ -271,11 +400,20 @@ class GlobalLogic:
             else:
                 assert 0, 'sokomap not found'
 
+            saved_map, done_moves = self._soko_progress.get(level_key, (map_index, 0))
+            if saved_map != map_index:
+                done_moves = 0
+
             possible_mimics = set()
             last_resort_move = None
             resync = False
             step_blocked = False
-            for (y, x), (dy, dx) in answer:
+            push_unreachable = False
+            for move_index, ((y, x), (dy, dx)) in enumerate(answer):
+                if move_index < done_moves:
+                    # already made (or its boulder already dropped into a hole) before this restart
+                    sokomap.move(y, x, dy, dx)
+                    continue
                 boulder_map = utils.isin(self.agent.glyphs, G.BOULDER)
                 mask = boulder_map[offset[0] : offset[0] + sokomap.sokomap.shape[0],
                                    offset[1] : offset[1] + sokomap.sokomap.shape[1]]
@@ -321,6 +459,7 @@ class GlobalLogic:
                     blocked_rounds = 0
                     possible_mimics = set()
                     last_resort_move = None
+                    self._soko_progress[level_key] = (map_index, move_index + 1)
 
                     if not utils.isin(self.agent.current_level().objects, G.TRAPS).any():
                         return
@@ -332,19 +471,34 @@ class GlobalLogic:
                             (self.agent.glyphs[ty, tx] in G.MONS or self.agent.glyphs[ty, tx] in G.PETS):
                         # this is the push to make now, but a monster stands on its square
                         step_blocked = True
+                    if ((soko_boulder_mask | mask) == soko_boulder_mask).all() and \
+                            self.agent.glyphs[ty + dy, tx + dx] in G.BOULDER and \
+                            self.agent.bfs()[ty, tx] == -1 and \
+                            self._soko_unreachable_waits.get((level_key, move_index), 0) < 10:
+                        # the boulder of the next move is still there but its push square is out of reach (a monster
+                        # in the corridor): skipping it would leave this boulder behind for good, so wait
+                        push_unreachable = True
+                        self._soko_unreachable_waits[(level_key, move_index)] = \
+                            self._soko_unreachable_waits.get((level_key, move_index), 0) + 1
+                        break
                     sokomap.move(y, x, dy, dx)
 
                 if (~soko_boulder_mask | mask).all():
                     if self.agent.bfs()[ty, tx] != -1 and \
                             self.agent.glyphs[ty + dy, tx + dx] in G.BOULDER and \
                             last_resort_move is None:
-                        last_resort_move = (ty, tx, dy, dx)
+                        last_resort_move = (ty, tx, dy, dx, move_index)
 
                     if not possible_mimics:
                         for mim_y, mim_x in zip(*(~soko_boulder_mask & mask).nonzero()):
                             possible_mimics.add((mim_y + offset[0], mim_x + offset[1]))
 
             if resync:
+                continue
+
+            if push_unreachable:
+                for _ in range(3):
+                    self.agent.search()
                 continue
 
             if step_blocked and blocked_rounds < 20:
@@ -367,9 +521,10 @@ class GlobalLogic:
             # last resort move (sometimes we can see a mimic diagonally but cannot reach it)
             with self.agent.env.debug_log('last_resort'):
                 if last_resort_move is not None:
-                    ty, tx, dy, dx = last_resort_move
+                    ty, tx, dy, dx, move_index = last_resort_move
                     if push_bolder(ty, tx, dy, dx):
                         failed_pushes = 0
+                        self._soko_progress[level_key] = (map_index, move_index + 1)
                         continue
                     failed_pushes += 1
                     if failed_pushes < 5:
@@ -681,6 +836,17 @@ class GlobalLogic:
                 if mon.mmove > speed or (utils.adjacent((y, x), pos) and mon.mmove == speed):
                     yield False
 
+        # hypothesis: the bfs path to '<' can run through a square a monster stands on, and move() raises "Monster on a
+        # next tile" without passing game time when the next square is occupied; this strategy outranks fight2, so it
+        # fires again at once and main() sees 5 zero-time panics ("Cyclic Panic"). A blocked first step means the way
+        # up is not free: leave the square to fight2 and the rest.
+        # sources: /refs/history/191.diff (#191) and /refs/history/138.diff ; NetHack 3.6.6 src/hack.c domove() (the
+        # hero cannot walk through a monster) ; https://nethackwiki.com/wiki/Stairs
+        if target != pos:
+            path = agent.path(pos[0], pos[1], *target, dis=dis)
+            if len(path) < 2 or agent.monster_tracker.monster_mask[path[1]]:
+                yield False
+
         yield True
 
         if target != pos:
@@ -736,9 +902,7 @@ class GlobalLogic:
                 level = (Level.GNOMISH_MINES, 4)  # TODO
 
             elif self.milestone == Milestone.SOLVE_SOKOBAN:
-                # TODO: fix the condition, monster can destroy doors
-                condition = lambda: self.agent.current_level().key() == (Level.SOKOBAN, 1) and \
-                                    not utils.isin(self.agent.current_level().objects, G.DOOR_CLOSED).any()
+                condition = self.sokoban_top_done
                 level = (Level.SOKOBAN, 1)
 
             elif self.milestone == Milestone.FIND_MINES_END:
@@ -805,6 +969,9 @@ class GlobalLogic:
             self.current_strategy().repeat()
             .preempt(self.agent, [
                 self.solve_sokoban_strategy()
+                .condition(lambda: self.milestone == Milestone.SOLVE_SOKOBAN and
+                                   self.agent.current_level().dungeon_number == Level.SOKOBAN),
+                self.reveal_sokoban_mimics_strategy()
                 .condition(lambda: self.milestone == Milestone.SOLVE_SOKOBAN and
                                    self.agent.current_level().dungeon_number == Level.SOKOBAN)
             ])
