@@ -63,7 +63,8 @@ class Item:
                 (isinstance(self.objs[0], (O.Weapon, O.WepTool)) and self.status == Item.CURSED and self.equipped) or
                 (isinstance(self.objs[0], O.Armor) and self.equipped) or
                 (self.is_unambiguous() and self.object == O.from_name('loadstone') and self.status == Item.CURSED) or
-                (self.category == nh.BALL_CLASS and self.equipped)
+                (self.category == nh.BALL_CLASS and self.equipped) or
+                (self.category == nh.AMULET_CLASS and self.equipped)  # a worn amulet cannot be dropped
         )
 
     def weight(self, with_content=True):
@@ -235,6 +236,11 @@ class Item:
         # TODO: corpses/tins
         assert self.is_food()
         return self.object.nutrition / max(self.unit_weight(), 1)
+
+    def is_gray_stone(self):
+        # luckstone, loadstone, touchstone or flint -- all look like "a gray stone" until identified
+        return self.category == nh.GEM_CLASS and \
+            all(o.name in ('luckstone', 'loadstone', 'touchstone', 'flint') for o in self.objs)
 
     def is_corpse(self):
         if self.objs[0] == O.from_name('corpse'):

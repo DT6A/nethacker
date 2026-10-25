@@ -12,12 +12,18 @@ from ..glyph import C, G
 class MonsterTracker:
     def __init__(self, agent):
         self.agent = agent
+        # (y, x) -> (glyph, turn, level) of peacefuls whose "Really attack?" prompt was declined; kept across panics
+        self.declined_attacks = {}
         self.on_panic()
 
     def on_panic(self):
         self._last_glyphs = None
         self.peaceful_monster_mask = np.zeros((C.SIZE_Y, C.SIZE_X), bool)
         self.monster_mask = np.zeros((C.SIZE_Y, C.SIZE_X), bool)
+
+    def decline_attack(self, y, x, glyph):
+        self.declined_attacks[y, x] = (glyph, self.agent.blstats.time,
+                                       (self.agent.blstats.dungeon_number, self.agent.blstats.level_number))
 
     def take_all_monsters(self):
         if utils.any_in(self.agent.glyphs, G.SWALLOW):
@@ -81,6 +87,15 @@ class MonsterTracker:
             else:
                 self.peaceful_monster_mask = new_peaceful_mons
         # TODO: on hallu no monsters are peaceful
+
+        # NetHack asked before letting us hit these, so they are peaceful even if the movement tracking missed it;
+        # forget the mark once the monster moves away/changes, on another level or after 20 turns
+        level = (self.agent.blstats.dungeon_number, self.agent.blstats.level_number)
+        for (y, x), (glyph, turn, lvl) in list(self.declined_attacks.items()):
+            if self.agent.blstats.time - turn > 20 or lvl != level or self.agent.glyphs[y, x] != glyph:
+                del self.declined_attacks[y, x]
+            elif self.monster_mask[y, x]:
+                self.peaceful_monster_mask[y, x] = 1
 
         assert (~self.peaceful_monster_mask | self.monster_mask).all()
         self._last_glyphs = self.agent.glyphs.copy()

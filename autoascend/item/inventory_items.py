@@ -119,7 +119,9 @@ class InventoryItems:
                     self.update()
                     return
 
-                self.total_weight += item.weight()
+                # a held gray stone is one kick_test_gray_stones proved light (10), not the 500 of a loadstone
+                self.total_weight += 10 * item.count if item.is_gray_stone() and \
+                    not (item.is_unambiguous() and item.object.name == 'loadstone') else item.weight()
                 # weight is sometimes unambiguous for unidentified items. All exceptions:
                 # {'helmet': 30, 'helm of brilliance': 50, 'helm of opposite alignment': 50, 'helm of telepathy': 50}
                 # {'leather gloves': 10, 'gauntlets of fumbling': 10, 'gauntlets of power': 30, 'gauntlets of dexterity': 10}

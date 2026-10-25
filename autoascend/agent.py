@@ -52,6 +52,7 @@ class Agent:
         self.last_observation = None
 
         self._last_pet_seen = 0
+        self.pet_seen_levels = set()  # keys of the levels a pet was ever seen on (see push_bolder in global_logic)
 
         self.inventory = Inventory(self)
         self.character = Character(self)
@@ -62,6 +63,7 @@ class Agent:
         self.last_bfs_dis = None
         self.last_bfs_step = None
         self.last_prayer_turn = None
+        self._illness_horn_applies = 0  # unicorn-horn applies during the current deadly illness (cure_deadly_illness)
         self._previous_glyphs = None
         self._last_turn = -1
         self._no_kick_until = -1
@@ -81,6 +83,8 @@ class Agent:
         # when (number of turn) there was last decision about allowing these actions (e.g. agent is somewhat stuck)
         self._allow_walking_through_traps_turn = -float('inf')
         self._allow_attack_all_turn = -float('inf')
+        # square the last compass command was aimed at (None outside of direction()), see the "Really attack" answer
+        self._direction_target = None
 
         self.last_cast_fail_turn = defaultdict(lambda: -float('inf'))
 
@@ -437,8 +441,33 @@ class Agent:
             self.step(A.Command.ESC)
             return
 
+        # hypothesis: the blanket 'y' below also answered NetHack's "Really attack <mon>?" (uhitm.c attack_checks: asked
+        #   only for a peaceful target the hero can see, when not confused/stunned/hallucinating), so every time the
+        #   monster tracker missed a peaceful (it learns them only from a full WHATIS scan; its movement kernel swaps
+        #   labels when same-glyph monsters cross) fight2 swung at it. A lawful human Valkyrie meets mostly peaceful
+        #   dwarves (and hobbits, gnome lords next to them) in the Gnomish Mines and the watch/priest/shopkeepers of
+        #   Minetown: each attack costs alignment (-1 to anger, at least -5 to kill, murder for @/elves), angers every
+        #   witnessing peaceful and, in sight of the watch, all watchmen and the captain; with a negative alignment
+        #   record every prayer fails (pray.c), and prayer is the bot's main emergency heal. Answering 'n' costs no game
+        #   time, and the target square stays marked peaceful for a while (monster_tracker.decline_attack) so fight2 and
+        #   the walking code do not retry at once; every other [yn] prompt is still answered 'y'.
+        # sources: NetHack 3.6.6 src/uhitm.c attack_checks() ("Really attack %s?"), src/mon.c setmangry()/xkilled()
+        #   (alignment and murder penalties, angry_guards), src/pray.c (u.ualign.record < 0 -> prayer fails) ;
+        #   https://nethackwiki.com/wiki/Peaceful ; https://nethackwiki.com/wiki/Alignment_record ;
+        #   https://nethackwiki.com/wiki/Valkyrie ("most of the dwarves will be peaceful" for lawful Valkyries) ;
+        #   https://nethackwiki.com/wiki/Dwarf_(monster) ; https://nethackwiki.com/wiki/Watchman ;
+        #   player discussion https://www.steelypips.org/nethack/pray.html (negative alignment: unsafe prayer) ;
+        #   REUSES #324/#282/#263/#120/#88 (/refs/history/324.diff, 282.diff, 120.diff; +0.085..+0.137 over parents)
         if b'[yn]' in bytes(observation['tty_chars'].reshape(-1)):
-            self.type_text('y')
+            if 'Really attack' in self.message or \
+                    b'Really attack' in bytes(observation['tty_chars'][0]):
+                if self._direction_target is not None:
+                    y, x = self._direction_target
+                    if 0 <= y < C.SIZE_Y and 0 <= x < C.SIZE_X:
+                        self.monster_tracker.decline_attack(y, x, observation['glyphs'][y, x])
+                self.type_text('n')
+            else:
+                self.type_text('y')
             return
 
         self._is_reading_message_or_popup = False
@@ -612,6 +641,7 @@ class Agent:
 
         if utils.any_in(self.glyphs, G.PETS):
             self._last_pet_seen = self.blstats.time
+            self.pet_seen_levels.add(self.current_level().key())
 
         level = self.current_level()
 
@@ -764,7 +794,14 @@ class Agent:
                 (self.last_prayer_turn is not None and self.blstats.time - self.last_prayer_turn > limit)
         )
 
+    # hypothesis: a strategy switch during the prayer step (AgentChangeStrategy raised from update, e.g. by a preempting
+    # strategy reacting to the prayer's messages) skipped the line after self.step, so the prayer turn was never
+    # recorded and the bot could pray again a few turns later; a prayer inside the timeout angers the god (Luck -3,
+    # and with the Mines' End luckstone that bad Luck never times out). Recording the turn first makes it stick.
+    # sources: round ideas #347; NetHack 3.6.6 src/pray.c dopray()/can_pray() (p_type 0 "You feel that Tyr is
+    # displeased", Luck -3, prayer timeout raised) ; https://nethackwiki.com/wiki/Prayer_timeout
     def pray(self):
+        self.last_prayer_turn = self.blstats.time
         self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
         # TODO: return value
@@ -881,7 +918,15 @@ class Agent:
             '.': A.MiscDirection.WAIT,
         }[dir]
 
-        self.step(action)
+        if dir in ['<', '>', '.']:
+            self._direction_target = None
+        else:
+            self._direction_target = (self.blstats.y + ('s' in dir) - ('n' in dir),
+                                      self.blstats.x + ('e' in dir) - ('w' in dir))
+        try:
+            self.step(action)
+        finally:
+            self._direction_target = None
         return True
 
     def move(self, y, x=None):
@@ -1600,6 +1645,92 @@ class Agent:
             return
 
         yield False
+
+    # hypothesis: food poisoning (a tainted corpse: "Ulch - that meat was tainted! You feel deathly sick.", status
+    # FoodPois) and terminal illness (TermIll) kill in 10-19 turns, sliming in 10 and strangulation in 6, and the bot had
+    # no answer to any of them: parent public seed 4 (XL 12, quest home reached) ends "poisoned by a rotted hill orc
+    # corpse" with its prayer unused. All four are pray.c major troubles (fixed when the prayer timeout is <= 200), and a
+    # non-cursed unicorn horn, non-cursed extra/full healing, blessed healing and a non-cursed eucalyptus leaf cure the
+    # illness without spending the prayer. Cures are tried surest-and-cheapest first; since the condition is otherwise
+    # certain death, the hero prays as the last resort even if the timeout may still be too high (like cure_stoning).
+    # Games that used to end here keep levelling (XL milestones carry most of the progress score).
+    # sources: https://nethackwiki.com/wiki/Food_poisoning (10-19 turns, cures: prayer, unicorn horn, eucalyptus,
+    # extra/full healing, blessed healing) ; https://nethackwiki.com/wiki/Unicorn_horn ; https://nethackwiki.com/wiki/Prayer
+    # (major trouble: TROUBLE_STONED/SLIMED/STRANGLED/SICK) ; https://www.steelypips.org/nethack/instadeath.html ;
+    # NetHack 3.6.6 src/pray.c in_trouble() + fix_worst_trouble(), src/potion.c peffects() healup(curesick),
+    # src/apply.c use_unicorn_horn(), src/eat.c eatcorpse() (rotted > 5 -> make_sick) ;
+    # /refs/history/197.diff, 202.diff, 252.diff (same cure, neutral where no game hit it; here a parent game dies of it)
+    # player discussions: https://nethackwiki.com/wiki/Talk:Food_poisoning ; https://groups.google.com/g/rec.games.roguelike.nethack/c/GHO_B588Ank
+    # ("at least one turn in which to attempt a prayer"; repeatedly apply the horn until "What a relief!")
+    @utils.debug_log('cure_deadly_illness')
+    @Strategy.wrap
+    def cure_deadly_illness(self):
+        cond = int(self.last_observation['blstats'][nh.NLE_BL_CONDITION])
+        sick = bool(cond & (nh.BL_MASK_FOODPOIS | nh.BL_MASK_TERMILL))
+        deadly = sick or bool(cond & (nh.BL_MASK_SLIME | nh.BL_MASK_STRNGL))
+        if not deadly:
+            self._illness_horn_applies = 0
+            yield False
+
+        # prayer never works in Gehennom (dungeon number 1)
+        can_pray = self.current_level().dungeon_number != 1
+
+        horns_known, horns_unknown = [], []
+        if sick:
+            for item in flatten_items(self.inventory.items):
+                if not item.is_unambiguous() or item.status == Item.CURSED:
+                    continue
+                name = item.object.name
+                known_ok = item.status in [Item.UNCURSED, Item.BLESSED]
+                if item.category == nh.FOOD_CLASS and name == 'eucalyptus leaf' and known_ok:
+                    yield True
+                    self.inventory.eat(item)
+                    return
+                if item.category == nh.POTION_CLASS and known_ok and \
+                        (name in ['extra healing', 'full healing'] or
+                         (name == 'healing' and item.status == Item.BLESSED)):
+                    yield True
+                    self.inventory.quaff(item)
+                    return
+                # holy water cures sickness for a non-chaotic hero (potion.c POT_WATER: blessed, !is_undead)
+                if item.category == nh.POTION_CLASS and name == 'water' and item.status == Item.BLESSED and \
+                        self.character.alignment != Character.CHAOTIC:
+                    yield True
+                    self.inventory.quaff(item)
+                    return
+                if name == 'unicorn horn':
+                    (horns_known if known_ok else horns_unknown).append(item)
+
+        # an uncursed horn fixes the illness with ~65% per apply (apply.c: rn2(d(2, 2)) troubles), so a few
+        # applies are near-certain; after that it is probably cursed (or unlucky) and the prayer is tried
+        if horns_known and self._illness_horn_applies < 4:
+            yield True
+            self._illness_horn_applies += 1
+            self._apply_unicorn_horn(horns_known[0])
+            return
+
+        if can_pray and self.is_safe_to_pray(500):
+            yield True
+            self.pray()
+            return
+
+        if horns_unknown and self._illness_horn_applies < 3:
+            yield True
+            self._illness_horn_applies += 1
+            self._apply_unicorn_horn(horns_unknown[0])
+            return
+
+        if can_pray and (self.last_prayer_turn is None or self.blstats.time - self.last_prayer_turn > 5):
+            yield True
+            self.pray()
+            return
+
+        yield False
+
+    def _apply_unicorn_horn(self, item):
+        with self.atom_operation():
+            self.step(A.Command.APPLY)
+            self.type_text(self.inventory.items.get_letter(item))
 
     @utils.debug_log('cure_disease')
     @Strategy.wrap

@@ -46,6 +46,11 @@ class Level:
         # e.g. ad aerarium -- avoid valut entrance
         self.forbidden = np.zeros((C.SIZE_Y, C.SIZE_X), bool)
 
+        # gray stones kick-tested by GlobalLogic.kick_test_gray_stones
+        self.light_gray_stones = set()  # squares holding a gray stone proven not to be a loadstone
+        self.gray_stone_kicks = np.zeros((C.SIZE_Y, C.SIZE_X), np.int32)  # kicks spent per gray stone square
+        self.gray_stone_ray = None  # (stone square, kick direction, squares with older gray stones, walks tried)
+
     def key(self):
         return (self.dungeon_number, self.level_number)
 

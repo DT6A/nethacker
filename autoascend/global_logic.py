@@ -19,7 +19,7 @@ from . import utils
 from .character import Character
 from .combat.monster_utils import WEAK_MONSTERS, ONLY_RANGED_SLOW_MONSTERS
 from .exceptions import AgentPanic
-from .glyph import Hunger, G, MON
+from .glyph import Hunger, C, G, MON
 from .item import Item, flatten_items
 from .item.item_priority_base import ItemPriorityBase
 from .level import Level
@@ -74,6 +74,21 @@ class ItemPriority(ItemPriorityBase):
             for item in items:
                 if item is not bag and item.is_container() and item.objs[0].desc == 'bag':
                     add_item(item)
+            # the other half of the Sokoban prize: no random amulet is generated on a Sokoban level (sokoban.des lists
+            # only '%', '=' and '/' random objects), so an amulet here is the amulet of reflection and is taken first,
+            # before weight limits fill up (a heavy hero declined it in a traced parent game).
+            # sources: NetHack 3.6.6 dat/sokoban.des (soko1-1/soko1-2 prize: bag of holding or amulet of reflection);
+            #   src/invent.c addinv_core1() (the Sokoban prize achievement is recorded on pickup);
+            #   https://nethackwiki.com/wiki/Sokoban#Prize
+            for item in items:
+                if item.category == nh.AMULET_CLASS:
+                    add_item(item)
+        # the prize amulet (or any amulet known to be reflection / life saving) is kept first everywhere else too, so a
+        # heavy hero does not drop it for heavier loot before wear_good_amulet puts it on
+        for item in items:
+            if self.agent.current_level().dungeon_number != Level.SOKOBAN and \
+                    self.agent.global_logic.is_good_amulet(item):
+                add_item(item)
 
         if self._drop_gold_till_turn < self.agent.blstats.time:
             for item in items:
@@ -125,6 +140,17 @@ class ItemPriority(ItemPriorityBase):
                 add_item(item, count=1)
                 break
 
+        # gray stones: only ones already held or proven light by kick_test_gray_stones (never an unknown one, it may be
+        # a cursed 500-weight loadstone that cannot be dropped); they weigh 10, not the 500 unit_weight() assumes
+        held = flatten_items(self.agent.inventory.items)
+        for item in items:
+            if item.is_gray_stone() and item.status != Item.CURSED and \
+                    not (item.is_unambiguous() and item.object.name == 'loadstone') and \
+                    (any(i is item for i in held) or self.agent.global_logic.is_kicked_gray_stone(item)) and \
+                    remaining_weight >= 10 * item.count and len(ret_inv) < ItemPriority.MAX_NUMBER_OF_ITEMS:
+                ret_inv[item] = item.count
+                remaining_weight -= 10 * item.count
+
         if self._take_sacrificial_corpses:
             for item in filter(self.agent.global_logic.can_sacrify, items):
                 add_item(item)
@@ -145,7 +171,8 @@ class ItemPriority(ItemPriorityBase):
         categories = [nh.WEAPON_CLASS, nh.ARMOR_CLASS, nh.TOOL_CLASS, nh.FOOD_CLASS, nh.GEM_CLASS, nh.AMULET_CLASS,
                       nh.RING_CLASS, nh.POTION_CLASS, nh.SCROLL_CLASS, nh.SPBOOK_CLASS, nh.WAND_CLASS]
         for item in sorted(items, key=lambda i: i.unit_weight(with_content=False)):
-            if item.category in categories and not isinstance(item.objs[0], O.Container) and not item.is_corpse():
+            if item.category in categories and not isinstance(item.objs[0], O.Container) and not item.is_corpse() \
+                    and not item.is_gray_stone():
                 if item.status == Item.UNKNOWN:
                     to_bag = O.from_name('cancellation', nh.WAND_CLASS) not in item.objs and \
                              not item.is_offensive_usable_wand()
@@ -197,6 +224,12 @@ class GlobalLogic:
         self._soko_checked_boulders = {}  # level key -> set of (y, x) boulders already searched next to
         self._soko_progress = {}  # level key -> (index of the matched map, number of answer moves already done)
         self._soko_unreachable_waits = {}  # (level key, answer move index) -> rounds waited for its push square
+        self._soko_throws = {}  # level key -> missiles thrown over a boulder at a monster blocking the push
+
+        self._amulets_carried_off_soko_top = set()  # appearances (glyph tuples) of amulets held off the top level
+        self._soko_top_new_amulets = set()  # appearances first obtained on the Sokoban top level
+        self._amulet_rejected = set()  # appearances that could not be put on or strangled the hero
+        self._strangle_prayer_turn = -float('inf')
 
     # hypothesis: SOLVE_SOKOBAN ends on arrival at the top level, because its only test is "no closed door in view" and
     # the premapped top level shows no closed door from the stairs until the solver has run, so the 3/15 public games
@@ -296,7 +329,51 @@ class GlobalLogic:
         if utils.adjacent((self.agent.blstats.y, self.agent.blstats.x), (y, x)):
             self.agent.search(3)
 
+    # hypothesis: a Sokoban push blocked by a monster the hero cannot see ("You hear a monster behind the boulder.") was
+    #   only waited out: 15 searches per try, 5 tries, then the whole level was dropped. A hostile on the far side keeps
+    #   the square behind the boulder because it is the closest it can get to the hero (it cannot pass the boulder),
+    #   and a giant mimic (two on each top level) never moves at all, so the wait never ends: in 2 of 4 traced parent
+    #   games that reached the top level (soko1-2, the x=10 corridor to the zoo) the bot dropped it this way and never
+    #   got the prize (+0.05 level, +0.25 prize). Boulders stop no thrown object (only a heavy iron ball), so a missile
+    #   thrown in the push direction flies over the boulder and hits the blocker: it dies, flees or is revealed, and the
+    #   push goes through. Never thrown when the hero's pet may be the blocker (a pet was seen on this level and is not
+    #   in view elsewhere), at a peaceful or tame monster in view, or while confused, stunned or hallucinating.
+    # sources: NetHack 3.6.6 src/zap.c bhit() (range loop: only a HEAVY_IRON_BALL "hits a boulder" and stops) and
+    #   src/hack.c moverock() ("You hear a monster behind %s." / "Perhaps that's why you cannot move it.", no time
+    #   passes); src/monmove.c m_move() (an approaching monster only steps nearer to the hero);
+    #   NetHack 3.6.6 dat/sokoban.des (soko1-1/soko1-2: two MONSTER 'giant mimic' m_object "boulder", zoo, prize);
+    #   https://nethackwiki.com/wiki/Sokoban ("a monster may be standing behind the boulder"); https://nethackwiki.com/wiki/Boulder ;
+    #   https://nethackwiki.com/wiki/Giant_mimic ; parent seed traces (diagnostic logging of
+    #   the top level: 75x "You hear a monster behind the boulder" at the same square, then the level was dropped)
+    def _throw_over_boulder(self, ty, tx, dy, dx, message):
+        prop = self.agent.character.prop
+        if prop.confusion or prop.stun or prop.hallu or prop.polymorph:
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number != Level.SOKOBAN:
+            return False
+        by, bx = ty + 2 * dy, tx + 2 * dx
+        if not (0 <= by < C.SIZE_Y and 0 <= bx < C.SIZE_X):
+            return False
+        pet_in_view = utils.isin(self.agent.glyphs, G.PETS)
+        if pet_in_view[by, bx] or self.agent.monster_tracker.peaceful_monster_mask[by, bx]:
+            return False
+        if 'a monster behind' in message and level.key() in self.agent.pet_seen_levels and not pet_in_view.any():
+            return False  # the unseen blocker may be the hero's own pet
+        throws = self._soko_throws.get(level.key(), 0)
+        if throws >= 40:
+            return False
+        inventory = self.agent.inventory
+        ammo_list = [ammo for launcher, ammo in inventory.get_ranged_combinations() if launcher is None]
+        if not ammo_list:
+            return False
+        ammo = max(ammo_list, key=lambda i: utils.calc_dps(*self.agent.character.get_ranged_bonus(None, i)))
+        self._soko_throws[level.key()] = throws + 1
+        direction = self.agent.calc_direction(ty, tx, ty + dy, tx + dx)
+        return self.agent.fire(ammo, direction)
+
     def update(self):
+        self._track_sokoban_prize_amulet()
         if not self.agent.character.prop.hallu:
             if utils.isin(self.agent.glyphs, G.ORACLE).any():
                 if self.oracle_level is None:
@@ -354,6 +431,8 @@ class GlobalLogic:
                         blocked += 1
                         if blocked > 15:
                             return False
+                        if blocked >= 3 and self._throw_over_boulder(ty, tx, dy, dx, message):
+                            continue
                         self.agent.search()
                         continue
                     if 'You try to move the boulder, but in vain.' not in message and other < 3:
@@ -552,6 +631,78 @@ class GlobalLogic:
             self.agent.stats_logger.log_event('sokoban_dropped')
             self.milestone = Milestone(int(self.milestone) + 1)
 
+    def _track_sokoban_prize_amulet(self):
+        amulets = {tuple(item.glyphs) for item in flatten_items(self.agent.inventory.items)
+                   if item.category == nh.AMULET_CLASS}
+        if self.agent.current_level().key() == (Level.SOKOBAN, 1):
+            self._soko_top_new_amulets |= amulets - self._amulets_carried_off_soko_top
+        else:
+            self._amulets_carried_off_soko_top |= amulets
+
+    def _worn_amulet(self):
+        return next((item for item in flatten_items(self.agent.inventory.items)
+                     if item.category == nh.AMULET_CLASS and item.equipped), None)
+
+    def is_good_amulet(self, item):
+        if item.category != nh.AMULET_CLASS or tuple(item.glyphs) in self._amulet_rejected:
+            return False
+        if item.is_unambiguous():
+            return item.object.name in ('amulet of reflection', 'amulet of life saving')
+        # the one appearance first obtained on the Sokoban top level is the prize (an amulet of reflection); two
+        # different new appearances there (a zoo monster's random drop) leave it unknown
+        return len(self._soko_top_new_amulets) == 1 and tuple(item.glyphs) in self._soko_top_new_amulets and \
+            O.from_name('amulet of reflection', nh.AMULET_CLASS) in item.objs
+
+    # hypothesis: my parent takes the Sokoban prize amulet first but the bot never puts an amulet on, so the prize
+    # amulet of reflection rides in the pack while the strongest heroes die to rays and wand bolts (parent: "killed by a
+    # bolt of fire" at XL 11 on public seed 12, "killed by a death ray" at XL 10 on dev seed 917616). The prize is
+    # always reflection, stays unidentified until it reflects something, and still reflects when cursed, so the hero
+    # puts on the one amulet appearance first obtained on the Sokoban top level (and any amulet identified as
+    # reflection or life saving) as soon as no hostile is adjacent; random unknown amulets stay off (13.5% are
+    # strangulation). Reflection is the wiki's must-have before Dlvl 15, Medusa and the Castle.
+    # sources: REUSES #337 (/refs/history/337.diff, the wear half; +0.008 over its root there) and #312;
+    #   https://nethackwiki.com/wiki/Amulet_of_reflection (3.6: the soko1 prize is 50% an amulet of reflection; rays
+    #   bounce off with no damage; breath and wand defence) ; https://nethackwiki.com/wiki/Amulet (the Sokoban prize
+    #   identifies it; once strangulation/restful sleep are ruled out even a cursed amulet is safe to wear) ;
+    #   https://www.alt.org/nethack/mirror/www.steelypips.org/nethack/id_faq.html (the Sokoban prize is fixed) ;
+    #   https://nethackwiki.com/wiki/Wand_of_death (only magic resistance or reflection stops a death ray) ;
+    #   NetHack 3.6.6 dat/sokoban.des (soko1-2 "amulet of reflection"), src/do_wear.c Amulet_on
+    @utils.debug_log('wear_good_amulet')
+    @Strategy.wrap
+    def wear_good_amulet(self):
+        if self._worn_amulet() is not None or self._hostile_adjacent() or self.agent.character.prop.polymorph:
+            yield False
+        candidates = [item for item in flatten_items(self.agent.inventory.items) if self.is_good_amulet(item)]
+        if not candidates:
+            yield False
+        yield True
+        item = max(candidates, key=lambda i: i.is_unambiguous() and i.object.name == 'amulet of reflection')
+        key = tuple(item.glyphs)
+        if not self.agent.inventory.put_on(item):
+            self._amulet_rejected.add(key)
+        else:
+            self.agent.stats_logger.log_event('wear_amulet')
+
+    # hypothesis: if a worn amulet turns out to be strangulation ("It constricts your throat!", status Strngl: death in
+    # six turns) it comes off at once; a cursed one leaves prayer (strangulation is a major trouble) as the only cure.
+    # sources: https://nethackwiki.com/wiki/Amulet_of_strangulation ; https://nethackwiki.com/wiki/Prayer (major
+    #   trouble) ; NetHack 3.6.6 src/pray.c in_trouble() TROUBLE_STRANGLED ; /refs/history/337.diff (#337)
+    @utils.debug_log('remove_strangling_amulet')
+    @Strategy.wrap
+    def remove_strangling_amulet(self):
+        worn = self._worn_amulet()
+        cond = int(self.agent.last_observation['blstats'][nh.NLE_BL_CONDITION])
+        if worn is None or not (cond & nh.BL_MASK_STRNGL):
+            yield False
+        if worn.status == Item.CURSED and self.agent.blstats.time - self._strangle_prayer_turn < 10:
+            yield False  # prayed already: removing a cursed amulet takes no time, so do not loop on it
+        yield True
+        self._amulet_rejected.add(tuple(worn.glyphs))
+        if not self.agent.inventory.remove_accessory(worn):
+            # cursed: the hero dies in six turns anyway, so pray even if the timeout looks too high
+            self._strangle_prayer_turn = self.agent.blstats.time
+            self.agent.pray()
+
     def _hostile_adjacent(self):
         y, x = self.agent.blstats.y, self.agent.blstats.x
         return any(utils.adjacent((y, x), (my, mx)) for _, my, mx, *_ in self.agent.get_visible_monsters())
@@ -604,6 +755,116 @@ class GlobalLogic:
         items_to_drop = items_to_drop[:self.agent.inventory.items.free_slots()]
 
         self.agent.inventory.drop(items_to_drop)
+
+    def may_kick_doors_here(self):
+        # Mines' End (and every Mines level below Minetown, which is Mines level 3 or 4) has no watch, so its locked
+        # doors -- the Mimic of the Mines luckstone niches -- may be kicked open like Dungeons ones
+        level = self.agent.current_level()
+        return level.dungeon_number != Level.GNOMISH_MINES or \
+            (level.level_number >= 5 and level.key() != self.minetown_level)
+
+    GRAY_STONE_GLYPHS = frozenset(O.desc_to_glyphs('gray', nh.GEM_CLASS))  # one look ("gray stone") for all four
+
+    def is_kicked_gray_stone(self, item):
+        level = self.agent.current_level()
+        for y, x in level.light_gray_stones:
+            here = list(level.items[y, x])
+            if (y, x) == (self.agent.blstats.y, self.agent.blstats.x) and self.agent.inventory.items_below_me:
+                here += list(self.agent.inventory.items_below_me)
+            if any(i is item for i in flatten_items(here)):
+                return True
+        return False
+
+    # hypothesis: Mines' End always holds the uncursed Mines prize luckstone (Luck +3 while carried: to-hit, prayer
+    #   success and a buffer against bad Luck, plus the luckstone loot bonus), but the bot never gets it (mines_prize in
+    #   0/20 parent games and 0 tree games, although 15/20 finish the Sokoban leg before FIND_MINES_END, and with an
+    #   8-level Mines the bot keeps exploring and searching Mines' End for a '>' it never finds): the Mimic of the Mines niches
+    #   are behind locked doors it never kicks in the Mines, and a floor gray stone looks the same whether it is the
+    #   luckstone or the cursed, undroppable 500-weight loadstone beside it. Players tell them apart without touching
+    #   them: kick the stone with free floor behind it -- a loadstone gives "Thump!" (STR/2 - weight/40 < 2), any
+    #   other gray stone slides away; then pick up only the stone that moved.
+    # sources: https://nethackwiki.com/wiki/Loadstone ; https://nethackwiki.com/wiki/Gray_stone ;
+    #   https://nethackwiki.com/wiki/Mines%27_End ; https://nethackwiki.com/wiki/Luckstone ;
+    #   player discussions https://nethackwiki.com/wiki/Forum:Mine's_end and GameFAQs "How to get past the level
+    #   teleport traps in Mine's End?" (gamefaqs.gamespot.com/boards/582497-nethack/60864842, search excerpts:
+    #   "if the gray stone was the topmost object on the pile, then yes, it is a loadstone", kicking it into a wall
+    #   also thumps); NetHack 3.6 dokick.c really_kick_object(), dat/mines.des minend-1..3, dat/dungeon.def
+    @utils.debug_log('kick_test_gray_stones')
+    @Strategy.wrap
+    def kick_test_gray_stones(self):
+        level = self.agent.current_level()
+        if level.dungeon_number != Level.GNOMISH_MINES or level.level_number < 8:
+            yield False
+
+        def ray(y, x, dy, dx):
+            for k in range(1, 15):
+                y, x = y + dy, x + dx
+                if not (0 <= y < C.SIZE_Y and 0 <= x < C.SIZE_X) or not level.walkable[y, x]:
+                    return
+                yield y, x
+
+        if level.gray_stone_ray is not None:
+            # follow the kicked stone: it slid along the kick direction (often into the dark) and stopped somewhere
+            (sy, sx), (dy, dx), older, tries = level.gray_stone_ray
+            if tries >= 3:
+                level.gray_stone_ray = None
+                yield False
+            yield True
+            level.gray_stone_ray = ((sy, sx), (dy, dx), older, tries + 1)
+            for y, x in ray(sy, sx, dy, dx):
+                if self.agent.bfs()[y, x] == -1:
+                    break
+                self.agent.go_to(y, x)
+                if (y, x) not in older and \
+                        any(i.is_gray_stone() for i in flatten_items(self.agent.inventory.items_below_me)):
+                    level.light_gray_stones.add((y, x))
+                    break
+            level.gray_stone_ray = None
+            return
+
+        if self.agent.blstats.time < self.agent._no_kick_until:
+            yield False
+
+        dis = self.agent.bfs()
+        best = None
+        for y, x in zip(*utils.isin(self.agent.glyphs, self.GRAY_STONE_GLYPHS).nonzero()):
+            if (y, x) in level.light_gray_stones or level.shop[y, x] or level.shop_interior[y, x] or \
+                    level.gray_stone_kicks[y, x] >= 3:
+                continue
+            # orthogonal kicks only, from a reachable square, with plain floor behind the stone: a stone with no room
+            # to move thumps like a loadstone; no visible monster in the way (a kicked stone angers a peaceful)
+            for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                py, px, by, bx = y - dy, x - dx, y + dy, x + dx
+                if not (0 <= py < C.SIZE_Y and 0 <= px < C.SIZE_X and 0 <= by < C.SIZE_Y and 0 <= bx < C.SIZE_X):
+                    continue
+                if dis[py, px] == -1 or level.objects[by, bx] not in G.FLOOR or \
+                        self.agent.glyphs[by, bx] in G.BOULDER or \
+                        any(self.agent.glyphs[ry, rx] in G.MONS or self.agent.glyphs[ry, rx] in G.PETS
+                            for ry, rx in ray(y, x, dy, dx)):
+                    continue
+                if best is None or dis[py, px] < dis[best[0]]:
+                    best = ((py, px), (y, x), (dy, dx))
+        if best is None:
+            yield False
+        yield True
+
+        (py, px), (y, x), (dy, dx) = best
+        self.agent.go_to(py, px)
+        if (self.agent.blstats.y, self.agent.blstats.x) != (py, px) or \
+                self.agent.glyphs[y, x] not in self.GRAY_STONE_GLYPHS:
+            return
+        level.gray_stone_kicks[y, x] += 1
+        older = {(ry, rx) for ry, rx in ray(y, x, dy, dx)
+                 if self.agent.glyphs[ry, rx] in self.GRAY_STONE_GLYPHS or
+                 any(i.is_gray_stone() for i in flatten_items(level.items[ry, rx]))}
+        if not self.agent.kick(y, x):
+            return
+        if 'Thump' in self.agent.message or self.agent.glyphs[y, x] in G.MONS:
+            # a loadstone (or a mimic posing as a stone): leave it be
+            level.gray_stone_kicks[y, x] = 3
+            return
+        if self.agent.glyphs[y, x] not in self.GRAY_STONE_GLYPHS:
+            level.gray_stone_ray = ((y, x), (dy, dx), older, 0)
 
     @utils.debug_log('dip_for_excalibur')
     @Strategy.wrap
@@ -935,8 +1196,9 @@ class GlobalLogic:
             def exploration_strategy(level, **kwargs):
                 return (
                     Strategy(lambda: self.agent.exploration.explore1(level, trap_search_offset=1,
-                        kick_doors=self.agent.current_level().dungeon_number != Level.GNOMISH_MINES, **kwargs).strategy())
+                        kick_doors=self.may_kick_doors_here(), **kwargs).strategy())
                     .preempt(self.agent, [
+                        self.kick_test_gray_stones(),
                         self.identify_items_on_altar().every(100),
                         self.identify_items_on_altar().condition(
                             lambda: self.agent.current_level().objects[self.agent.blstats.y,
@@ -977,6 +1239,13 @@ class GlobalLogic:
                        (self.milestone == Milestone.BE_ON_FIRST_LEVEL and self.grind_depth() != level[1]))
             ).run()
 
+    # hypothesis: combination 2 of round 10 -- the strongest single ideas, each a different weakness: #338 takes the
+    #   Mines' End luckstone (Luck +3, loot bonus), #346 + #373 pick up and put on the Sokoban prize amulet of
+    #   reflection (rays/wand bolts killed the best heroes), #372 cures food poisoning/illness/sliming/strangling,
+    #   #347 records the prayer turn before the prayer step (no double prayer), #358 declines "Really attack
+    #   <peaceful>?" (peaceful dwarves/watch of a lawful Valkyrie in the Mines). They touch separate code paths and
+    #   together make the grinding hero luckier, reflecting and harder to kill by accidents.
+    # sources: round ideas #338, #346, #373, #372, #347, #358 (/board/round_ideas/node-<n>.diff)
     def global_strategy(self):
         return (
             self.current_strategy().repeat()
@@ -1008,6 +1277,9 @@ class GlobalLogic:
                 self.follow_guard(),
             ])
             .preempt(self.agent, [
+                self.wear_good_amulet(),
+            ])
+            .preempt(self.agent, [
                 self.agent.fight2(),
             ])
             .preempt(self.agent, [
@@ -1021,5 +1293,9 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.cure_stoning(),
+                self.agent.cure_deadly_illness(),
+            ])
+            .preempt(self.agent, [
+                self.remove_strangling_amulet(),
             ])
         )

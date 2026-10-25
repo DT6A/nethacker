@@ -195,6 +195,31 @@ class Inventory:
 
         return True
 
+    def put_on(self, item):
+        """ Puts on an amulet ('P'); returns True when an amulet is worn afterwards """
+        item = self.move_to_inventory(item)
+        if item.equipped:
+            return True
+        letter = self.items.get_letter(item)
+        with self.agent.atom_operation():
+            self.agent.step(A.Command.PUTON)
+            if 'What do you want to put on?' not in self.agent.message:
+                return False
+            self.agent.type_text(letter)
+        self.items.update(force=True)
+        return any(i.equipped for i in self.items.all_items if i.category == item.category)
+
+    def remove_accessory(self, item):
+        """ Removes a worn amulet ('R'); returns False when it is still worn (e.g. cursed) """
+        assert item is not None and item.equipped, item
+        letter = self.items.get_letter(item)
+        with self.agent.atom_operation():
+            self.agent.step(A.Command.REMOVE)
+            if 'What do you want to remove?' in self.agent.message:
+                self.agent.type_text(letter)
+        self.items.update(force=True)
+        return not any(i.equipped for i in self.items.all_items if i.category == item.category)
+
     def use_container(self, container, items_to_put, items_to_take, items_to_put_counts=None,
                       items_to_take_counts=None):
         assert container in self.items.all_items or container in self.items_below_me
@@ -580,6 +605,10 @@ class Inventory:
         if all((not i.can_be_dropped_from_inventory() for i in items)):
             return False
 
+        # a held gray stone is proven light, so it stays wanted where it is dropped (e.g. on an altar to learn its B/U/C)
+        if any(i.is_gray_stone() for i, c in zip(items, counts) if c != 0):
+            self.agent.current_level().light_gray_stones.add((self.agent.blstats.y, self.agent.blstats.x))
+
         def key_gen():
             if 'Drop what type of items?' in '\n'.join(self.agent.single_popup):
                 yield 'a'
@@ -962,7 +991,11 @@ class Inventory:
             f"This {wand_regex} is a wand of digging!": ['digging'],
             "Gravel flies up from the floor!": ['digging'],
             f"This {wand_regex} is a wand of fire!": ['fire'],
-            "Lightning arcs from the wand. You are blinded by the flash!": ['lighting'],
+            # hypothesis (proven neutral fix): 'lighting' names no object, so O.from_name() asserted (AgentPanic loop)
+            #   whenever an engrave-tested wand turned out to be lightning; the real name identifies it instead.
+            # sources: autoascend/objects/utils.py from_name (asserts exactly one match); NetHack 3.6.6 src/objects.c
+            #   WAND("lightning", ...), src/engrave.c doengrave ("Lightning arcs from the wand."); /refs/history/324.diff
+            "Lightning arcs from the wand. You are blinded by the flash!": ['lightning'],
             f"This {wand_regex} is a wand of lightning!": ['lightning'],
             f"The {floor_regex} is riddled by bullet holes!": ['magic missile'],
             f'The engraving now reads:': ['polymorph'],
