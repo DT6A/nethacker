@@ -4,8 +4,8 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G
-from ..utils import adjacent
+from ..glyph import G, SS
+from ..utils import adjacent, isin
 from .monster_utils import is_monster_faster, is_dangerous_monster, ignores_elbereth, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
@@ -319,6 +319,94 @@ def get_corridors_priority_map(walkable):
     return corridor_mask + corridor_dilated >= 1
 
 
+# hypothesis: fight2 met packs (rothes, soldier ants, killer bees, jackals, gnomes, orcs, Woodland-elves -- all group
+#   monsters, 2-4 or 2-11 at a time) wherever it happened to be, mostly in the open room where up to 8 of them get a melee
+#   round on the hero each turn; rothe and soldier ant packs are among this run's commonest killers of XL 6-11 heroes.
+#   With two or more hostile melee monsters in view the move heatmap now costs each square the number of them that can
+#   stand next to it at once (its walkable neighbours, capped at the crowd size), so the hero waits for the pack in a
+#   corridor, a dead end or just outside a door, where it meets one or two of them at a time. Movement into/out of an
+#   intact doorway is orthogonal only, but attacks ignore that rule (mon.c monnear, hack.c domove attacks before
+#   test_move), so a doorway square counts all its walkable neighbours like any other square. Monsters adjacent to the
+#   hero are still meleed first (melee priority >= 16 vs at most a few points here); the danger terms are unchanged.
+# sources: https://nethackwiki.com/wiki/Group ("lure them into a corridor or doorway, so only one member of the group can
+#   attack the player at a time"; rothe, ants, jackals, gnomes, elves small groups; killer bees, orcs large groups) ;
+#   https://nethackwiki.com/wiki/Soldier_ant ("avoid being surrounded at all costs, and try to lead them through a nearby
+#   corridor") ; https://nethackwiki.com/wiki/Rothe (groups of 2-4 overwhelm under-prepared heroes; "refine their
+#   movement tactics") ; https://nethackwiki.com/wiki/Door (the diagonal rule is for movement; doorways as bottlenecks) ;
+#   https://nethack.fandom.com/wiki/Movement_tactics (in the open a group surrounds you on 6 of 8 sides, in a corridor
+#   only one can be adjacent) ; player guides: Mikko Saari's NetHack Beginner's Guide
+#   (https://www.melankolia.net/nethack/nethack.guide.html: rothes come in groups, "retreat into a corridor where only one
+#   of them can attack you at time"), the SLASH'EM-bundled strategy.txt
+#   (https://stuff.mit.edu/afs/sipb/project/nethackserver/src/slashem-0.0.7E7F2/doc/strategy.txt: back up into the
+#   hallway) and GameFAQs "How to avoid moccasins, demons, bees and ants"
+#   (https://gamefaqs.gamespot.com/boards/582497-nethack-1987/40910927) ; NetHack 3.6.6 src/mon.c monnear(), mfndpos()
+#   and src/hack.c domove() ; the commented-out corridor map below is AutoAscend's untried TODO for the same idea
+def get_attack_square_counts(agent, walkable):
+    """ For every square, how many squares next to it a monster could stand on to hit the hero there """
+    level = agent.current_level()
+    # a dark room's floor beyond the hero's sight is not remembered yet -- count unseen squares next to room floor as
+    # open, but not the never-displayed rock beside a corridor
+    room_floor = isin(level.objects, frozenset({SS.S_room, SS.S_darkroom}))
+    near_room = signal.convolve2d(room_floor.astype(int), np.ones((3, 3), dtype=int), mode='same') > 0
+    open_squares = walkable | (~level.seen & near_room)
+    k = np.ones((3, 3), dtype=int)
+    k[1, 1] = 0
+    return signal.convolve2d(open_squares.astype(int), k, mode='same')
+
+
+# hypothesis: my parent's chokepoint term only pays against a pack that walks into the corridor; it also removes
+#   fight2's "go to the monster" fallback (that fires only when all neighbour priorities are equal), so the hero now
+#   waits in a corridor or dead end forever for monsters that never come -- a sleeping zoo, barracks or beehive, a
+#   monster stuck behind water or a boulder, a fleeing one -- while fight2 (which outranks exploring and eating) never
+#   ends, and it holds still under the arrows, daggers and wand zaps of the archers that packs carry (hill orcs,
+#   Uruk-hai, forest centaurs, elves, soldiers), which keep shooting from out of reach instead of closing in.
+#   Parent #380 fell from 0.536 to 0.384 public / 0.350 to 0.180 held-out against root #376, with new deaths to an
+#   Uruk-hai, hill orc and forest centaur and games that end alive at XL 10-12. The wait now has to pay: it holds while
+#   the nearest pack member keeps getting closer (or is already adjacent), and is dropped -- back to the root's
+#   approach-and-strike-first behaviour -- when the pack stops closing in for CHOKEPOINT_PATIENCE turns or a missile,
+#   wand zap or ray comes at the hero, until a pack member reaches the hero again or the encounter ends.
+# sources: https://nethackwiki.com/wiki/Group (lure groups into a corridor -- "so only one member of the group can
+#   attack the player at a time" -- which needs them to follow) ; https://nethackwiki.com/wiki/Uruk-hai ("facing an
+#   Uruk-hai in melee may deter them from using their arrows"; bows and poisoned arrows) ;
+#   https://nethackwiki.com/wiki/Hill_orc ; https://nethackwiki.com/wiki/Zoo (a zoo is a room of sleeping monsters,
+#   also the Sokoban top level's) ; https://nethackwiki.com/wiki/Stealth (with stealth -- intrinsic for a Valkyrie --
+#   sleeping monsters do not wake as the hero moves, so they never come to the chokepoint) ;
+#   https://nethackwiki.com/wiki/Valkyrie ; player guide in search results (mazesofmenace.ai/spoilers: "fight from the
+#   doorway so they wake one or two at a time"; reach the chokepoint first) ; NetHack 3.6.6 src/mthrowu.c thitu()
+#   ("You are hit by" / "You are almost hit by"), m_throw()/monshoot() ("%s shoots/throws"), src/zap.c buzz()
+#   ("whizzes by you") ; past nodes #66/#378 (close to melee with a monster shooting from range)
+#   ; ported unchanged from node #389 (the same repair on #380 alone: 0.327 -> 0.440, held-out 0.180 -> 0.375) onto
+#   #380 -> #387, whose crash fixes do not touch fight2
+CHOKEPOINT_PATIENCE = 8
+UNDER_FIRE_MESSAGES = ('You are hit by', 'You are almost hit by', 'whizzes by you', ' shoots ', ' throws ', ' zaps ')
+
+
+def chokepoint_wait_pays(agent, crowd):
+    st = agent.chokepoint_state
+    turn = agent.blstats.time
+    pos = (agent.blstats.y, agent.blstats.x)
+    reachable = [m[0] for m in crowd if m[0] >= 0]
+    nearest = min(reachable) if reachable else None
+    if st['turn'] is None or not 0 <= turn - st['turn'] <= 20:
+        # a new encounter
+        st.update(turn=turn, nearest=nearest, stalled=0, suspended=False)
+    if any(adjacent((m[1], m[2]), pos) for m in crowd):
+        st.update(turn=turn, nearest=nearest, stalled=0, suspended=False)
+        return True
+    if any(msg in agent.message for msg in UNDER_FIRE_MESSAGES):
+        st['suspended'] = True
+    if turn != st['turn']:
+        if nearest is not None and (st['nearest'] is None or nearest < st['nearest']):
+            st['stalled'] = 0
+        else:
+            st['stalled'] += turn - st['turn']
+        st['nearest'] = nearest
+        st['turn'] = turn
+    if st['stalled'] >= CHOKEPOINT_PATIENCE:
+        st['suspended'] = True
+    return not st['suspended']
+
+
 def get_priorities(agent):
     """ Returns a pair (move priority heatmap, other actions (with priorities) list) """
     walkable = agent.current_level().walkable
@@ -329,6 +417,11 @@ def get_priorities(agent):
     for m in monsters:
         draw_monster_priority_negative(agent, m, priority, walkable)
     priority[~walkable] = float('nan')
+
+    crowd = [m for m in monsters
+             if m[3].mname not in WEAK_MONSTERS + ONLY_RANGED_SLOW_MONSTERS + EXPLODING_MONSTERS]
+    if len(crowd) >= 2 and chokepoint_wait_pays(agent, crowd):
+        priority -= np.minimum(get_attack_square_counts(agent, walkable), len(crowd))
 
     # TODO: figure out how to use corridors priority so that it improves the score
     # if len([m for m in monsters if m[3].mname not in chain(ONLY_RANGED_SLOW_MONSTERS, WEAK_MONSTERS)]) >= 4:

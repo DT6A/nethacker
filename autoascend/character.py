@@ -64,21 +64,39 @@ class Property:
     def __init__(self, agent):
         self.agent = agent
 
+    # hypothesis: when the bottom status line is long (Satiated, gold, several conditions) the tty abbreviates the
+    #   condition names -- Blind -> "Blnd"/"Bl", Hallu -> "Hal"/"Hl", Conf -> "Cnf"/"Cf", Stun -> "St" -- so the
+    #   substring tests below missed them: a hallucinating hero was taken for a sober one, the monster tracker asked for
+    #   the '/' -> 'M' monster list (left out of the whatis menu while hallucinating), raised 100 times and killed the
+    #   agent thread, and the game ended alive by NLE's no-progress abort (parent public seed 2: XL 10, Dlvl 10, T20658,
+    #   status line "... Satiated Blnd Hal"); blind/confused/stunned states were also missed (no waiting them out).
+    #   Read the condition bits NLE exports in blstats instead (as `stoned` below already does), keeping the full word
+    #   as a fallback.
+    # sources: NetHack 3.6.6 win/tty/wintty.c conditions[] ({"Blind","Blnd","Bl"}, {"Hallu","Hal","Hl"},
+    #   {"Conf","Cnf","Cf"}, {"Stun","Stun","St"}: progressively shorter forms when the line does not fit) ;
+    #   NetHack 3.6.6 src/pager.c dowhatis menu (the 'm'/'M' monster-list entries are offered only when
+    #   !u.uswallow && !Hallucination) ; NLE include/nleobs.h / nle.nethack BL_MASK_* (blstats[NLE_BL_CONDITION]) ;
+    #   diagnosed by replaying parent public seed 2 (thread error: "'All monsters currently shown on the map:' is not
+    #   in list", status line "Satiated Blnd Hal")
+    def _condition(self, mask, word):
+        cond = int(self.agent.last_observation['blstats'][nh.NLE_BL_CONDITION])
+        return bool(cond & mask) or word in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+
     @property
     def confusion(self):
-        return 'Conf' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_CONF, 'Conf')
 
     @property
     def stun(self):
-        return 'Stun' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_STUN, 'Stun')
 
     @property
     def hallu(self):
-        return 'Hallu' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_HALLU, 'Hallu')
 
     @property
     def blind(self):
-        return 'Blind' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_BLIND, 'Blind')
 
     @property
     def stoned(self):

@@ -285,7 +285,13 @@ class ItemManager:
         ) = matches[0]
         # TODO: effects, uses
 
-        if info in {'being worn', 'being worn; slippery', 'wielded', 'chained to you'} or info.startswith(
+        # hypothesis: a worn ring reads "(on left hand)" / "(on right hand)" (objnam.c doname), which fell through to
+        #   `assert 0, info`; every inventory parse then raised, 100 recovered errors later the agent thread died and
+        #   the game ended alive by NLE's no-progress abort (parent public seed 7: XL 12, Dlvl 12, T32948).
+        # sources: NetHack 3.6.6 src/objnam.c doname_base() ("(on left hand)", "(on right hand)" for W_RINGL/W_RINGR) ;
+        #   diagnosed by replaying parent public seed 7 (thread error "AssertionError: on right hand")
+        if info in {'being worn', 'being worn; slippery', 'wielded', 'chained to you',
+                    'on left hand', 'on right hand'} or info.startswith(
                 'weapon in ') or \
                 info.startswith('tethered weapon in '):
             equipped = True

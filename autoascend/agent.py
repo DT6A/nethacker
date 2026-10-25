@@ -83,6 +83,8 @@ class Agent:
         # when (number of turn) there was last decision about allowing these actions (e.g. agent is somewhat stuck)
         self._allow_walking_through_traps_turn = -float('inf')
         self._allow_attack_all_turn = -float('inf')
+        # fight_heur.chokepoint_wait_pays: does waiting for a pack at a chokepoint still pay
+        self.chokepoint_state = dict(turn=None, nearest=None, stalled=0, suspended=False)
         # square the last compass command was aimed at (None outside of direction()), see the "Really attack" answer
         self._direction_target = None
 
@@ -956,9 +958,26 @@ class Agent:
                     (self.blstats.y, self.blstats.x)] = (level.key(), (expected_y, expected_x))
 
         else:
+            level = self.current_level()
+            from_y, from_x = self.blstats.y, self.blstats.x
             self.direction(dir)
 
             if self.blstats.y != expected_y or self.blstats.x != expected_x:
+                # hypothesis: the path planner forbids diagonal steps only through squares that show a door, but
+                #   NetHack also refuses them through doorless doorways on the Rogue tribute level (Dlvl 15-18, where
+                #   every doorway is a no-door one) and through doorways whose door the bot doesn't see; the planner
+                #   kept choosing the same diagonal step, each refused at no game time ("You can't move diagonally out
+                #   of an intact doorway."), until the 'turn inactivity' assert killed the agent thread and the game
+                #   ended alive by NLE's no-progress abort (parent public seed 2 at Dlvl 17 after the status fix,
+                #   seed 6 on Dlvl 17). Remember the refused doorway so bfs routes orthogonally through it.
+                # sources: NetHack 3.6.6 src/hack.c test_move() ("You can't move diagonally out of/into an intact
+                #   doorway.", context.move = 0) ; https://nethackwiki.com/wiki/Rogue_level (doorways without doors,
+                #   still no diagonal movement) ; https://nethackwiki.com/wiki/Doorway ; diagnosed by replaying parent
+                #   public seeds 2 and 6 (1800+ identical 'position do not match' panics at one doorway)
+                if 'move diagonally out of an intact doorway' in self.message:
+                    level.no_diagonal[from_y, from_x] = True
+                if 'move diagonally into an intact doorway' in self.message:
+                    level.no_diagonal[expected_y, expected_x] = True
                 raise AgentPanic(f'agent position do not match after "move": '
                                  f'expected ({expected_y}, {expected_x}), got ({self.blstats.y}, {self.blstats.x})')
 
@@ -1081,7 +1100,8 @@ class Agent:
 
         dis = utils.bfs(y, x,
                         walkable=walkable,
-                        walkable_diagonally=walkable & ~utils.isin(level.objects, G.DOORS) & (level.objects != -1),
+                        walkable_diagonally=walkable & ~utils.isin(level.objects, G.DOORS) & (level.objects != -1) &
+                                            ~level.no_diagonal,
                         can_squeeze=self.inventory.items.total_weight <= 600 and \
                                     self.current_level().dungeon_number != Level.SOKOBAN,
                         )
