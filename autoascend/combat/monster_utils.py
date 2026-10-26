@@ -2,7 +2,7 @@
 # hypothesis: never melee the acid-passive sessile monsters (spotted jelly, green mold): each melee hit risks a passive acid splash that corrodes weapon and armour, and a spotted jelly's (level+1)d6 splash killed an XL 8 game on Dlvl 4.
 # sources: https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/monst.c (spotted jelly ATTK(AT_NONE, AD_ACID, 0, 6), green mold ATTK(AT_NONE, AD_ACID, 0, 4)); passive() in uhitm.c; https://nethackwiki.com/wiki/Spotted_jelly ; https://nethackwiki.com/wiki/Green_mold ; https://nethackwiki.com/wiki/Passive_attack
 from ..glyph import MON
-from .monster_attacks import MELEE_ATTACKS
+from .monster_attacks import MELEE_ATTACKS, PASSIVE_ATTACKS
 
 ONLY_RANGED_SLOW_MONSTERS = ['floating eye', 'blue jelly', 'brown mold', 'gas spore', 'acid blob', 'spotted jelly', 'green mold']
 EXPLODING_MONSTERS = ['yellow light', 'gas spore', 'flaming sphere', 'freezing sphere', 'shocking sphere']
@@ -64,7 +64,37 @@ def imminent_death_on_melee(agent, monster):
             return True
     elif hp <= 8:
         return True
-    return hp <= max_melee_damage(monster)
+    return hp <= max_melee_damage(monster) + max_passive_damage(agent, monster)
+
+
+# hypothesis: fight2 judged a melee exchange only by the monster's own attacks, but an energy vortex (passive shock
+# 7d4), fire vortex and fire elemental (passive fire 9d4), red mold (fire 4d4) and ochre jelly (acid 3d6) hit back
+# every time the hero swings at them -- shock, fire and cold on 2/3 of swings while the monster lives even when the
+# hero misses, acid on half of the hits -- so heroes at XL 9-12 kept trading blows with them down to death (energy
+# vortex and fire elemental are among this run's commonest killers: ~30 and 11 deaths over nodes >= 376). Adding the
+# worst-case passive to the "one exchange can kill me" line makes the hero stop closing in / meleeing them in time
+# and use ranged attacks, Elbereth or a step back instead; cold is skipped for the cold-resistant Valkyrie.
+# sources: https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/monst.c (AT_NONE attacks:
+#   energy vortex ATTK(AT_NONE, AD_ELEC, 0, 4), fire vortex/fire elemental ATTK(AT_NONE, AD_FIRE, 0, 4), ...);
+#   https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/uhitm.c passive() (d(damn,damd) or
+#   d(m_lev+1,damd); AD_ACID if mhit && rn2(2); AD_FIRE/AD_COLD/AD_ELEC if malive && !mcan && rn2(3), hit or miss);
+#   src/role.c (Valkyrie intrinsic cold resistance); https://nethackwiki.com/wiki/Passive_attack ;
+#   https://nethackwiki.com/wiki/Energy_vortex ("A ranged attack is all but required to dispatch of an energy vortex
+#   quickly since it will not trigger the passive attacks") ; https://nethackwiki.com/wiki/Fire_elemental ; https://nethackwiki.com/wiki/Fire_vortex
+#   ported to this chain (#414 -> #420 -> #427) from tree node #425 (+0.021 over its parent #422: public +0.034,
+#   held-out and dev equal); my parent's public seed 5 dies to an energy vortex (XL 11) and seed 11 to a fire
+#   elemental (XL 10). Player advice: Usenet 1999 thread on Valkyries with 90-140 HP lost to energy vortices
+#   (https://www.alt.org/nethack/mirror/www.nethack.de/spoiler/energy_vortex.txt: "pretty nasty", get shock resistance
+#   or escape) ; no passive when the blow kills, ranged attacks avoid it (https://nethackwiki.com/wiki/Passive_attack)
+def max_passive_damage(agent, monster):
+    """ Worst-case HP damage the monster's passive attacks deal back to the hero for one melee swing at it. """
+    _, _, _, mon, _ = monster
+    total = 0
+    for adtyp, damn, damd in PASSIVE_ATTACKS.get(mon.mname, ()):
+        if adtyp == 'COLD' and agent.character.role == agent.character.VALKYRIE:
+            continue
+        total += (damn if damn else mon.mlevel + 1) * damd
+    return total
 
 
 def is_dangerous_monster(monster):

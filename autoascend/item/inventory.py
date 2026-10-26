@@ -36,6 +36,10 @@ class Inventory:
         'Iron balls': nh.BALL_CLASS,
     }
 
+    # armour never worn: harmful when worn (mostly autocursed), or invisibility (shopkeepers refuse invisible heroes)
+    UNSAFE_ARMOR = frozenset(['helm of opposite alignment', 'gauntlets of fumbling', 'fumble boots', 'levitation boots',
+                              'dunce cap', 'cornuthaum', 'cloak of invisibility'])
+
     def __init__(self, agent):
         self.agent = agent
         self.item_manager = ItemManager(self.agent)
@@ -825,18 +829,37 @@ class Inventory:
         best_items = [None] * O.ARM_NUM
         best_ac = [None] * O.ARM_NUM
         for item in items:
-            if not item.is_armor() or not item.is_unambiguous():
+            # hypothesis: the four shuffled cloak appearances (tattered cape, opera cloak, ornamental cope, piece of
+            # cloth) are all good cloaks (protection, invisibility, magic resistance, displacement), but the bot never
+            # wore one because is_unambiguous() rejected them. Accepting a random-appearance item when no identity it
+            # could have is harmful gives ~1.6 expected AC, MC3 and sometimes magic resistance (death rays, magic
+            # missiles). Helmets, gloves, boots and conical hats still stay unworn (opposite alignment, fumbling,
+            # levitation, dunce cap). A cloak that self-identifies as invisibility on wear is taken off by
+            # wear_best_stuff, because shopkeepers refuse invisible customers at the door.
+            # sources: https://nethackwiki.com/wiki/Cloak ; https://nethackwiki.com/wiki/Cloak_of_protection ;
+            #   https://nethackwiki.com/wiki/Cloak_of_magic_resistance ; https://nethackwiki.com/wiki/Cloak_of_invisibility
+            #   (shopkeepers) ; https://nethackwiki.com/wiki/Armor (random appearances) ; NetHack 3.6.6 src/objects.c
+            #   (CLOAK probabilities 9/10/2/10) and src/do_wear.c Cloak_on (invisibility/displacement makeknown);
+            #   idea reused from node #19 (/board/claims/node-19.md), which predates the unknown-BUC wear of #24/#45
+            if not item.is_armor() or any(obj.name in self.UNSAFE_ARMOR for obj in item.objs) or \
+                    len({obj.sub for obj in item.objs}) != 1:
                 continue
 
             # TODO: consider other always allowed items than dragon hide
-            is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
+            is_dragonscale_armor = item.is_unambiguous() and item.object.metal == O.DRAGON_HIDE
 
             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
             if item.status not in allowed_statuses and not is_dragonscale_armor:
                 continue
 
-            slot = item.object.sub
-            ac = item.get_ac()
+            slot = item.objs[0].sub
+            if item.is_unambiguous():
+                ac = item.get_ac()
+            else:
+                total_prob = sum(obj.prob for obj in item.objs)
+                expected_ac = sum(obj.prob * obj.ac for obj in item.objs) / total_prob if total_prob > 0 else \
+                    max(obj.ac for obj in item.objs)
+                ac = expected_ac - (item.modifier if item.modifier is not None else 0)
 
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
                 continue

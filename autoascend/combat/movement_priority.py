@@ -1,7 +1,7 @@
 from ..utils import adjacent
 from . import utils
 from .monster_utils import WEAK_MONSTERS, ONLY_RANGED_SLOW_MONSTERS, consider_melee_only_ranged_if_hp_full, \
-    imminent_death_on_melee, EXPLODING_MONSTERS, WEIRD_MONSTERS
+    imminent_death_on_melee, EXPLODING_MONSTERS, WEIRD_MONSTERS, max_passive_damage
 
 
 def _draw_around(priority, y, x, value, radius=1, operation='add'):
@@ -49,8 +49,9 @@ def draw_monster_priority_positive(agent, monster, priority, walkable):
         _draw_around(priority, y, x, 2, radius=1, operation='max')
         _draw_around(priority, y, x, 1, radius=2, operation='max')
     elif 'mold' in mon.mname and mon.mname not in ONLY_RANGED_SLOW_MONSTERS:
-        if agent.blstats.hitpoints >= 15 or agent.blstats.hitpoints == agent.blstats.max_hitpoints:
-            # freely engage in melee
+        if (agent.blstats.hitpoints >= 15 or agent.blstats.hitpoints == agent.blstats.max_hitpoints) \
+                and agent.blstats.hitpoints > max_passive_damage(agent, monster):
+            # freely engage in melee (a red mold burns back for up to 4d4, see max_passive_damage)
             _draw_around(priority, y, x, 2, radius=1, operation='max')
             _draw_around(priority, y, x, 1, radius=2, operation='max')
         if len(agent.inventory.get_ranged_combinations()):

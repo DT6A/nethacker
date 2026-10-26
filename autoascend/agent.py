@@ -12,6 +12,7 @@ from . import combat
 from . import objects as O
 from . import utils
 from .character import Character
+from .combat.monster_attacks import MELEE_ATTACKS
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
 from .exploration_logic import ExplorationLogic
 from .global_logic import GlobalLogic
@@ -66,6 +67,8 @@ class Agent:
         self._illness_horn_applies = 0  # unicorn-horn applies during the current deadly illness (cure_deadly_illness)
         self._previous_glyphs = None
         self._last_turn = -1
+        self.held_by = None  # name of the monster holding the hero (u.ustuck), '' if unknown, None if not held
+        self._held_level = None
         self._no_kick_until = -1
         self._inactivity_counter = 0
         self._is_updating_state = False
@@ -494,6 +497,7 @@ class Agent:
 
         self.blstats = BLStats(*self.last_observation['blstats'])
         self.glyphs = self.last_observation['glyphs']
+        self._update_held_state()
 
         self.stats_logger.log_cumulative_value('max_turns_on_position',
                                                key=(self.current_level().dungeon_number,
@@ -1215,6 +1219,92 @@ class Agent:
                 else:
                     cont = False
 
+    # hypothesis: a giant/large mimic, lichen, owlbear or eel that sticks to, grabs or wraps the hero (u.ustuck)
+    #   turns every step away into "You cannot escape from X!" (37 in 40 tries fail), which burns the turn and hands
+    #   the holder a free round of attacks; the bot, repelled from a monster whose worst-case melee could kill it,
+    #   keeps stepping away (or walking to the up stairs) while the holder hits it. Tracking the hold from the game
+    #   messages lets fight2 drop moves (and retreat_upstairs stop walking) while held, so the turn goes to hitting
+    #   the holder, or to Elbereth when its melee threatens death (a scared holder flees and releases the hero).
+    #   The AD_STCK hold is silent, so a hit from a monster with a sticky attack ("The giant mimic hits!",
+    #   "The lichen touches you!") also marks the hero as held, before the first wasted step.
+    # sources: port of tree node #412 (/board/past_ideas/node-412.diff: +0.054 over its parent, +0.013 on its other
+    #   port #391); NetHack 3.6.6 src/hack.c domove() (u.ustuck: "You cannot escape from %s!", only !rn2(40) pulls
+    #   free), src/do.c ("You are being held, and cannot go down/up."), src/uhitm.c stumble_onto_mimic() ("Wait!
+    #   That's %s!"), src/mhitu.c (AD_STCK sets u.ustuck silently after a hit; AT_HUGS "%s grabs you!"; AD_WRAP
+    #   "%s swings itself around you!"), src/monmove.c monflee() -> release_hero() ("You get released!");
+    #   https://nethackwiki.com/wiki/Sticky ("a silent holding attack"; each walk-away attempt ~10% -- fighting is
+    #   usually better); https://nethackwiki.com/wiki/Giant_mimic ; https://nethackwiki.com/wiki/Valkyrie
+    #   (retreat and Elbereth prevent sudden deaths); rec.games.roguelike.nethack "LEAVE the GIANT mimics ALONE!!!"
+    #   (https://groups.google.com/g/rec.games.roguelike.nethack/c/WKAs-c0J7hg); /refs/parent-eval.json public
+    #   seed 3 dies to a giant mimic on Dlvl 4 (an early loss).
+    _HELD_PATTERNS = [
+        re.compile(r"You cannot escape from (?:the |an? )?([^!]+)!"),
+        re.compile(r"Wait! +That's (?:an? |the )?([^!]+)!"),
+        re.compile(r"(?:The |An? |the |an? )?([^.!]*?) grabs you!"),
+        re.compile(r"(?:The |An? |the |an? )?([^.!]*?) swings itself around you!"),
+        re.compile(r"You are being (?:crushed|choked)()"),
+        re.compile(r"You are being held, and cannot go()"),
+        re.compile(r"(?:The |An? |the |an? )?([a-z][a-z ]*?) (?:hits|touches you)!"),
+    ]
+    _HELD_NEEDS_STICKY = (1, 6)  # patterns that mean a hold only for a monster with an AD_STCK attack
+    _RELEASED_PATTERN = re.compile(r"You get released!|You pull free from|You are released")
+
+    def _update_held_state(self):
+        message = self.message or ''
+        held_pos, held_name = -1, None
+        for i, pattern in enumerate(self._HELD_PATTERNS):
+            for m in pattern.finditer(message):
+                name = re.sub(r'^((the|an?|poor) )+', '', m.group(1).strip().lower())
+                if i in self._HELD_NEEDS_STICKY and not any(adtyp == 'STCK' for _, adtyp, _, _ in
+                                                            MELEE_ATTACKS.get(name, ())):
+                    continue  # a small mimic (or a hallucinated name) does not stick
+                if m.start() > held_pos:
+                    held_pos, held_name = m.start(), name
+        released = [m.start() for m in self._RELEASED_PATTERN.finditer(message)]
+        released_pos = max(released) if released else -1
+        level_key = (self.blstats.dungeon_number, self.blstats.level_number)
+
+        if held_pos > released_pos:
+            if held_name not in MELEE_ATTACKS:
+                held_name = self.held_by or ''  # "You are being crushed." names no one: keep the known holder
+            self.held_by = held_name
+            self._held_level = level_key
+        elif released_pos >= 0:
+            self.held_by = None
+
+        if self.held_by is None:
+            return
+        if self._held_level != level_key:
+            self.held_by = None
+            return
+        # the hold ends silently when the holder dies, is displaced or teleports away (mon.c unstuck, distu > 2)
+        neighbours = []
+        for y in range(max(self.blstats.y - 1, 0), min(self.blstats.y + 2, self.glyphs.shape[0])):
+            for x in range(max(self.blstats.x - 1, 0), min(self.blstats.x + 2, self.glyphs.shape[1])):
+                if (y, x) == (self.blstats.y, self.blstats.x):
+                    continue
+                glyph = self.glyphs[y, x]
+                if glyph == nh.GLYPH_INVISIBLE:
+                    neighbours.append(None)
+                elif MON.is_monster(glyph) and not nh.glyph_is_pet(glyph):
+                    neighbours.append(MON.permonst(glyph).mname)
+        if not neighbours:
+            self.held_by = None
+        elif self.held_by and not self.character.prop.hallu and None not in neighbours \
+                and self.held_by not in neighbours:
+            self.held_by = None
+
+    def is_held(self):
+        return self.held_by is not None
+
+    def get_holder(self, monsters):
+        """ The adjacent monster (tuple from get_visible_monsters) that holds the hero, or None """
+        adjacent_monsters = [m for m in monsters if utils.adjacent((m[1], m[2]), (self.blstats.y, self.blstats.x))]
+        for m in adjacent_monsters:
+            if self.held_by and m[3].mname == self.held_by:
+                return m
+        return adjacent_monsters[0] if len(adjacent_monsters) == 1 else None
+
     ######## LOW-LEVEL STRATEGIES
 
     def get_visible_monsters(self):
@@ -1279,6 +1369,19 @@ class Agent:
 
             if self.character.prop.polymorph:
                 actions = list(filter(lambda x: x[1][0] != 'ranged', actions))
+
+            # held (see _update_held_state): a step away nearly always fails and costs a free round of attacks
+            if self.is_held():
+                not_moving = [a for a in actions if a[1][0] not in ('move', 'go_to')]
+                if not_moving:
+                    actions = not_moving
+                holder = self.get_holder(monsters)
+                if holder is not None and not combat.monster_utils.ignores_elbereth(holder) and \
+                        self.can_engrave() and (self.inventory.engraving_below_me or '').lower() != 'elbereth' and \
+                        not any(a[1][0] == 'elbereth' for a in actions) and \
+                        (combat.monster_utils.imminent_death_on_melee(self, holder) or
+                         self.blstats.hitpoints * 2 < self.blstats.max_hitpoints):
+                    actions.append((40, ('elbereth',)))
 
             if allow_attack_all:
                 attack_actions = [a for a in actions if a[1][0] in ('melee', 'ranged', 'zap')]

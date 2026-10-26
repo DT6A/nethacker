@@ -1083,7 +1083,8 @@ class GlobalLogic:
                 agent.blstats.time < self._retreat_cooldown_until or \
                 level.dungeon_number == Level.SOKOBAN or agent.blstats.depth <= 1 or \
                 agent.blstats.carrying_capacity >= 2 or level.shop_interior[pos] or \
-                agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.hallu:
+                agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.hallu or \
+                agent.is_held():  # held: each step is "You cannot escape" (see Agent._update_held_state)
             yield False
 
         threats = self._retreat_threats()

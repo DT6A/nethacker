@@ -384,3 +384,19 @@ MELEE_ATTACKS = {
     'warrior': (('WEAP', 'PHYS', 1, 8), ('WEAP', 'PHYS', 1, 8)),
     'apprentice': (('WEAP', 'PHYS', 1, 6),),
 }
+
+
+# Passive (AT_NONE) attacks that cost the hero HP when it melees the monster, from the same monst.c table:
+# name -> ((AD_x, damn, damd), ...). Paralysis, stun, stoning, sliming, rust/corrosion and disenchantment are left out.
+PASSIVE_ATTACKS = {
+    'acid blob': (('ACID', 1, 8),),
+    'blue jelly': (('COLD', 0, 6),),
+    'spotted jelly': (('ACID', 0, 6),),
+    'ochre jelly': (('ACID', 3, 6),),
+    'energy vortex': (('ELEC', 0, 4),),
+    'fire vortex': (('FIRE', 0, 4),),
+    'fire elemental': (('FIRE', 0, 4),),
+    'brown mold': (('COLD', 0, 6),),
+    'green mold': (('ACID', 0, 4),),
+    'red mold': (('FIRE', 0, 4),),
+}

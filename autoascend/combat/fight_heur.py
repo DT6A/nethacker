@@ -7,7 +7,8 @@ from scipy import signal
 from ..glyph import G, SS
 from ..utils import adjacent, isin
 from .monster_utils import is_monster_faster, is_dangerous_monster, ignores_elbereth, \
-    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
+    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full, \
+    max_melee_damage, max_passive_damage
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
 
@@ -21,6 +22,11 @@ def melee_monster_priority(agent, monsters, monster):
         ret -= 6
     if mon.mname in EXPLODING_MONSTERS:
         ret -= 17
+    passive_damage = max_passive_damage(agent, monster)
+    if passive_damage and agent.blstats.hitpoints <= max_melee_damage(monster) + passive_damage:
+        # its round plus the retaliation for this swing can kill (see max_passive_damage): prefer ranged attacks and
+        # Elbereth, and stepping out of reach of a monster no faster than the hero; still hit back when cornered
+        ret -= 14 if mon.mmove > 12 else 18
     if 'were' in mon.mname:
         ret += 1
     # if not wielding_melee_weapon(agent):
