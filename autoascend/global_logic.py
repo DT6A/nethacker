@@ -246,6 +246,8 @@ class GlobalLogic:
         self._grind_xl = None
         self._grind_xl_turn = 0  # turn when the hero reached its current experience level
         self._best_ac = None  # lowest AC seen (monotone, so the descent gate does not flap while armour is swapped)
+        self._minetown_stall_turns = 0  # turns spent on Mines level 4+ while FIND_MINETOWN is open (see _update_minetown_stall)
+        self._minetown_stall_last_turn = None
 
     # hypothesis: SOLVE_SOKOBAN ends on arrival at the top level, because its only test is "no closed door in view" and
     # the premapped top level shows no closed door from the stairs until the solver has run, so the 3/15 public games
@@ -388,9 +390,38 @@ class GlobalLogic:
         direction = self.agent.calc_direction(ty, tx, ty + dy, tx + dx)
         return self.agent.fire(ammo, direction)
 
+    MINETOWN_STALL_TURNS = 2000
+
+    # hypothesis: FIND_MINETOWN ends only when a shopkeeper is seen in the Mines, and while it is open the bot explores
+    #   (Mines, 4) indefinitely (levels_to_explore_to_get_to returns nothing once the target level is reachable). In
+    #   Orcish Town (one of the 7 Minetown maps: shopkeepers, watch and priest all dead, town walled off by iron bars)
+    #   or when a trap door/hole on Mines 2 drops the hero past a Minetown on Mines 3, no shopkeeper ever appears and the
+    #   game stalls there until death (public seed 10: fell past Mines 3, ~27k turns on Mines 4, died at XL 12 without
+    #   ever reaching Sokoban). In every replay where Minetown was found, a shopkeeper was seen within ~300 turns of
+    #   reaching Mines 4, so giving up after 2000 turns there only changes the stalled games: the milestone moves on to
+    #   FIND_SOKOBAN, whose route out of the Mines climbs back through Mines 3 (a skipped Minetown is still recognised
+    #   if its shopkeeper comes into view). minetown_level stays None, so the kick/Excalibur rules are unchanged.
+    # sources: https://nethackwiki.com/wiki/Orcish_Town , https://nethackwiki.com/wiki/Minetown ,
+    #   https://nethackwiki.com/wiki/Trap_door ,
+    #   https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/dungeon.def (minetn @ (3, 2)),
+    #   https://groups.google.com/g/rec.games.roguelike.nethack/c/CkmOAx4m4_Q (players on the walled-off 3.6 town),
+    #   https://nethackwiki.com/wiki/Talk:Minetown (players falling into/past the town by trap door)
+    def _update_minetown_stall(self):
+        turn = self.agent.blstats.time
+        last, self._minetown_stall_last_turn = self._minetown_stall_last_turn, turn
+        if last is None or self.milestone != Milestone.FIND_MINETOWN or self.minetown_level is not None:
+            return
+        level = self.agent.current_level()
+        if level.dungeon_number == Level.GNOMISH_MINES and level.level_number >= 4:
+            self._minetown_stall_turns += max(0, turn - last)
+
+    def minetown_search_given_up(self):
+        return self.minetown_level is None and self._minetown_stall_turns >= self.MINETOWN_STALL_TURNS
+
     def update(self):
         self._track_sokoban_prize_amulet()
         self._update_mines_grind()
+        self._update_minetown_stall()
         ac = self.agent.blstats.armor_class
         if not self.agent.character.prop.polymorph and (self._best_ac is None or ac < self._best_ac):
             self._best_ac = ac
@@ -1354,7 +1385,7 @@ class GlobalLogic:
             #     level = (Level.GNOMISH_MINES, self.agent.current_level().level_number)
 
             elif self.milestone == Milestone.FIND_MINETOWN:
-                condition = lambda: self.minetown_level is not None
+                condition = lambda: self.minetown_level is not None or self.minetown_search_given_up()
                 level = (Level.GNOMISH_MINES, 4)  # TODO
 
             elif self.milestone == Milestone.SOLVE_SOKOBAN:
