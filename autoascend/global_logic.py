@@ -225,6 +225,7 @@ class GlobalLogic:
         self._protection_trips = {}  # level key -> walks towards the priest
         self._protection_retry_turn = -float('inf')
         self._sell_trips = {}  # level key -> trips into the town's shop to sell spare loot
+        self._unpaid_attempts = 0  # pay attempts for shop goods still unpaid at the current position
 
         self._got_artifact = False
 
@@ -252,6 +253,8 @@ class GlobalLogic:
         self._best_ac = None  # lowest AC seen (monotone, so the descent gate does not flap while armour is swapped)
         self._minetown_stall_turns = 0  # turns spent on Mines level 4+ while FIND_MINETOWN is open (see _update_minetown_stall)
         self._minetown_stall_last_turn = None
+        self._minetown_seen_turn = None  # turn the hero first recognised Minetown
+        self._minetown_altar_tested = False  # unknown items were dropped on Minetown's altar
 
     # hypothesis: SOLVE_SOKOBAN ends on arrival at the top level, because its only test is "no closed door in view" and
     # the premapped top level shows no closed door from the stairs until the solver has run, so the 3/15 public games
@@ -422,6 +425,22 @@ class GlobalLogic:
     def minetown_search_given_up(self):
         return self.minetown_level is None and self._minetown_stall_turns >= self.MINETOWN_STALL_TURNS
 
+    # hypothesis: recognising Minetown ended FIND_MINETOWN at once, so the hero left the town before its temple altar
+    #   could test the curse status of its unknown items (parent: altar_tests 0 in all 10 Minetown games), and the stage
+    #   credit for using the temple never fired. Holding on the town level until an altar drop is made (or no unknown
+    #   item is carried, or 2000 turns pass) gives the altar test its chance without stalling the descent.
+    # sources: /refs/parent-eval.json (quest.altar_tests 0 in all 10 Minetown games); NetHack 3.6.6 src/pray.c
+    #   doaltarobj() (dropped items show their BUC on an altar); /board/claims/node-1053.md (same gap, other subtree)
+    MINETOWN_TEMPLE_TURNS = 2000
+
+    def minetown_temple_done(self):
+        if self._minetown_altar_tested or self.minetown_level is None:
+            return True
+        if self.agent.blstats.time - self._minetown_seen_turn >= self.MINETOWN_TEMPLE_TURNS:
+            return True
+        return not any(item.status == Item.UNKNOWN for item in flatten_items(self.agent.inventory.items)
+                       if item.can_be_dropped_from_inventory())
+
     def update(self):
         self._track_sokoban_prize_amulet()
         self._update_mines_grind()
@@ -436,10 +455,15 @@ class GlobalLogic:
                 else:
                     assert self.oracle_level == self.agent.current_level().key()
 
+            # hypothesis: a temple priest in view on a Mines level is Minetown's temple (the only temple in the Mines), so
+            #   the town is recognised even on a level where no shopkeeper stands in view.
+            # sources: NetHack 3.6.6 dat/dungeon.def (minetn @ (3,2)); https://nethackwiki.com/wiki/Minetown ;
+            #   https://nethackwiki.com/wiki/Temple (priests stand in temples)
             if self.agent.current_level().dungeon_number == Level.GNOMISH_MINES and \
-                    utils.isin(self.agent.glyphs, G.SHOPKEEPER).any():
+                    (utils.isin(self.agent.glyphs, G.SHOPKEEPER).any() or utils.isin(self.agent.glyphs, G.PRIESTS).any()):
                 if self.minetown_level is None:
                     self.minetown_level = self.agent.current_level().key()
+                    self._minetown_seen_turn = self.agent.blstats.time
                 else:
                     assert self.minetown_level == self.agent.current_level().key()
 
@@ -841,6 +865,8 @@ class GlobalLogic:
         items_to_drop = items_to_drop[:self.agent.inventory.items.free_slots()]
 
         self.agent.inventory.drop(items_to_drop)
+        if self.agent.current_level().key() == self.minetown_level:
+            self._minetown_altar_tested = True
 
     def may_kick_doors_here(self):
         # Mines' End (and every Mines level below Minetown, which is Mines level 3 or 4) has no watch, so its locked
@@ -1180,6 +1206,30 @@ class GlobalLogic:
             i = int(np.argmin(dis[shop_ys, shop_xs]))
             self.agent.go_to(shop_ys[i], shop_xs[i])
 
+    # hypothesis: NLE's autopickup takes shop goods ($?!/="+) into the pack as unpaid items; a shopkeeper then blocks the
+    #   door of a hero who leaves with them and the explorer loops with no game time passing (a stall). The hero pays
+    #   with #pay inside the shop (the [yn] handler answers 'y' to the itemised prompts) and drops an item it cannot
+    #   afford, which the shopkeeper takes back at no cost.
+    # sources: NetHack 3.6.6 src/shk.c dopay() and inhishop()/"Please pay before leaving"; src/pickup.c autopickup;
+    #   https://nethackwiki.com/wiki/Shopkeeper ; https://nethackwiki.com/wiki/Autopickup
+    @utils.debug_log('pay_unpaid')
+    @Strategy.wrap
+    def pay_unpaid_strategy(self):
+        level = self.agent.current_level()
+        y, x = self.agent.blstats.y, self.agent.blstats.x
+        unpaid = [item for item in flatten_items(self.agent.inventory.items) if item.shop_status == Item.UNPAID]
+        if not unpaid or not level.shop_interior[y, x]:
+            self._unpaid_attempts = 0
+            yield False
+        if self._unpaid_attempts >= 4:
+            yield False
+        yield True
+        self._unpaid_attempts += 1
+        if self._unpaid_attempts > 2:
+            self.agent.inventory.drop(unpaid[0])
+        else:
+            self.agent.step(A.Command.PAY)
+
     # hypothesis: amulets the bot never wears (identified strangulation, ESP, restful sleep, ...) and rings it has
     #   already rejected are dead weight that a Minetown shopkeeper pays for, so the protection gold is reached sooner.
     #   Unidentified amulets stay (one may be life saving), and wearable rings are untouched.
@@ -1499,8 +1549,9 @@ class GlobalLogic:
             #     level = (Level.GNOMISH_MINES, self.agent.current_level().level_number)
 
             elif self.milestone == Milestone.FIND_MINETOWN:
-                condition = lambda: self.minetown_level is not None or self.minetown_search_given_up()
-                level = (Level.GNOMISH_MINES, 4)  # TODO
+                condition = lambda: (self.minetown_level is not None and self.minetown_temple_done()) or \
+                    self.minetown_search_given_up()
+                level = (Level.GNOMISH_MINES, 4) if self.minetown_level is None else self.minetown_level  # TODO
 
             elif self.milestone == Milestone.SOLVE_SOKOBAN:
                 condition = self.sokoban_top_done
@@ -1574,7 +1625,9 @@ class GlobalLogic:
                 ])
                 .until(self.agent, lambda: condition() or
                        (self.milestone == Milestone.BE_ON_FIRST_LEVEL and self.grind_level() != level) or
-                       (self.milestone == Milestone.GO_DOWN and self.ready_depth() != level[1]))
+                       (self.milestone == Milestone.GO_DOWN and self.ready_depth() != level[1]) or
+                       (self.milestone == Milestone.FIND_MINETOWN and self.minetown_level is not None and
+                        self.minetown_level != level))
             ).run()
             # hypothesis: on a fully explored wall-less target level both the path and the exploration decline, and
             #   this loop would spin without a game action (see ExplorationLogic.no_step_fallback); act instead
@@ -1627,6 +1680,9 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.fight2(),
+            ])
+            .preempt(self.agent, [
+                self.pay_unpaid_strategy(),
             ])
             .preempt(self.agent, [
                 self.buy_protection_strategy(),
