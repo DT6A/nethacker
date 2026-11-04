@@ -103,12 +103,27 @@ def melee_monster_priority(agent, monsters, monster):
 WATCH_GLYPHS = frozenset(MON.from_name(n) for n in ('watchman', 'watch captain'))
 
 
-def missiles_risk_the_watch(agent):
+def missiles_risk_the_watch(agent, *, ordinary_missile=False):
     """Minetown: a stray missile (a miss, or the rest of a volley past a dying target) that hits a peaceful
     out of sight angers the Watch (a volley killed a Mordor orc and its 2nd dagger hit a hobbit behind it;
-    the watchmen killed the XL8). Melee only there."""
+    the watchmen killed the XL8). Only confirmed Orctown permits ordinary missiles."""
     gl = agent.global_logic
     if gl.minetown_level is not None and agent.current_level().key() == gl.minetown_level:
+        # hypothesis: ranged attacks in watchless Orctown preserve HP for reaching its altar.
+        # sources: https://nethackwiki.com/wiki/Minetown#Orcish_Town_options ;
+        # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F ;
+        # NetHack-3.6.6_Released/dat/mines.des minetn-1 (Watch and priest are corpses).
+        # The breach record requires multiple observed bars, identifying Orctown
+        # before any wall is dug. Observed residents override that identification.
+        # Only ordinary missiles opt in: their existing full-flight pet/peaceful
+        # checks still apply, while wand and emergency-scroll rules stay intact.
+        level = agent.current_level()
+        if (ordinary_missile and level.key() in gl.dive._orctown_entry and
+                level.key() not in gl.dive._town_levels and
+                not agent.character.prop.hallu and not agent.character.prop.blind and
+                not level.shop.any() and
+                not utils.isin(agent.glyphs, WATCH_GLYPHS, G.PRIESTS, G.SHOPKEEPER).any()):
+            return False
         return True
     return utils.any_in(agent.glyphs, WATCH_GLYPHS)
 
@@ -185,7 +200,7 @@ def unseen_pet_may_be_at(agent, y, x):
 
 
 def ranged_priority(agent, dy, dx, monsters):
-    if missiles_risk_the_watch(agent):
+    if missiles_risk_the_watch(agent, ordinary_missile=True):
         return None
     ret = 11
 

@@ -1025,6 +1025,7 @@ class DiveLogic:
         self._approach_count = {}          # level key -> (window start turn, approach moves in that window)
         self._town_levels = set()          # Mines level keys where the Watch, a shopkeeper or a priest was seen
         self._town_temple_visit = {}       # level key -> (first turn, first action, finished)
+        self._orctown_entry = {}           # level key -> one bounded attempt to open the ruined town
         self._visit_start = (None, 0)      # (level key, turn) we arrived on the current level
         self._visit_pos = (None, None)     # (level key, (y, x)) where we arrived on it (WAND_RESERVE: castle region)
         self._door_heard = {}              # level key -> last turn 'You hear a door open.' (the castle's soldiers)
@@ -3246,6 +3247,113 @@ class DiveLogic:
             if start is None or t - start < BRANCH_HIDDEN_TURNS:
                 return True
         return False
+
+    # hypothesis: opening one sideways passage into Orctown lets a prepared Valkyrie
+    # reach its surviving altar instead of surveying only the outside of the barricade.
+    # sources: https://nethackwiki.com/wiki/Minetown#Orcish_Town_options ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+    # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des
+    # (minetn-1: six barred entrances, no Watch; minetn-5: only one iron-bar square).
+    @Strategy.wrap
+    def orctown_entry_strategy(self):
+        agent = self.agent
+        level = agent.current_level()
+        bl = agent.blstats
+        prop = agent.character.prop
+        key = level.key()
+        if (agent.character.role != Character.VALKYRIE or
+                level.dungeon_number != Level.GNOMISH_MINES or level.level_number not in (3, 4) or
+                agent.global_logic.minetown_level not in (None, key) or
+                self.rescue or self._town_dive_done or
+                self._town_temple_visit.get(key, (0, 0, False))[2] or
+                bl.experience_level < 7 or bl.armor_class > 0 or
+                not agent.character.poison_resistant or bl.hitpoints < 0.85 * bl.max_hitpoints or
+                bl.hunger_state >= Hunger.WEAK or
+                (bl.hunger_state >= Hunger.HUNGRY and not agent.edible_carried_food()) or
+                prop.blind or prop.hallu or prop.confusion or prop.stun or prop.polymorph or
+                self.levitating() or self._near_hostiles(radius=6) or
+                key in self._town_levels or level.shop.any() or
+                utils.isin(agent.glyphs, self._town_glyphs()).any()):
+            yield False
+            return
+
+        # Multiple remembered bars distinguish Orctown from Grotto Town's lone
+        # barred closet. Normal Mines filler levels have no bars. Never infer
+        # an abandoned town merely from its residents being out of sight.
+        bars = list(zip(*utils.isin(level.objects, G.BARS).nonzero()))
+        if len(bars) < 2:
+            yield False
+            return
+        entry = self._orctown_entry.get(key)
+        if entry is not None and (entry['done'] or entry['attempts'] >= 40):
+            yield False
+            return
+        tool = self.digging_tool()
+        # dig_toward would remove a shield for a mattock. Keep our AC intact for
+        # the orcs inside, and never deliberately wield a known cursed tool.
+        if (tool is None or tool.status == Item.CURSED or agent.hands_welded() or
+                (tool.object == O.from_name('dwarvish mattock') and
+                 agent.inventory.items.off_hand is not None) or
+                bl.time < self._dig_blocked_until):
+            yield False
+            return
+        dis = agent.bfs()
+        if entry is not None:
+            wall, stand, inside = entry['target']
+            if level.objects[wall] not in G.WALL or dis[inside] >= 0:
+                entry['done'] = True
+                yield False
+                return
+        else:
+            # Dig beside a barred entrance, joining two *observed* floor tiles.
+            # This makes a single choke point, without guessing unseen terrain
+            # or breaking the bars, boulders, shop doors, or the floor.
+            candidates = []
+            for wy, wx in zip(*utils.isin(level.objects, G.WALL).nonzero()):
+                wall = (int(wy), int(wx))
+                if not any(abs(wy - by) + abs(wx - bx) == 1 for by, bx in bars):
+                    continue
+                for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    stand = (int(wy - dy), int(wx - dx))
+                    inside = (int(wy + dy), int(wx + dx))
+                    if not all(0 <= y < C.SIZE_Y and 0 <= x < C.SIZE_X for y, x in (stand, inside)):
+                        continue
+                    if (0 <= dis[stand] <= 8 and dis[inside] < 0 and
+                            level.objects[stand] in PLAIN_FLOOR and
+                            level.objects[inside] in PLAIN_FLOOR and level.walkable[inside] and
+                            not agent.monster_tracker.monster_mask[inside]):
+                        candidates.append((wall, stand, inside))
+            if not candidates:
+                yield False
+                return
+            wall, stand, inside = min(candidates, key=lambda c: dis[c[1]])
+
+        if dis[stand] < 0:
+            yield False
+            return
+        path = agent.path(bl.y, bl.x, *stand)
+        if any(level.objects[p] in G.TRAPS or level.shop[p] for p in path):
+            yield False
+            return
+        if any(max(abs(m[1] - inside[0]), abs(m[2] - inside[1])) <= 6
+               for m in agent.get_visible_monsters()):
+            yield False
+            return
+        yield True
+        if entry is None:
+            entry = self._orctown_entry[key] = {
+                'target': (wall, stand, inside), 'attempts': 0, 'done': False}
+        # Count before moving/applying so refused commands cannot loop without
+        # consuming this budget; normal exploration remains the fallback.
+        entry['attempts'] += 1
+        agent.global_logic.minetown_level = key
+        self._task('open Orctown for its altar')
+        if (bl.y, bl.x) != stand:
+            agent.go_to(*stand, max_steps=1)
+        else:
+            self.dig_toward(tool, *wall)
+            if 'too hard to' in agent.message or 'You swing' in agent.message:
+                entry['done'] = True
 
     def visit_minetown_temple(self):
         """Explore the town before its visible down stair takes us past the temple."""

@@ -1178,6 +1178,7 @@ class GlobalLogic:
                 self.dive.ditch_pet_strategy(),
                 # a tour-mode pick trip looks for the Mines branch itself (dive_logic.FAST_BRANCH)
                 self.dive.trip_branch_strategy(),
+                self.dive.orctown_entry_strategy(),
             ])
             .preempt(self.agent, [
                 self.solve_sokoban_strategy()
