@@ -532,10 +532,21 @@ _ALTAR_CLASSES = (nh.RING_CLASS, nh.POTION_CLASS, nh.SCROLL_CLASS, nh.AMULET_CLA
 
 
 def _altar_items(agent):
-    """Carried rings, potions, scrolls and amulets whose BUC we don't know (the display shows no B/U/C word)."""
+    """Carried items whose BUC we don't know (the display shows no B/U/C word)."""
     out = []
+    # hypothesis: testing spare Mines armor on Minetown's altar reveals cursed pieces before wear and
+    # lets the Valkyrie use safe dwarf armor for AC during the upper Mines trip.
+    # sources: https://nethackwiki.com/wiki/Curse-testing ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+    # https://nethackwiki.com/wiki/Armor ; https://nethackwiki.com/wiki/Valkyrie ;
+    # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F
+    town = agent.current_level().key() == agent.global_logic.minetown_level
+    worn = {it.object.sub: it for it in _items(agent)
+            if it.is_armor() and it.is_unambiguous() and it.equipped}
     for it in _items(agent):
-        if it.category not in _ALTAR_CLASSES or it.equipped or buc_known(it):
+        useful_town_armor = (town and it.is_armor() and it.is_unambiguous() and
+                             it.shop_status == it.NOT_SHOP and
+                             (it.object.sub not in worn or it.get_ac() < worn[it.object.sub].get_ac()))
+        if (it.category not in _ALTAR_CLASSES and not useful_town_armor) or it.equipped or buc_known(it):
             continue
         if it.category == nh.SCROLL_CLASS and jf_config.SCARE_KEEP:
             continue   # SCARE_KEEP never drops a possible scare monster scroll (and never picks one up again)
@@ -546,21 +557,22 @@ def _altar_items(agent):
     return out
 
 
-def _altar_ready(agent):
+def _altar_ready(agent, tour=False):
     """TC_ALTAR: a known reachable altar on this level and carried items of unknown BUC (pray.c/do.c doaltarobj: a
     drop shows a black flash for cursed, amber for blessed, and sets bknown either way). The identify_items_on_altar
-    of the tour never fires: the parser turns an unknown BUC into UNCURSED, so no item has status UNKNOWN (base10:
-    25 of 90 games stood on an altar, 0 BUC flashes). A known cursed teleport scroll is the sure trigger, a ring known
+    of the tour used to miss unmarked BUC: the parser turns an unknown BUC into UNCURSED, so no item has status UNKNOWN
+    (base10: 25 of 90 games stood on an altar, 0 BUC flashes). The tour may call this only in Minetown. A known cursed
+    teleport scroll is the sure trigger, a ring known
     uncursed can be tried on and taken off, cursed water is unholy water."""
     if not jf_config.TC_ALTAR:
         return None
     level = agent.current_level()
     if not level.altars or level.dungeon_number == Level.SOKOBAN:
         return None
-    # the dive only (see _dive_id_ready): the grind at XL 1-4 walked to its altar for every new scroll (pr-tc15b-jf16
-    # s10: 5 trips in 500 turns at XL 1-3)
+    # The tour calls with tour=True only in Minetown; earlier tour altar trips at XL 1-4
+    # walked to the altar for every new scroll (pr-tc15b-jf16 s10: 5 trips in 500 turns at XL 1-3).
     dive = _dive(agent)
-    if dive is None or not dive.diving:
+    if dive is None or (not dive.diving and not tour):
         return None
     items = _altar_items(agent)
     if not items:

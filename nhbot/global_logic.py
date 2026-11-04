@@ -277,6 +277,8 @@ class GlobalLogic:
 
         self.oracle_level = None
         self.minetown_level = None
+        self._protection_finished = set()
+        self._protection_walks = {}
 
         self._got_artifact = False
         self._milestone_since = {}   # milestone -> turn it began (jf_config.MINES_SEARCH_TURNS)
@@ -303,12 +305,26 @@ class GlobalLogic:
                 else:
                     assert self.oracle_level == self.agent.current_level().key()
 
-            if self.agent.current_level().dungeon_number == Level.GNOMISH_MINES and \
-                    utils.isin(self.agent.glyphs, G.SHOPKEEPER).any():
+            # hypothesis: a town priest or watch member can be seen before a shopkeeper; recognizing
+            # Minetown then lets the temple donation start and stops hunting peaceful dwarves near the Watch.
+            # sources: https://nethackwiki.com/wiki/Minetown ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+            # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F
+            level = self.agent.current_level()
+            # hypothesis: a building door identifies Minetown before its people come into view, so
+            # town safety rules apply early; ordinary upper-Mines filler levels are doorless caverns.
+            # sources: https://nethackwiki.com/wiki/Gnomish_Mines ; https://nethackwiki.com/wiki/Minetown ;
+            # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F
+            if level.dungeon_number == Level.GNOMISH_MINES and level.level_number in (3, 4) and \
+                    (utils.isin(level.objects, G.DOORS).any() or
+                     utils.isin(self.agent.glyphs, G.SHOPKEEPER, G.PRIESTS).any() or
+                     (utils.isin(self.agent.glyphs, frozenset((MON.fn('watchman'),
+                                                               MON.fn('watch captain')))).any() and
+                      utils.isin(level.objects, G.DOORS, G.ALTAR, G.FOUNTAIN).any() and
+                      self.dive._town_sighting(level, level.key(), self.agent.blstats.time))):
                 if self.minetown_level is None:
-                    self.minetown_level = self.agent.current_level().key()
+                    self.minetown_level = level.key()
                 else:
-                    assert self.minetown_level == self.agent.current_level().key()
+                    assert self.minetown_level == level.key()
 
     @utils.debug_log('solving sokoban')
     @Strategy.wrap
@@ -490,29 +506,73 @@ class GlobalLogic:
     @utils.debug_log('identify_items_on_altar')
     @Strategy.wrap
     def identify_items_on_altar(self):
-        mask = utils.isin(self.agent.current_level().objects, G.ALTAR)
-        if not mask.any():
+        # hypothesis: tour altar BUC tests make Minetown useful; Item.UNKNOWN misses unmarked BUC mapped to UNCURSED.
+        # sources: https://nethackwiki.com/wiki/Curse-testing ; https://nethackwiki.com/wiki/Minetown ;
+        # /refs/reference/20261102-161819/node-1012 ; nhbot/power_route.py (_altar_ready, _altar_step).
+        if self.dive.diving or self.minetown_level is None or \
+                self.agent.current_level().key() != self.minetown_level:
             yield False
-
-        dis = self.agent.bfs()
-        mask &= dis != -1
-        if not mask.any():
+            return
+        if power_route._altar_pickup_ready(self.agent):
+            yield True
+            power_route._altar_pickup(self.agent)
+            return
+        altar = power_route._altar_ready(self.agent, tour=True)
+        if altar is None:
             yield False
+            return
+        yield True
+        power_route._altar_step(self.agent, altar)
 
-        yield any((item.status == Item.UNKNOWN for item in flatten_items(self.agent.inventory.items)
-                   if item.can_be_dropped_from_inventory()))
-
-        (ty, tx), *_ = zip(*(mask & (dis == dis[mask].min())).nonzero())
-        self.agent.go_to(ty, tx)
-        items_to_drop = [item for item in flatten_items(self.agent.inventory.items)
-                         if item.can_be_dropped_from_inventory() and item.status == Item.UNKNOWN]
-        if not items_to_drop:
-            raise AgentPanic('items to drop on altar vanished')
-
-        # TODO: move chunking to inventory.drop
-        items_to_drop = items_to_drop[:self.agent.inventory.items.free_slots()]
-
-        self.agent.inventory.drop(items_to_drop)
+    # hypothesis: a Valkyrie reaching Minetown with enough gold uses the peaceful temple priest
+    # for permanent protection while the same visit can also test carried gear on the altar.
+    # sources: round ideas #158, #168; https://nethackwiki.com/wiki/Intrinsic_protection ;
+    # https://nethackwiki.com/wiki/Minetown ; NetHack 3.6.6 src/priest.c priest_talk().
+    @utils.debug_log('buy_protection')
+    @Strategy.wrap
+    def buy_protection_strategy(self):
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        cost = 400 * agent.blstats.experience_level
+        if key != self.minetown_level or key in self._protection_finished or agent.blstats.gold < cost or \
+                agent.character.prop.hallu or agent.blstats.hunger_state >= Hunger.WEAK:
+            yield False
+            return
+        priests = utils.isin(agent.glyphs, G.PRIESTS) & agent.monster_tracker.peaceful_monster_mask
+        if not priests.any():
+            yield False
+            return
+        ys, xs = priests.nonzero()
+        py, px = min(zip(ys, xs), key=lambda p: max(abs(p[0] - agent.blstats.y), abs(p[1] - agent.blstats.x)))
+        if self._protection_walks.get(key, 0) >= 60:
+            yield False
+            return
+        yield True
+        if not utils.adjacent((py, px), (agent.blstats.y, agent.blstats.x)):
+            self._protection_walks[key] = self._protection_walks.get(key, 0) + 1
+            agent.go_to(py, px, stop_one_before=True)
+            return
+        self._protection_finished.add(key)
+        agent.step(A.Command.CHAT)
+        if 'In what direction?' not in agent.message:
+            agent.step(A.MiscAction.MORE)
+        if 'In what direction?' not in agent.message:
+            agent.step(A.Command.ESC)
+            return
+        agent.direction(py, px)
+        for _ in range(4):
+            if 'How much will you offer?' in agent.message:
+                break
+            agent.step(A.MiscAction.MORE)
+        if 'How much will you offer?' not in agent.message:
+            agent.step(A.Command.ESC)
+            return
+        agent.type_text(f'{cost}\r')
+        if 'rewarded' not in agent.message and 'selfless generosity' not in agent.message:
+            agent.step(A.MiscAction.MORE)
+        if 'rewarded' in agent.message:
+            agent.stats_logger.log_event('protection_bought')
 
     @utils.debug_log('dip_for_excalibur')
     @Strategy.wrap
@@ -858,8 +918,13 @@ class GlobalLogic:
             #     level = (Level.GNOMISH_MINES, self.agent.current_level().level_number)
 
             elif self.milestone == Milestone.FIND_MINETOWN:
-                condition = lambda: self.minetown_level is not None
-                level = (Level.GNOMISH_MINES, 4)  # TODO
+                # Entering town alone does not use its temple. The altar test or priest chat
+                # completes the visit; the existing stall guard releases an unusable town.
+                condition = lambda: self.minetown_level is not None and \
+                    ((self.minetown_level in power_route.state(self.agent).altar_tried and
+                      power_route.state(self.agent).altar_pending is None) or
+                     self.minetown_level in self._protection_finished)
+                level = self.minetown_level or (Level.GNOMISH_MINES, 4)
 
             elif self.milestone == Milestone.SOLVE_SOKOBAN:
                 # TODO: fix the condition, monster can destroy doors
@@ -1026,6 +1091,7 @@ class GlobalLogic:
                 .condition(lambda: jf_config.POISON_RES_EAT and not self.agent.character.poison_resistant and
                            self.agent.blstats.hitpoints >= 0.5 * self.agent.blstats.max_hitpoints),
                 self.agent.eat_from_inventory().every(5),
+                self.buy_protection_strategy().every(3),
                 self.agent.inventory.buy_food().every(3),
                 self.agent.inventory.quaff_early_gain_ability().every(5)
                 .condition(lambda: self.milestone == Milestone.BE_ON_FIRST_LEVEL and
@@ -1081,6 +1147,9 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.fight2(),
+            ])
+            .preempt(self.agent, [
+                self.agent.feed_biting_pet(),
             ])
             # Knight only: throw the kit's apples/carrots to the pony before hunger confuses it into
             # attacking us (dogmove.c dog_hunger / mfndpos ALLOW_U); no-op for every other role

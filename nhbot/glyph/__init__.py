@@ -82,6 +82,7 @@ class G:  # Glyphs
     INVISIBLE_MON = frozenset({nh.GLYPH_INVISIBLE, *WARNING})
 
     SHOPKEEPER = frozenset({MON.fn('shopkeeper')})
+    PRIESTS = frozenset({MON.fn('aligned priest')})
     ORACLE = frozenset({MON.fn('Oracle')})
     GUARD = frozenset({MON.fn('guard')})
 

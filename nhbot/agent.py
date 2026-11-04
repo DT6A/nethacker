@@ -58,6 +58,9 @@ class Agent:
         self._last_pet_seen = 0
         self._last_pet_where = None    # (level key, turn, [(y, x), ...]) where the pet was last on screen
         self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which corpses on the floor are left to the pet
+        self._pet_bite_until = -1
+        self._pet_feed_tries = 0
+        self._pet_last_throw = -1000
         self._corpse_debug_pos = None
         self._faint_msg_turn = None    # FAINT_MEASURE_FIX: turn of the screen that first showed a faint
         self._paralysis_end_turn = -10 ** 9   # STARVE_UNMEASURED_GAP: turn of the last 'You can move again'
@@ -3226,6 +3229,9 @@ class Agent:
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
     _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
+    _PET_ATTACK = re.compile(r"\bThe ([a-z][a-z -]*?) (?:bites|hits|kicks|butts|claws|scratches)!")
+    _PET_DOMESTIC = frozenset(('kitten', 'housecat', 'large cat', 'little dog', 'dog',
+                               'large dog', 'pony', 'horse', 'warhorse'))
 
     def _note_pet_hunger(self):
         """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
@@ -3237,9 +3243,86 @@ class Agent:
         if 'is confused from hunger' in msg:
             if self._pet_starving_until < bl.time:
                 self.log('PET starving (confused from hunger): leaving the corpses to it')
+                self._pet_feed_tries = 0
             self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
         elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
             self._pet_starving_until = -1
+            self._pet_bite_until = -1
+            self._pet_feed_tries = 0
+        elif bl.experience_level < 7 and not self.global_logic.dive.diving:
+            # The hunger warning can be printed while the pet is out of sight.
+            # A bite by an adjacent tame animal confirms that it needs help now.
+            names = set(self._PET_ATTACK.findall(msg)) & self._PET_DOMESTIC
+            if names:
+                pets, hostiles = set(), set()
+                for y in range(max(bl.y - 1, 0), min(bl.y + 2, C.SIZE_Y)):
+                    for x in range(max(bl.x - 1, 0), min(bl.x + 2, C.SIZE_X)):
+                        glyph = int(self._observation['glyphs'][y, x])
+                        if MON.is_pet(glyph):
+                            pets.add(MON.permonst(glyph).mname)
+                        elif MON.is_monster(glyph):
+                            hostiles.add(MON.permonst(glyph).mname)
+                if any(name in pets and name not in hostiles for name in names):
+                    if self._pet_starving_until < bl.time:
+                        self._pet_feed_tries = 0
+                    self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+                    self._pet_bite_until = bl.time + 12
+
+    @Strategy.wrap
+    def feed_biting_pet(self):
+        # hypothesis: feeding an adjacent tame animal after its starvation bite stops the
+        # early grind's pet attacks and preserves the Valkyrie for the Mines trip.
+        # sources: https://nethackwiki.com/wiki/Pet ; https://nethackwiki.com/wiki/Valkyrie ;
+        # https://nethackwiki.com/wiki/Forum:Hunger_and_Poison ; /board/past_ideas/node-90.diff ;
+        # nhbot/kni_steed.py (NetHack 3.6.6 dogmove.c and dothrow.c behavior).
+        bl = self.blstats
+        if self.character.role != Character.VALKYRIE or self.global_logic.dive.diving or \
+                bl.experience_level >= 7 or bl.time > self._pet_bite_until or \
+                self._pet_feed_tries >= 2 or bl.time - self._pet_last_throw < 12 or \
+                bl.hunger_state >= Hunger.WEAK or self.character.prop.polymorph or \
+                self.character.prop.blind or self.character.prop.hallu or \
+                self.character.prop.confusion or self.character.prop.stun:
+            yield False
+        pets = []
+        for y in range(max(bl.y - 1, 0), min(bl.y + 2, C.SIZE_Y)):
+            for x in range(max(bl.x - 1, 0), min(bl.x + 2, C.SIZE_X)):
+                glyph = int(self.glyphs[y, x])
+                if MON.is_pet(glyph) and MON.permonst(glyph).mname in self._PET_DOMESTIC:
+                    pets.append((y, x, MON.permonst(glyph).mname))
+                elif MON.is_monster(glyph):
+                    yield False  # spend the next action on the real hostile
+        if not pets:
+            yield False
+        foods = {
+            'cat': ('tripe ration', 'food ration', 'cram ration'),
+            'horse': ('apple', 'carrot', 'orange', 'pear', 'banana', 'food ration'),
+        }
+        items = [i for i in flatten_items(self.inventory.items)
+                 if i.category == nh.FOOD_CLASS and i.is_unambiguous() and not i.is_corpse() and
+                 i.shop_status == Item.NOT_SHOP and i.status != Item.CURSED]
+        chosen = None
+        for y, x, name in pets:
+            kind = 'horse' if name in ('pony', 'horse', 'warhorse') else 'cat'
+            for food_name in foods[kind]:
+                item = next((i for i in items if i.object.name == food_name), None)
+                if item is None:
+                    continue
+                # Never trade the hero's last filling meal for a pet meal.
+                if item.object.nutrition >= 400 and \
+                        self.carried_food_nutrition() - item.object.nutrition < 400:
+                    continue
+                chosen = (y, x, item)
+                break
+            if chosen is not None:
+                break
+        if chosen is None:
+            yield False
+        y, x, item = chosen
+        yield True
+        self._pet_feed_tries += 1
+        self._pet_last_throw = bl.time
+        self.log(f'Feeding biting pet with {item.object.name} at {(y, x)}')
+        self.fire(item, self.calc_direction(bl.y, bl.x, y, x))
 
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap

@@ -1024,6 +1024,7 @@ class DiveLogic:
         self._align_est = None             # estimated alignment record (ALIGN_BUDGET)
         self._approach_count = {}          # level key -> (window start turn, approach moves in that window)
         self._town_levels = set()          # Mines level keys where the Watch, a shopkeeper or a priest was seen
+        self._town_temple_visit = {}       # level key -> (first turn, first action, finished)
         self._visit_start = (None, 0)      # (level key, turn) we arrived on the current level
         self._visit_pos = (None, None)     # (level key, (y, x)) where we arrived on it (WAND_RESERVE: castle region)
         self._door_heard = {}              # level key -> last turn 'You hear a door open.' (the castle's soldiers)
@@ -1050,6 +1051,8 @@ class DiveLogic:
         self._climb_count = {}             # CLIMB_FIX: (level key, (y, x)) -> times the branch climb took that '<'
         self._camp_start = None            # MINES_CAMP: turn the camp began
         self._camp_over = False
+        self._town_dive_start = None        # planned tool dive: short stair trip to the temple after finding a pick
+        self._town_dive_done = False
         self._camp_dir = 1                 # sweep direction: +1 down, -1 up
         self._camp_visit = None            # (level key, turn we arrived) of the current camp visit
         self._camp_moves = {}              # (level key, direction) -> turn we began trying to leave that way
@@ -1873,6 +1876,10 @@ class DiveLogic:
         if self.should_tool_quest():
             self._task('tool quest')
             return self.tool_quest()
+
+        if dnum == Level.GNOMISH_MINES and level.key() == agent.global_logic.minetown_level:
+            if self.visit_minetown_temple():
+                return
 
         if dnum == Level.GNOMISH_MINES and self.use_mines():
             self._task('mines descent')
@@ -2774,12 +2781,49 @@ class DiveLogic:
 
     # ---------------------------------------------------------------- mines
 
+    # hypothesis: combining pet feeding (#171), town recognition (#170), altar testing of armor
+    # (#165), a continued tool trip (#181), upper Mines exploration (#187), and a bounded
+    # temple visit (#168) gives a prepared Valkyrie a useful Minetown trip.
+    # sources: round ideas #171, #165, #170, #181, #187, #168;
+    # https://nethackwiki.com/wiki/Gnomish_Mines ; https://nethackwiki.com/wiki/Minetown ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F .
     def use_mines(self):
-        # with a pick-axe, digging the main dungeon beats banking Mines' End
+        # hypothesis: a pick-axe found in Mines 1-2 should not end the trip before Minetown;
+        # the populated upper levels give XP and armor, and the town altar can test the loot.
+        # sources: https://nethackwiki.com/wiki/Gnomish_Mines ; https://nethackwiki.com/wiki/Minetown ;
+        # https://nethackwiki.com/wiki/Protection_racket ;
+        # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+        # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F ;
+        # /refs/reference/20261102-161819/node-1012.
         race_ok = self.agent.character.race in (Character.DWARF, Character.GNOME) or \
             (MINES_TOOL_TRIP and self.diving and not self.rescue)
-        return MINES_ROUTE and not self.mines_done and race_ok and \
-            (not self.diving or self.digging_tool() is None)
+        if not (MINES_ROUTE and not self.mines_done and race_ok):
+            return False
+        if not self.diving or self.digging_tool() is None:
+            return True
+        agent = self.agent
+        level = agent.current_level()
+        if self._town_dive_done or level.dungeon_number != Level.GNOMISH_MINES or level.level_number > 4:
+            return False
+        if self._town_dive_start is None:
+            self._town_dive_start = agent.blstats.time
+        # The altar action is preemptive; once it has run, take the new protection/knowledge home.
+        from . import power_route
+        town = agent.global_logic.minetown_level
+        if town is not None and (town in power_route.state(agent).altar_tried or
+                                 town in agent.global_logic._protection_finished):
+            self._town_dive_done = True
+            return False
+        # A failed or exhausting visit ends by climbing out. The cap also prevents a hidden
+        # staircase or inaccessible temple from consuming the whole food reserve.
+        if (agent.prayer_failed or agent.blstats.hunger_state >= Hunger.WEAK or
+                agent.blstats.hitpoints < 0.5 * agent.blstats.max_hitpoints or
+                agent.blstats.time - self._town_dive_start > 3500 or
+                (level.level_number == 4 and level.key() in self.fully_explored) or
+                (town == level.key() and level.key() in self.fully_explored)):
+            self._town_dive_done = True
+            return False
+        return True
 
     def _stairs_down(self, level):
         return list(zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()))
@@ -3127,10 +3171,73 @@ class DiveLogic:
                 return True
         return False
 
+    def visit_minetown_temple(self):
+        """Explore the town before its visible down stair takes us past the temple."""
+        agent = self.agent
+        key = agent.current_level().key()
+        first_turn, first_action, finished = self._town_temple_visit.setdefault(
+            key, (agent.blstats.time, agent.step_count, False))
+        if finished:
+            return False
+
+        # hypothesis: a bounded Minetown exploration exposes the temple for the existing priest and altar actions.
+        # sources: https://nethackwiki.com/wiki/Gnomish_Mines ; https://nethackwiki.com/wiki/Minetown ;
+        # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+        # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F
+        from . import power_route
+        used_temple = (key in agent.global_logic._protection_finished or
+                       key in power_route.state(agent).altar_tried)
+        exhausted = (agent.blstats.time - first_turn >= 450 or
+                     agent.step_count - first_action >= 900 or
+                     agent.blstats.hunger_state >= Hunger.WEAK)
+        if used_temple or exhausted:
+            self._town_temple_visit[key] = (first_turn, first_action, True)
+            return False
+
+        self._task('visit Minetown temple')
+        explored = self.exploration(0).until(agent, self._budgeted(
+            lambda: key in agent.global_logic._protection_finished or
+                    key in power_route.state(agent).altar_tried,
+            lambda: agent.blstats.time - first_turn >= 450 or
+                    agent.step_count - first_action >= 900 or
+                    agent.blstats.hunger_state >= Hunger.WEAK)).run(return_condition=True)
+        if not explored:
+            self._town_temple_visit[key] = (first_turn, first_action, True)
+        return True
+
     def mines_step(self):
         """Stairs-first descent to Mines' End; the bottom is the level without a '>'."""
         agent = self.agent
         level = agent.current_level()
+        # hypothesis: clearing Mines 1-2 before taking their stairs supplies the armor, corpses,
+        # and experience needed to reach Minetown without a fragile rush through the branch.
+        # sources: round ideas #187; https://nethackwiki.com/wiki/Gnomish_Mines ;
+        # https://nethackwiki.com/wiki/Minetown ; https://nethackwiki.com/wiki/Valkyrie.
+        if (level.level_number in (1, 2) and level.key() not in self.fully_explored and
+                self.turns_on_level() < FULL_EXPLORE_TURNS and
+                agent.blstats.hitpoints >= 0.6 * agent.blstats.max_hitpoints and
+                (agent.blstats.hunger_state < Hunger.HUNGRY or agent.edible_carried_food())):
+            self._task('clear upper Mines before descending')
+            before = agent.blstats.time
+            explored = self.exploration(0).until(agent, self._budgeted(
+                lambda: False, lambda: self.turns_on_level() >= FULL_EXPLORE_TURNS)).run(return_condition=True)
+            if not explored or agent.blstats.time == before:
+                self.fully_explored.add(level.key())
+            return
+        if (self.diving and not self.rescue and level.level_number in (3, 4) and
+                level.key() not in self.fully_explored):
+            # Survey either possible town level before taking its down stairs. Keep each
+            # search bounded; a replan lets combat, eating and altar testing preempt it.
+            if self.turns_on_level() >= FULL_EXPLORE_TURNS:
+                self.fully_explored.add(level.key())
+            else:
+                self._task('survey Minetown candidate')
+                before = agent.blstats.time
+                explored = self.exploration(0).until(agent, self._budgeted(
+                    lambda: False, lambda: self.turns_on_level() >= FULL_EXPLORE_TURNS)).run(return_condition=True)
+                if not explored or agent.blstats.time == before:
+                    self.fully_explored.add(level.key())
+                return
         need_xl = MINES_REQUIRED_XL.get(level.level_number + 1, 0)
         if agent.blstats.experience_level < need_xl and level.key() not in self.fully_explored and \
                 self.turns_on_level() < FULL_EXPLORE_TURNS:
