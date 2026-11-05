@@ -554,6 +554,37 @@ def _altar_landing_item(agent):
     return None
 
 
+# hypothesis: correcting bag weight lets a loaded Minetown visitor unpack useful altar loot safely.
+# sources: https://nethackwiki.com/wiki/Bag_of_holding ; https://nethackwiki.com/wiki/Curse-testing ;
+# https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/mkobj.c (weight).
+def _altar_unpack_weight(agent, extracted):
+    """Conservative carried load after removing this one stack from its bag."""
+    def weight(it):
+        if it is extracted:
+            return 0
+        if it.category == nh.COIN_CLASS:
+            return (it.count + 50) // 100
+        if it.is_possible_container():
+            return float('inf')  # unseen contents cannot justify more carrying room
+        if not it.is_container():
+            return it.weight()
+        if it.content.locked:
+            return float('inf')
+        contents = sum(weight(child) for child in it.content.items)
+        if contents == float('inf'):
+            return contents
+        if any(obj.name == 'bag of holding' for obj in it.objs):
+            if not buc_known(it) or known_cursed(it):
+                contents *= 2  # unknown BUC may double the load, including in nested bags
+            elif it.is_unambiguous():
+                divisor = 4 if it.status == it.BLESSED else 2
+                contents = (contents + divisor - 1) // divisor
+            # A non-cursed unidentified bag may be an ordinary sack: no discount.
+        return it.weight(with_content=False) + contents
+
+    return extracted.weight() + sum(weight(it) for it in _items(agent))
+
+
 def _altar_items(agent):
     """Carried items whose BUC we don't know (the display shows no B/U/C word)."""
     # hypothesis: testing spare Mines armor on Minetown's altar reveals cursed pieces before wear and
@@ -571,7 +602,16 @@ def _altar_items(agent):
         useful_town_armor = (town and it.is_armor() and it.is_unambiguous() and
                              it.shop_status == it.NOT_SHOP and
                              (it.object.sub not in worn or it.get_ac() < worn[it.object.sub].get_ac()))
-        if (it.category not in _ALTAR_CLASSES and not useful_town_armor) or it.equipped or buc_known(it):
+        # hypothesis: testing carried tins gives a low-loot Minetown visitor useful BUC knowledge
+        # before a cursed tin can explode or spoil a needed meal, making the temple stop productive.
+        # sources: https://nethackwiki.com/wiki/Tin ; https://nethackwiki.com/wiki/Curse-testing ;
+        # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+        # NetHack-3.6.6_Released/src/eat.c consume_tin and src/do.c doaltarobj.
+        useful_town_tin = (town and jf_config.ALTAR_PICKUP and it.category == nh.FOOD_CLASS and
+                           it.is_unambiguous() and it.object.name == 'tin' and
+                           it.shop_status == it.NOT_SHOP and 'empty tin' not in _words(it))
+        if (it.category not in _ALTAR_CLASSES and not useful_town_armor and not useful_town_tin) or \
+                it.equipped or buc_known(it):
             return False
         if airborne and not can_land and it.category == nh.POTION_CLASS:
             return False  # hitfloor tests BUC, then breaks the potion; keep it until grounded
@@ -594,11 +634,9 @@ def _altar_items(agent):
     st = state(agent)
     if (not jf_config.ALTAR_PICKUP or key in st.altar_tried or
             key in agent.global_logic._protection_finished or
-            st.altar_unpack_attempts.get(key, 0) >= 3 or agent.inventory.items.free_slots() < 1 or
-            agent.inventory.items.total_weight > agent.character.carrying_capacity):
+            st.altar_unpack_attempts.get(key, 0) >= 3 or agent.inventory.items.free_slots() < 1):
         return []
-    # Weight includes full contents without holding-bag reduction, so this also
-    # bounds the load after extraction. Nested or unknown contents stay packed.
+    # Extract only direct contents; the rest of the carried bags stay packed.
     candidates = []
     for container in _items(agent):
         if (not container.is_container() or container.content.locked or
@@ -606,7 +644,8 @@ def _altar_items(agent):
                 not buc_known(container) or known_cursed(container)):
             continue
         candidates.extend(it for it in container.content.items
-                          if it.shop_status == it.NOT_SHOP and eligible(it))
+                          if it.shop_status == it.NOT_SHOP and eligible(it) and
+                          _altar_unpack_weight(agent, it) <= agent.character.carrying_capacity)
     return [min(candidates, key=lambda it: it.weight())] if candidates else []
 
 

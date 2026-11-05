@@ -294,6 +294,7 @@ class GlobalLogic:
         self._temple_priest_pos = {}
         self._temple_gold_attempts = {}
         self._temple_gold_steps = {}
+        self._temple_blindfold_attempts = {}
 
         self._got_artifact = False
         self._milestone_since = {}   # milestone -> turn it began (jf_config.MINES_SEARCH_TURNS)
@@ -500,6 +501,47 @@ class GlobalLogic:
             self.milestone = Milestone(int(self.milestone) + 1)
             raise AgentPanic('sokomap unsolvable')
 
+    # hypothesis: removing a stuck face covering restores sight for the upper-Mines temple trip and altar tests.
+    # sources: https://nethackwiki.com/wiki/Blindfold ; https://nethackwiki.com/wiki/Curse-testing ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+    # NetHack-3.6.6_Released/src/do_wear.c Blindf_off/cursed and src/potion.c H2Opotion_dip.
+    def _remove_mines_blindfold(self):
+        """Face-covering blindness never expires; uncurse if necessary, then remove it."""
+        agent = self.agent
+        level = agent.current_level()
+        prop = agent.character.prop
+        if (agent.character.role != Character.VALKYRIE or
+                level.dungeon_number != Level.GNOMISH_MINES or not 1 <= level.level_number <= 4 or
+                self.minetown_level in self._protection_finished or
+                self.minetown_level in power_route.state(agent).altar_tried or
+                not prop.blind or prop.hallu or prop.confusion or prop.stun or prop.polymorph or
+                agent.blstats.hunger_state >= Hunger.WEAK or agent.get_visible_monsters() or
+                utils.any_in(agent.glyphs, G.SWALLOW)):
+            return False
+        covering = next((it for it in agent.inventory.items
+                         if it.equipped and it.is_unambiguous() and
+                         it.category == nh.TOOL_CLASS and it.object.name in ('blindfold', 'towel') and
+                         it.shop_status == it.NOT_SHOP), None)
+        if covering is None:
+            return False
+        attempts = self._temple_blindfold_attempts.setdefault(level.key(), {'remove': 0, 'dip': 0})
+        if power_route.known_cursed(covering):
+            water = next((it for it in agent.inventory.items
+                          if it.category == nh.POTION_CLASS and it.is_unambiguous() and
+                          it.object == power_route.WATER_POTION and it.status == Item.BLESSED and
+                          power_route.buc_known(it) and it.shop_status == it.NOT_SHOP), None)
+            if water is None or attempts['dip'] >= 1:
+                return False
+            attempts['dip'] += 1  # record before any interrupt or refused prompt
+            power_route._dip(agent, covering, water, 'restore sight for the Minetown temple')
+        else:
+            # One initial removal can reveal a curse; allow a second after holy water.
+            if attempts['remove'] >= 2:
+                return False
+            attempts['remove'] += 1
+            power_route._remove(agent, covering)
+        return True
+
     @Strategy.wrap
     def wait_out_unexpected_state_strategy(self):
         yielded = False
@@ -526,6 +568,8 @@ class GlobalLogic:
                 yield True
                 yielded = True
 
+            if self._remove_mines_blindfold():
+                continue
             self.agent.direction('.')
 
         if not yielded:
