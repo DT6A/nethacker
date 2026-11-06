@@ -29,6 +29,17 @@ from .level import Level
 from .strategy import Strategy
 
 
+# hypothesis: combine #45, #48, #49, #52 and #64 to preserve food and fighting strength during Minetown preparation.
+# sources: round ideas #45, #48, #49, #52, #64; https://nethackwiki.com/wiki/Minetown ;
+# https://nethackwiki.com/wiki/Valkyrie ; https://nethackwiki.com/wiki/Rothe ;
+# https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+# https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F .
+# Keep provisions before surplus missiles, identify useful loot, restore damaged
+# attributes, separate melee crowds, and spend a teleport charge on lethal animals.
+# These ports each gained on held-out and development games over their own parent;
+# independent #49/#52 behavior does not require their #44/#43 ancestors.
+
+
 # SQUEEZE_KEEP: known items kept under UNSQUEEZE's cap along with the wands, rings and amulets
 _SQUEEZE_KEEP_KNOWN = frozenset((
     O.from_name('levitation', nh.POTION_CLASS), O.from_name('full healing', nh.POTION_CLASS),
@@ -165,8 +176,50 @@ class ItemPriority(ItemPriorityBase):
                                key=lambda i: i.unit_weight(with_content=False)):
                 add_item(item)
 
-        for item in sorted(filter(lambda i: i.is_thrown_projectile(), items),
-                           key=lambda i: -utils.calc_dps(*self.agent.character.get_ranged_bonus(None, i))):
+        projectiles = sorted(filter(lambda i: i.is_thrown_projectile(), items),
+                             key=lambda i: -utils.calc_dps(*self.agent.character.get_ranged_bonus(None, i)))
+        # hypothesis: reserving provisions before surplus ammunition prevents the shallow
+        # grind and Minetown trip from discarding meals, without losing a ranged defense.
+        # sources: https://nethackwiki.com/wiki/Food ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+        # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F ;
+        # NetHack-3.6.6 src/dothrow.c throw_obj (up to three daggers per Valkyrie volley).
+        level = self.agent.current_level()
+        preparing_for_minetown = (
+            level.dungeon_number == Level.DUNGEONS_OF_DOOM and self.agent.blstats.depth <= 4 or
+            level.dungeon_number == Level.GNOMISH_MINES and level.level_number <= 4)
+        if preparing_for_minetown:
+            # Keep two full expert dagger volleys before food; any extra missiles
+            # still fit afterward when capacity permits. Count items already kept.
+            missiles = [i for i in forced_items + projectiles
+                        if i.is_thrown_projectile() and not i.equipped and i.status != Item.CURSED]
+            shots_left = max(0, 6 - sum(ret_inv.get(i, 0) + ret_bag.get(i, 0) for i in missiles))
+            for item in projectiles:
+                if shots_left <= 0:
+                    break
+                if item.equipped or item.status == Item.CURSED:
+                    continue
+                before = ret_inv.get(item, 0) + ret_bag.get(item, 0)
+                add_item(item, count=shots_left)
+                shots_left -= ret_inv.get(item, 0) + ret_bag.get(item, 0) - before
+
+            # Two food-ration equivalents: prefer nutrition per weight and count
+            # actual retained quantities, not food merely offered by this split.
+            # Cure items, eggs, tins, tripe and partial meals are not this reserve.
+            foods = [i for i in forced_items + items if i.is_food() and not i.is_corpse()
+                     and i.status != Item.CURSED and i.object.nutrition > 0
+                     and i.object.name not in ('sprig of wolfsbane', 'egg', 'tin', 'tripe ration')
+                     and 'partly eaten' not in (i.text or '')]
+            nutrition_left = max(0, 1600 - sum(
+                (ret_inv.get(i, 0) + ret_bag.get(i, 0)) * i.object.nutrition for i in foods))
+            for item in sorted(foods, key=lambda i: -i.nutrition_per_weight()):
+                if nutrition_left <= 0:
+                    break
+                before = ret_inv.get(item, 0) + ret_bag.get(item, 0)
+                count = (nutrition_left + item.object.nutrition - 1) // item.object.nutrition
+                add_item(item, count=count)
+                nutrition_left -= (ret_inv.get(item, 0) + ret_bag.get(item, 0) - before) * item.object.nutrition
+
+        for item in projectiles:
             add_item(item)
 
         if jf_config.LIZARD_KEEP:
@@ -288,6 +341,11 @@ class GlobalLogic:
         self._protection_refused = set()
         self._protection_retry_turn = -1
         self._protection_points_bought = 0
+        self._restore_baseline = None
+        self._restore_deficit_since = None
+        self._restore_attempts = set()
+        self._preparation_teleport_retry_turn = -1
+        self._preparation_teleport_refused = set()
 
         self.dive = DiveLogic(agent)
         self.landing = castle_landing.LandingGuard(self.dive)   # jf_config.LANDING_GUARD (valley-exit)
@@ -490,6 +548,183 @@ class GlobalLogic:
 
         if not yielded:
             yield False
+
+    # hypothesis: restoring lost attributes preserves melee strength and carrying capacity for Minetown.
+    # sources: https://nethackwiki.com/wiki/Potion_of_restore_ability ; https://nethackwiki.com/wiki/Rothe ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+    # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/potion.c
+    # (peffects POT_RESTORE_ABILITY, dodrink bottle occupants).
+    @Strategy.wrap
+    def restore_preparation_attributes(self):
+        agent = self.agent
+        bl, prop = agent.blstats, agent.character.prop
+        level = agent.current_level()
+        preparing = (level.dungeon_number == Level.DUNGEONS_OF_DOOM and level.level_number <= 6 or
+                     level.dungeon_number == Level.GNOMISH_MINES and level.level_number <= 4)
+        if agent.character.role != Character.VALKYRIE or not preparing:
+            yield False
+            return
+        if prop.polymorph:
+            # A monster form's attributes are not the hero's natural maxima.
+            self._restore_baseline = None
+            self._restore_deficit_since = None
+            yield False
+            return
+        if prop.blind or prop.hallu or prop.confusion or prop.stun or bl.hunger_state >= Hunger.HUNGRY:
+            # Feeding, not restore ability, repairs temporary hunger weakness.
+            yield False
+            return
+
+        items = agent.inventory.items
+        gear = frozenset((tuple(i.glyphs), i.modifier, i.naming) for i in items
+                         if i.equipped and i.category in (nh.ARMOR_CLASS, nh.RING_CLASS, nh.AMULET_CLASS))
+        # BLStats.strength is NLE's encoded STR125, including exceptional strength.
+        values = (bl.strength, bl.dexterity, bl.constitution, bl.intelligence, bl.wisdom, bl.charisma)
+        if self._restore_baseline is None or self._restore_baseline[0] != gear:
+            # Removing stat-enhancing equipment must not look like attribute damage.
+            self._restore_baseline = (gear, values)
+            self._restore_deficit_since = None
+        peaks = tuple(max(old, now) for old, now in zip(self._restore_baseline[1], values))
+        self._restore_baseline = (gear, peaks)
+        deficit = tuple(peak - now for peak, now in zip(peaks, values))
+        if not any(deficit):
+            self._restore_deficit_since = None
+            yield False
+            return
+        if self._restore_deficit_since is None or self._restore_deficit_since[0] != deficit:
+            self._restore_deficit_since = (deficit, bl.time)
+        attempt = (gear, values, peaks)
+        if (bl.time <= self._restore_deficit_since[1] or attempt in self._restore_attempts or
+                agent.get_visible_monsters()):
+            yield False
+            return
+
+        potions = [i for i in items if i.category == nh.POTION_CLASS and i.is_unambiguous() and
+                   i.object.name == 'restore ability' and i.shop_status == Item.NOT_SHOP and
+                   i.status != Item.CURSED and
+                   all(nh.objdescr.from_idx(nh.glyph_to_obj(g)).oc_descr not in ('milky', 'smoky')
+                       for g in i.glyphs)]
+        if not potions:
+            yield False
+            return
+        potion = max(potions, key=lambda i: i.status == Item.BLESSED)
+        letter = items.get_letter(potion)
+        yield True
+        # Record before opening a menu: refusals cannot select the same action forever.
+        # Unknown BUC is safe here: a cursed restore-ability potion is merely inert.
+        self._restore_attempts.add(attempt)
+        agent.log(f'RESTORE_ATTRIBUTES {values} below {peaks}: {potion.text!r}')
+
+        def answers():
+            if agent.single_message.startswith(('Drink from the fountain?', 'Drink from the sink?')):
+                yield 'n'
+            if 'What do you want to drink?' in agent.single_message:
+                yield letter
+
+        with agent.atom_operation():
+            agent.step(A.Command.QUAFF, answers())
+        if agent.blstats.time == bl.time:
+            agent.search(1)
+
+    # hypothesis: teleporting dangerous animals away preserves wounded Valkyries during preparation for Minetown.
+    # sources: https://nethackwiki.com/wiki/Wand_of_teleportation ; https://nethackwiki.com/wiki/Rothe ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+    # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/zap.c (bhitm, bhit) ;
+    # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/teleport.c (u_teleport_mon).
+    @Strategy.wrap
+    def teleport_preparation_threat(self):
+        from .combat.fight_heur import missiles_risk_the_watch
+        from .nhmodel.prayer import monster_turn_damage
+
+        agent = self.agent
+        bl, prop = agent.blstats, agent.character.prop
+        level = agent.current_level()
+        preparing = (level.dungeon_number == Level.DUNGEONS_OF_DOOM and level.level_number <= 6 or
+                     level.dungeon_number == Level.GNOMISH_MINES and level.level_number <= 2)
+        # Exclude possible Minetown levels even before its shops/watch reveal it.
+        if (agent.character.role != Character.VALKYRIE or not preparing or prop.polymorph or
+                prop.blind or prop.hallu or prop.confusion or prop.stun or
+                bl.carrying_capacity >= 4 or bl.time < self._preparation_teleport_retry_turn or
+                bl.hitpoints * 2 > bl.max_hitpoints or missiles_risk_the_watch(agent) or
+                level.shop[bl.y, bl.x] or utils.any_in(agent.glyphs, G.SWALLOW) or
+                (agent.inventory.engraving_below_me or '').lower() == 'elbereth'):
+            yield False
+            return
+
+        wands = [i for i in agent.inventory.items if i.is_wand() and i.is_unambiguous() and
+                 i.object.name == 'teleportation' and i.status != Item.CURSED and
+                 i.shop_status == Item.NOT_SHOP and not power._empty(agent, i) and
+                 tuple(i.glyphs) not in self._preparation_teleport_refused]
+        if not wands:
+            yield False
+            return
+        monsters = agent.get_visible_monsters()
+        hostiles = {(m[1], m[2]): m[3] for m in monsters}
+        candidates = []
+        for _, y, x, mon, _ in monsters:
+            dy, dx = int(y - bl.y), int(x - bl.x)
+            distance = max(abs(dy), abs(dx))
+            if (not 1 <= distance <= 3 or not (dy == 0 or dx == 0 or abs(dy) == abs(dx)) or
+                    not getattr(mon, 'mflags1', 0) & MON.M1_ANIMAL or mon.mmove <= 0):
+                continue
+            mean, variance, speed = monster_turn_damage(
+                mon.mname, int(bl.armor_class), int(bl.depth), int(bl.experience_level))
+            # Only spend an escape on an animal whose next few melee attacks threaten our remaining HP.
+            damage = 2 * mean * speed + 2 * (2 * variance * speed) ** 0.5
+            if damage >= bl.hitpoints:
+                candidates.append((damage, -distance, int(y), int(x)))
+
+        direction = None
+        peaceful = agent.monster_tracker.peaceful_monster_mask
+        for _, _, ty, tx in sorted(candidates, reverse=True):
+            dy, dx = int(np.sign(ty - bl.y)), int(np.sign(tx - bl.x))
+            reached = False
+            safe = True
+            minimum_range = 6
+            # bhit gets rn1(8, 6): check all 13 possible squares, including beyond the target.
+            # This beam stops at walls/closed doors and does not reflect or bounce.
+            for step in range(1, 14):
+                minimum_range -= 1
+                y, x = int(bl.y + step * dy), int(bl.x + step * dx)
+                if not (0 <= y < agent.glyphs.shape[0] and 0 <= x < agent.glyphs.shape[1]):
+                    break
+                glyph = agent.glyphs[y, x]
+                if (level.shop[y, x] or peaceful[y, x] or glyph in G.PETS or
+                        level.item_count[y, x] or level.items[y, x] or
+                        agent.last_observation['specials'][y, x] & nh.MG_OBJPILE):
+                    safe = False
+                    break
+                if glyph in G.WALL or glyph in G.DOOR_CLOSED or glyph in G.TREE:
+                    break
+                reached |= (y, x) == (ty, tx) and minimum_range >= 0
+                if (y, x) in hostiles and glyph in G.MONS:
+                    if not getattr(hostiles[y, x], 'mflags1', 0) & MON.M1_ANIMAL:
+                        safe = False
+                        break
+                    minimum_range -= 3  # each monster hit shortens bhit's remaining range
+                elif glyph not in G.VISIBLE_FLOOR:
+                    # Unknown/dark terrain may hide a pet. Objects can redirect a teleport beam
+                    # in older NetHack versions, so never zap visible or remembered floor loot.
+                    safe = False
+                    break
+            if safe and reached:
+                direction = (dy, dx)
+                break
+        if direction is None:
+            yield False
+            return
+
+        wand = wands[0]
+        yield True
+        # Arm both guards before prompts, including commands interrupted by panic recovery.
+        self._preparation_teleport_retry_turn = bl.time + 20
+        self._preparation_teleport_refused.add(tuple(wand.glyphs))
+        agent.log(f'PREPARATION_TELEPORT {direction} at HP {bl.hitpoints}: {wand.text!r}')
+        agent.zap(wand, direction)
+        if agent.blstats.time > bl.time:
+            self._preparation_teleport_refused.discard(tuple(wand.glyphs))
+        else:
+            agent.search(1)
 
     # hypothesis: Buying temple protection turns saved gold into permanent AC and makes Minetown useful.
     # sources: https://nethackwiki.com/wiki/Intrinsic_protection ; https://nethackwiki.com/wiki/Minetown ;
@@ -1137,8 +1372,10 @@ class GlobalLogic:
                            self.agent.blstats.hitpoints >= 0.5 * self.agent.blstats.max_hitpoints),
                 self.agent.eat_from_inventory().every(5),
                 self.agent.inventory.buy_food().every(3),
+                self.restore_preparation_attributes(),
                 self.agent.inventory.sell_surplus_armor(),
                 self.agent.inventory.read_enchant_weapon().every(10),
+                self.agent.inventory.identify_preparation_loot(),
                 # power (SELL_PRICE_ID): offer unknown potions/rings/boots to a shopkeeper for their price group
                 self.agent.inventory.sell_price_identify().every(3),
                 # power (SPARE_WISHES): a wished amulet of life saving only protects while worn; gather_items (its
@@ -1173,6 +1410,9 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.fight2(),
+            ])
+            .preempt(self.agent, [
+                self.teleport_preparation_threat(),
             ])
             # Knight only: throw the kit's apples/carrots to the pony before hunger confuses it into
             # attacking us (dogmove.c dog_hunger / mfndpos ALLOW_U); no-op for every other role

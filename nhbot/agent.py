@@ -2736,6 +2736,9 @@ class Agent:
                 self.character.parse_enhance_view()
                 self.character.parse_spellcast_view()
 
+            if combat.fight_heur.retreat_to_choke(self, dis):
+                continue
+
             move_priority_heatmap, actions = combat.fight_heur.get_priorities(self)
             actions.extend(combat.fight_heur.get_move_actions(self, dis, move_priority_heatmap))
 

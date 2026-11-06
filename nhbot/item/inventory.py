@@ -1734,6 +1734,106 @@ class Inventory:
             agent.step(A.Command.READ, gen())
         self.items.update(force=True)
 
+    # hypothesis: spending known identify scrolls on preparation loot reveals usable
+    # equipment and consumables before shallow fights and the upper-Mines trip to Minetown.
+    # sources: https://nethackwiki.com/wiki/Scroll_of_identify ;
+    # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+    # https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F ;
+    # NetHack-3.6.6_Released/src/read.c (SCR_IDENTIFY), src/invent.c (menu_identify).
+    @utils.debug_log('inventory.identify_preparation_loot')
+    @Strategy.wrap
+    def identify_preparation_loot(self):
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        prop = agent.character.prop
+        preparing = (level.dungeon_number == Level.DUNGEONS_OF_DOOM and level.level_number <= 6 or
+                     level.dungeon_number == Level.GNOMISH_MINES and level.level_number <= 4)
+        if not preparing or agent.character.role != Character.VALKYRIE or \
+                prop.blind or prop.confusion or prop.stun or prop.hallu or prop.polymorph or \
+                bl.hunger_state >= Hunger.WEAK or bl.hitpoints < 0.8 * bl.max_hitpoints or \
+                agent.get_visible_monsters() or \
+                bl.time < getattr(self, '_known_identify_retry_turn', -1):
+            yield False
+            return
+
+        scrolls = [i for i in self.items if i.shop_status == Item.NOT_SHOP and
+                   i.category == nh.SCROLL_CLASS and i.is_unambiguous() and i.object.name == 'identify']
+        if not scrolls:
+            yield False
+            return
+
+        targets = []
+        for item in self.items:
+            if item.shop_status != Item.NOT_SHOP or item in scrolls:
+                continue
+            # Do not spend a scroll on food, gems, or the hidden erosion-proof bit of
+            # already known armor. The inventory parser's UNCURSED fallback is not
+            # evidence of BUC, so useful scrolls also need the game's printed status.
+            if item.category in (nh.POTION_CLASS, nh.SCROLL_CLASS, nh.WAND_CLASS) and \
+                    not item.is_unambiguous():
+                priority = 0
+            elif item.category == nh.SCROLL_CLASS and item.object.name in (
+                    'enchant weapon', 'enchant armor', 'remove curse') and not re.search(
+                        r'\b(?:blessed|uncursed|cursed)\b', (item.text or '').split(' scroll', 1)[0]):
+                priority = 0
+            elif item.is_armor() and (not item.is_unambiguous() or item.modifier is None):
+                priority = 1
+            elif item.category in (nh.RING_CLASS, nh.AMULET_CLASS, nh.TOOL_CLASS) and \
+                    not item.is_unambiguous():
+                priority = 2
+            else:
+                continue
+            targets.append((priority, self.items.get_letter(item)))
+        if not targets:
+            yield False
+            return
+
+        letters = [letter for _, letter in sorted(targets)]
+        # All beatitudes are safe in 3.6.6; spend the one-item cursed scroll first.
+        scroll = min(scrolls, key=lambda i: (i.status != Item.CURSED, i.status == Item.BLESSED))
+        scroll_letter = self.items.get_letter(scroll)
+
+        def answers():
+            if 'What do you want to read?' not in agent.single_message:
+                return
+            yield scroll_letter
+            chosen = set()
+            for _ in range(48):
+                screen = '\n'.join(bytes(row).decode(errors='replace')
+                                   for row in agent._observation['tty_chars'])
+                text = '\n'.join(list(agent.popup) + list(agent.single_popup)) + '\n' + agent.single_message
+                if 'What would you like to identify' not in text:
+                    if '--More--' in screen:
+                        yield A.TextCharacters.SPACE
+                        continue
+                    return  # Includes the blessed/uncursed identify-all outcome.
+                offered = set(re.findall(r'^\s*([a-zA-Z])\s+-\s', text, re.M))
+                pick = next((letter for letter in letters if letter in offered and letter not in chosen), None)
+                if pick is not None:
+                    chosen.add(pick)
+                    yield pick
+                    yield A.MiscAction.MORE
+                    continue
+                page = re.search(r'\((\d+) of (\d+)\)', screen)
+                if page and int(page.group(1)) < int(page.group(2)):
+                    yield '>'
+                    continue
+                yield A.Command.ESC
+                return
+            yield A.Command.ESC  # Bound every menu, including a refused selection.
+
+        yield True
+        # Arm the cooldown before any free menu action. A refused read cannot keep
+        # preempting exploration while the game clock stands still.
+        self._known_identify_retry_turn = bl.time + 20
+        agent.log(f'PREP_IDENTIFY reading {scroll.text!r} for {len(targets)} useful targets')
+        with agent.atom_operation():
+            agent.step(A.Command.READ, answers())
+        self.items.update(force=True)
+        if agent.blstats.time == bl.time:
+            agent.search()
+
     @utils.debug_log('inventory.read_enchant_armor')
     @Strategy.wrap
     def read_enchant_armor(self):

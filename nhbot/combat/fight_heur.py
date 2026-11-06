@@ -4,7 +4,8 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G, MON, Hunger
+from ..glyph import G, MON, SS, Hunger
+from ..level import Level
 from .. import jf_config, utils
 from ..item import Item
 from ..utils import adjacent
@@ -821,6 +822,85 @@ def get_corridors_priority_map(walkable):
     corridor_mask[~walkable] = 0
     corridor_dilated = signal.convolve2d(corridor_mask.astype(int), k, boundary='symm', mode='same')
     return corridor_mask + corridor_dilated >= 1
+
+
+# hypothesis: separating slow melee groups in a familiar corridor preserves HP during Minetown preparation.
+# sources: https://nethackwiki.com/wiki/Rothe ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+# https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ;
+# NetHack-3.6.6_Released/src/monst.c (rothe's three attacks and speed 9), include/monattk.h.
+def retreat_to_choke(agent, dis):
+    """One step out of a melee crowd, then briefly let it approach single file."""
+    bl, prop, level = agent.blstats, agent.character.prop, agent.current_level()
+    preparing = (level.dungeon_number == Level.DUNGEONS_OF_DOOM and level.level_number <= 6 or
+                 level.dungeon_number == Level.GNOMISH_MINES and level.level_number <= 4)
+    here = (bl.y, bl.x)
+    if (agent.character.role != agent.character.VALKYRIE or not preparing or
+            prop.blind or prop.confusion or prop.stun or prop.hallu or prop.polymorph or
+            bl.carrying_capacity or bl.hunger_state >= Hunger.WEAK or agent.in_pit() or
+            getattr(agent, '_beartrap_at', None) == (*level.key(), *here) or
+            level.shop[here] or level.objects[here] in G.STAIR_UP or
+            (agent.inventory.engraving_below_me or '').lower() == 'elbereth'):
+        return False
+
+    # Use all visible enemies, including ones the ordinary stall breaker has ignored.
+    # Ranged attacks, fast enemies and creatures that bypass walls invalidate the tactic.
+    from ..nhmodel.mondata import MONS
+    monsters = agent.get_visible_monsters()
+    if not monsters:
+        return False
+    for _, my, mx, mon, _ in monsters:
+        entry = MONS.get(mon.mname)
+        if (entry is None or not 0 < mon.mmove <= 12 or
+                mon.mflags1 & (MON.M1_WALLWALK | MON.M1_TUNNEL) or
+                not entry[-1] or not all(at in (1, 2, 3, 4, 5, 6) and ad == 0
+                                        for at, ad, _, _ in entry[-1])):
+            return False
+
+    adjacent_count = sum(adjacent(here, (m[1], m[2])) for m in monsters)
+    hold = getattr(agent, '_choke_hold', None)
+    if (hold is not None and hold[:3] == (level.key(), *here) and bl.time < hold[3] and
+            adjacent_count == 0 and any(line_dis_from(agent, m[1], m[2]) <= 3 for m in monsters)):
+        # Searching spends a real turn. Do not chase the first enemy back out of the passage.
+        agent.search()
+        return True
+    if adjacent_count < 2 or bl.time < getattr(agent, '_choke_retreat_until', -1):
+        return False
+
+    tried = agent.__dict__.setdefault('_choke_retreat_tried', {})
+    choices = []
+    for y, x in zip(*np.nonzero(dis == 1)):
+        key = (level.key(), int(y), int(x))
+        if (tried.get(key, 0) >= 2 or not level.was_on[y, x] or level.shop[y, x] or
+                level.objects[y, x] not in (SS.S_corr, SS.S_litcorr) or
+                agent.glyphs[y, x] in G.MONS | G.PETS | G.INVISIBLE_MON | G.BOULDER):
+            continue
+        exits = [(yy, xx) for yy in range(max(0, y - 1), min(dis.shape[0], y + 2))
+                 for xx in range(max(0, x - 1), min(dis.shape[1], x + 2))
+                 if (yy, xx) != (y, x) and level.walkable[yy, xx]]
+        # A traversed straight corridor with an exit behind us, not a dark unexplored pocket.
+        if (len(exits) != 2 or here not in exits or
+                exits[0][0] + exits[1][0] != 2 * y or exits[0][1] + exits[1][1] != 2 * x):
+            continue
+        back = next(p for p in exits if p != here)
+        if not level.was_on[back] or level.objects[back] in G.TRAPS or level.shop[back]:
+            continue
+        # All enemies must be on the approach side; do not put ourselves between two groups.
+        if any((m[1] - y) * (bl.y - y) + (m[2] - x) * (bl.x - x) <= 0 for m in monsters):
+            continue
+        exposed = sum(adjacent((y, x), (m[1], m[2])) for m in monsters)
+        if exposed <= 1:
+            choices.append((exposed, int(y), int(x)))
+    if not choices:
+        return False
+    _, y, x = min(choices)
+    key = (level.key(), y, x)
+    # Record before movement: even a refused move cannot select this action in a free-action loop.
+    tried[key] = tried.get(key, 0) + 1
+    agent._choke_retreat_until = bl.time + 30
+    agent._choke_hold = (level.key(), y, x, bl.time + 6)
+    agent.log(f'PREP_CHOKE separating {adjacent_count} attackers at {(y, x)}')
+    agent.move(y, x)
+    return True
 
 
 def get_priorities(agent):
