@@ -2413,8 +2413,24 @@ class Agent:
             # climbing out of a branch (CLIMB_NO_FALL)
             dive = self.global_logic.dive
             exits_ok = dive.diving and not (jf_config.CLIMB_NO_FALL and dive.climbing())
-            walkable &= ~utils.isin(level.objects, self.UNSAFE_TRAPS if exits_ok
-                                    else self.UNSAFE_TRAPS | self.LEVEL_EXIT_TRAPS)
+            unsafe = self.UNSAFE_TRAPS
+            if jf_config.TRIP_UNBLOCK_LADDER and dive.minetown.start_turn is not None:
+                # (from the start of the Minetown trip on: the grind before it plays exactly as it did)
+                # minetown_trip.unblock: an anti-magic field only drains Pw from a hero without magic resistance
+                # (trap.c ANTI_MAGIC) -- no risk to a Valkyrie; and with the last-resort allowance (boxed in, or the
+                # safe traps opened nothing) every kind but a polymorph trap is walked
+                if self._last_turn - getattr(self, '_allow_unsafe_traps_turn', -float('inf')) <= 50:
+                    unsafe = self.NEVER_TRAPS
+                else:
+                    if self.character.role == Character.VALKYRIE:
+                        unsafe = unsafe - {SS.S_anti_magic_trap}
+                    if not self.character.poison_resistant:
+                        # trap.c SPIKED_PIT: 1 fall in 6 is poisoned, and poisoned(..., fatal 8) kills 1 time in 8
+                        # without poison resistance ("fall onto poison spikes"); DART_TRAP: 1 dart in 6 is
+                        # poisoned, fatal 1 time in 30 ("poisoned by a little dart" ended dev game 71006 at full
+                        # HP, walking a known one): neither is one of the safe kinds
+                        unsafe = unsafe | {SS.S_spiked_pit, SS.S_dart_trap}
+            walkable &= ~utils.isin(level.objects, unsafe if exits_ok else unsafe | self.LEVEL_EXIT_TRAPS)
 
         # a shopkeeper blocks the door to anyone carrying a pick-axe or mattock ('Will you please leave
         # your pick-axe outside?'): walking to the goods (check_items) looped at shop doors for 3000-16000
@@ -2468,6 +2484,7 @@ class Agent:
     UNSAFE_TRAPS = frozenset({SS.S_polymorph_trap, SS.S_fire_trap, SS.S_sleeping_gas_trap, SS.S_magic_trap,
                               SS.S_anti_magic_trap, SS.S_rust_trap})
     LEVEL_EXIT_TRAPS = frozenset({SS.S_trap_door, SS.S_hole, SS.S_level_teleporter})
+    NEVER_TRAPS = frozenset({SS.S_polymorph_trap})   # not even as a last resort (TRIP_UNBLOCK_LADDER)
 
     def _diagonal_step_ok(self, masks, y, x, ty, tx):
         """The BFS rule for a diagonal step (y, x) -> (ty, tx) (utils.bfs)."""

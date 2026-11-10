@@ -1,3 +1,18 @@
+# The Minetown trip never stays stuck (val-hum-law-fem, 2026-11-10, second iteration)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, hooks in `agent.py`, `dive_logic.py`, `power_route.py`, flags
+in `jf_config.py`). The trip's failures and most of its deaths were one thing: the hero standing for thousands of
+turns behind something the BFS calls a wall. `TRIP_UNBLOCK_LADDER`: a squeeze that reaches any new square is opened
+(a carried pick-axe digs out the rock corner, else the pack drops to 550), an anti-magic field is walked, and as the
+last resort every trap but polymorph. `TRIP_FAST_EXPLORE`: the stairs are looked for with a frontier walk (explore1
+without its searching), the ladder acts as soon as that walk has nothing left, and a locked door that shuts the hero
+in is kicked when no watchman is in view. `ORCISH_TOWN_BREACH`: a ready hero with a pick-axe digs into Orcish Town
+below its temple and uses the altar. Rules from deaths and stalls seen on the way: spiked pits and dart traps are
+not "safe" traps without poison resistance, no trip with AC above 7 or as a lycanthrope, no ring wear test in town
+(`RING_TEST_TOWN_GUARD`), a hero boxed in by boulders breaks one. Held-out, 108 games against the parent: temple
+used 50% -> 62%, games reaching the dive 73% -> 80%, raw progress 0.377 -> 0.409. Details and the per-idea numbers
+are in the header of `minetown_trip.py`.
+
 # Minetown trip for val-hum-law-fem (2026-11-10)
 
 Engine `nhbot_valk79297_armor` only. New module `minetown_trip.py` (hooks in `dive_logic.py`, `global_logic.py`,

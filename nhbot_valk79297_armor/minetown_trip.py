@@ -55,17 +55,85 @@
 # priest's "Thou hast been rewarded for thy devotion" as quoted there from priest.c) and #862 (town recognition
 # without a shopkeeper); past run 20261106-211643 #85/#116 (a trip held before the first dive; the altar as its
 # exit condition); this engine's own agent.unsqueeze (no diagonal squeeze with more than 600 carried).
+#
+# ---- second iteration: THE TRIP NEVER STAYS STUCK (TRIP_UNBLOCK_LADDER, TRIP_FAST_EXPLORE, ORCISH_TOWN_BREACH) ----
+# hypothesis: the trip above used the temple in 56% of 61 fresh games and 4 of 10 trips that failed also died,
+# because the hero stood for 1500-6000 turns behind something AutoAscend's BFS calls a wall, praying for food
+# every ~900 turns (each prayer fails 2-8% of the time, rnz(350)) until a pack or a failed prayer ended it. Replays
+# of every such game named the walls; each got its own rung, measured on its own and then together (same seeds as
+# the parent; "est" = progress x the run's multiplier rebuilt from XL, AC, temple use, holes and starvation):
+#   1. the unblock ladder (unblock): a squeeze counts when it reaches ANY new square (what lies behind it is the
+#      unexplored half of the level), a carried pick-axe digs out one rock corner of the squeeze instead of dropping
+#      the pack (plate mail can never get under 600), an anti-magic field is walked (it only drains Pw), and when
+#      the safe traps open nothing -- or the hero is boxed in -- every trap but polymorph is. 61 games: temple
+#      56% -> 61%, games reaching the dive 43 -> 46, est 0.379 -> 0.392;
+#   2. the frontier walk (seek, _fast_explore): explore1 without its searching (mkmap caves have no secret
+#      passages; explore1 searches every dead-end nook 15 times and once per new square for traps), and the ladder's
+#      next rung the moment that walk has nothing left in reach; a locked door between the hero and the town is
+#      kicked when no watchman is in view (_kick_out: the room-built towns put the stairs in rooms of their own;
+#      never a door inside the town). Trips took 300-1400 turns instead of 1500-3000. With 1.: temple 70%, dive
+#      49 of 61, est 0.416;
+#   3. Orcish Town (_orc_step, _break_boulder): its altar tests curses as well as any, but the town has no gate.
+#      A ready hero (AC <= 3, XL 7+, a pick-axe) digs in through the wall below the temple and breaks the rubble
+#      on the way: 4 of 4 eligible towns entered and their altars used in 142 development games, but 2 of the 4
+#      heroes died within 1000 turns afterwards (a poisoned spiked pit on the way back, a leocrotta): temple +3
+#      points, est unchanged within noise;
+#   4. rules from deaths and stalls seen on the way: spiked pits and dart traps are not "safe" traps without
+#      poison resistance (trap.c: 1 in 6 poisoned; fatal 1 in 8 / 1 in 30 -- both ended a game at full HP), no
+#      trip with AC above 7 or as a lycanthrope (a were shape change had dropped all the armor), no ring wear test
+#      in town (power_route RING_TEST_TOWN_GUARD: a ring of conflict set the temple's priestess on the hero), and
+#      a hero boxed in by boulders breaks one (_boxed_by_boulders: a scroll of earth read in a corridor).
+# All together, parent -> this version (both rerun here; a game's result moves a little between two runs of the
+# same program -- the parent's wand-of-wishing game on public seed 1 came once in two runs): development games
+# 0-14 + 386141-386150: temple 64% -> 76%, est 0.457 -> 0.452 (public 0-14 alone: raw 0.523 -> 0.497, the dive's
+# lottery); 13026-13061: temple 50% -> 78%, est 0.325 -> 0.402; 31502-31537 (drawn as held-out, read after the
+# first comparison, so development seeds since): temple 56% -> 75%, est 0.416 -> 0.470. HELD-OUT, never read,
+# 108 games (46044-46079, 42647-42682, 21466-21501): temple 50% -> 62%, games reaching the dive 73% -> 80%, games
+# ending on level <= 4: 24 -> 20, raw progress 0.377 -> 0.409, est 0.367 -> 0.400 (each block: +0.024, +0.040,
+# +0.034 raw). What is left: deaths in the grind before the trip (10-15% of games), Orcish Town without a
+# pick-axe or with a weak hero (5%), poison on Mines levels 3-4 (soldier ants, orcish arrows: 2-3%), a Mines
+# branch hidden on Dlvl 2-4 (2%), a trap door in the temple's doorway, a gas spore in a shop's door.
+# Not built: a trip at XL 6 (the dive framework has no way back to the grind), a hole when the '>' stays hidden
+# (the first iteration measured its way back: 5 deaths), gold for the priest (400*XL: no game came near).
+# sources: read for this change -- NetHack 3.6.6 source (github.com/NetHack/NetHack, tag NetHack-3.6.6_Released):
+# src/hack.c (test_move: "You are carrying too much to get through", invent weight > 600; in_town(): the room
+# with subrooms), src/trap.c (ANTI_MAGIC: "hero without magic resistance loses spell energy"; SPIKED_PIT:
+# !rn2(6) -> poisoned(..., fatal 8); DART_TRAP: !rn2(6) -> poisoned(..., 10, thrown)) and src/attrib.c
+# (poisoned(): dead when rn2(fatal + (thrown ? 20 : 0)) == 0), src/dokick.c (a kicked door, broken or not: only a watchman with
+# couldsee() minds), src/mkmap.c (join_map joins the cave's regions; it makes no secret doors or corridors),
+# src/dig.c ("The boulder falls apart."; a dug wall becomes a corridor on a cavernous level, a doorway in
+# town); NLE's dat/mines.des (minetn-1 Orcish Town: map, iron bars, ALTAR:(20,13) "useful for BUC
+# but never coaligned", 9+2d5 boulders, the orc army inside; minetn-2/3/4/7: each staircase in a ROOM of its
+# own; minefill: no doors) ; https://nethackwiki.com/wiki/Minetown (Orcish Town: "need a digging tool ... to
+# breach the walls", orcs are slow -> "funnel them through corridors", poisoned arrows through the bars; what
+# the Watch minds and that sight matters; the four room-built towns) ; https://nethackwiki.com/wiki/Gnomish_Mines
+# (filler levels are "simple caverns" with 6 traps; "run upstairs to heal", back off and try later; poison
+# resistance for the lower Mines) ; https://nethackwiki.com/wiki/Movement_tactics ("can only move southwest if
+# his or her total inventory weight is 600 or less ... applies to all tight gaps") ;
+# https://nethackwiki.com/wiki/Trap ; https://nethackwiki.com/wiki/Door (kicks and the Watch) ; player
+# discussions: https://nethackwiki.com/wiki/Forum:OrcTown ("break in with a wand of digging right into the
+# temple"; the altar is the town's silver lining), https://nethackwiki.com/wiki/
+# Forum:Have_a_good_strategy_for_descension%3F (Mines "with about 50 HP and AC 0", "don't be afraid to run away
+# and heal", fight in a corridor one enemy at a time, trap doors that drop several levels),
+# https://nethackwiki.com/wiki/Forum:Post-mines_strategy_for_intermediate_player%3F (the altar or a pet for the
+# curse status of the Mines' armor; protection from the priest) ; the task brief ("digging sideways is a good
+# tactic"); /refs/past_runs.md idea #195 (kick a Mines door only when boxed in: a locked stair room) and
+# reference run 20261102-161819 #862 (Orcish Town among the seven maps); /refs/top/README.md (the 54 top
+# programs are dive-first engines of this lineage: none goes to Minetown, nothing to port for this stage).
 """
+import difflib
+
 import nle.nethack as nh
 from nle.nethack import actions as A
 
 from . import jf_config, utils
 from .character import Character
-from .glyph import G, MON, Hunger
+from .glyph import G, MON, Hunger, SS
 from .level import Level
 from .strategy import Strategy
 
 TRIP_MIN_XL = 6                 # Minetown wants XL 6-8 (the dive trigger is XL 7 with a pick-axe, XL 8 without)
+TRIP_MAX_AC = 7                 # ... and an armor class no worse than this (a Valkyrie starts with AC 6)
 TRIP_TOTAL_TURNS = 9000         # the whole trip, from its start to the hand-over
 BRANCH_TURNS = 3000             # looking for the Mines branch on Dlvl 2-4
 TRIP_LEVEL_TURNS = 1500         # on one Mines level without the trip moving on
@@ -75,6 +143,23 @@ MIDDLE_SEEN = 90                # squares of a level's middle band seen without 
 ESCAPE_HP = 0.5                 # above the town, a losing fight at or below this fraction of max HP is dug away from
 UNBLOCK_AFTER_TURNS = 150       # a staircase still out of reach this long on a Mines level: squeezes and traps
 TRAPS_AFTER_TURNS = 350         # ... and only this late through known traps
+SQUEEZE_ANY_AFTER = 300         # TRIP_UNBLOCK_LADDER: from here on a squeeze that reaches any new square is opened
+NO_SEARCH = 10 ** 9              # TRIP_FAST_EXPLORE: explore1's search priority limit that nothing reaches
+# ORCISH_TOWN_BREACH (mines.des minetn-1, GEOMETRY:center,center: the 37x19 map always lies with its (0, 0) at glyph
+# row 1, column 20 -- read off two games' iron bars): the temple is x 18-22, y 11-14, its altar (20, 13); below it the
+# temple's own wall (y 15), a one-square street (y 16), the town wall (y 17) and the ring of floor outside (y 18)
+ORC_ORIGIN = (1, 20)
+ORC_BARS = frozenset({(1, 17), (5, 1), (6, 35), (16, 35), (17, 12), (17, 25)})   # (y, x) on the map
+ORC_COLUMNS = (20, 19, 21, 18, 22)   # map x of the breach, the altar's own column first
+ORC_TURNS = 1500                # the breach's budget from the arrival in the town
+ORC_MAX_AC = 3                  # the readiness gate: AC, XL and max HP for 6-15 orc-captains / Uruk-hai one at a time
+ORC_MIN_XL = 7
+ORC_MIN_HP = 55
+ORC_REACH_TURNS = 300            # ... and for the square below the temple to come into reach
+ORC_HOLD_RADIUS = 6             # hostiles in view this close: hold the square (the fight comes to the breach)
+KICK_OUT_REACH = 200            # _kick_out: this few squares in reach -- the town is still behind the door
+KICK_OUT_TRIES = 60
+BOXED_REACH = 12                # ... and at once when this few squares are in reach (boxed in)
 POST_HOLD_GAP = 800             # the dive proper starts this long after the last prayer (dive_logic.DIVE_PRAYER_GAP)
 POST_HOLD_MAX = 1200            # ... or after this many turns of waiting for it
 DIG_AFTER_TURNS = 0             # (off) a '>' above the town still cut off after this many turns: dig down. Measured on
@@ -82,6 +167,9 @@ DIG_AFTER_TURNS = 0             # (off) a '>' above the town still cut off after
 # the level's '<' and the way back up took 500+ turns instead of ~120: 5 deaths on the way back against 0-1
 ALTAR_PICKUP_TRIES = 4
 DONATE_TRIES = 6
+
+
+_CORRIDOR = frozenset({SS.S_corr, SS.S_litcorr})
 
 
 def _words(item):
@@ -122,6 +210,17 @@ class MinetownTrip:
         self.end_reason = None
         self._filler = set()           # Mines level 3/4 keys judged not to be the town
         self._unblock_turn = {}        # level key -> last turn unblock() acted there
+        self._trap_reach = {}          # level key -> squares in reach when the safe traps were last opened
+        self._corner_dig = None        # (level key, from, corner, beyond, since turn, tries): a squeeze being dug out
+        self._corner_failed = set()    # (level key, corner) that did not dig
+        self._corner_dig_off = set()   # level keys where rock does not dig
+        self._kicks = {}               # (level key, door) -> kicks given (_kick_out)
+        self._orc_off = False          # ORCISH_TOWN_BREACH given up (or never eligible)
+        self._orc_col = None           # glyph column of the breach
+        self._orc_logged = False
+        self._orc_digs = 0
+        self._orc_wait = None
+        self._boulders = {}            # boulder square -> digs at it (_break_boulder)
         self._wear_turn = -10 ** 9
         self.holding = False           # the post-trip prayer hold (dig_first stays quiet meanwhile)
         self._hold_start = None
@@ -263,6 +362,13 @@ class MinetownTrip:
             self.end_reason = 'not started'
             self.log(f'no trip: rescue={rescue} prayer_failed={agent.prayer_failed} XL {bl.experience_level}')
             return False
+        if jf_config.TRIP_UNBLOCK_LADDER and (bl.armor_class > TRIP_MAX_AC or agent.character.is_lycanthrope):
+            # the readiness gate: a hero who lost her armor (dev 386146: a werejackal's shape change dropped it all,
+            # AC 10) or who may change shape again among the Mines' packs does not make the trip
+            self.done = True
+            self.end_reason = 'not started'
+            self.log(f'no trip: AC {bl.armor_class}, lycanthrope={agent.character.is_lycanthrope}')
+            return False
         if level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES) or \
                 (level.dungeon_number == Level.DUNGEONS_OF_DOOM and bl.depth > 4) or \
                 (level.dungeon_number == Level.GNOMISH_MINES and level.level_number > 4):
@@ -302,7 +408,7 @@ class MinetownTrip:
             return 'prayer failed'
         if self.business_done():
             return 'serviced'
-        if self.in_town() and self.orcish(level):
+        if self.in_town() and self.orcish(level) and not self.altar_tested and not self._orc_go(level):
             return 'Orcish Town'
         if level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES):
             return 'off the route'
@@ -344,6 +450,8 @@ class MinetownTrip:
             return False
         level = agent.current_level()
         if self._rest():
+            return True
+        if jf_config.TRIP_UNBLOCK_LADDER and self._boxed_by_boulders():
             return True
         if level.dungeon_number == Level.DUNGEONS_OF_DOOM:
             return self._to_the_mines()
@@ -403,6 +511,8 @@ class MinetownTrip:
         if seen and dive._take_stairs(seen, '>'):
             return
         reachable = lambda: any(agent.bfs()[p] != -1 for p in dive._stairs_down(agent.current_level()))
+        if self.seek(G.STAIR_DOWN, reachable):
+            return
         if not dive.exploration(0).until(agent, dive._budgeted(reachable)).run(return_condition=True):
             dive.exploration(None).until(agent, dive._budgeted(reachable)).run()
 
@@ -443,7 +553,7 @@ class MinetownTrip:
         agent = self.agent
         dive._task('minetown trip: back up to the town')
         before = agent.step_count
-        if self.unblock(G.STAIR_UP):
+        if self.unblock(G.STAIR_UP) or self.way_back():
             if agent.step_count == before:
                 agent.search()
             return True
@@ -452,22 +562,47 @@ class MinetownTrip:
             agent.search()
         return True
 
-    def unblock(self, stairs):
-        """A Mines level whose wanted staircase (G.STAIR_DOWN / G.STAIR_UP) has stayed out of reach: the two things
-        that hide a way on from AutoAscend's BFS. (1) A diagonal step between two rock corners needs an inventory of
-        600 or less (hack.c test_move / cant_squeeze_thru), and the Mines' caves are full of them: when squeezing
-        would reach more of the level, drop to 550 (agent.unsqueeze's cap). (2) Every known trap is a wall to the BFS:
-        walk through the safe kinds (never a trap door or hole, never the polymorph/fire/sleep/magic kinds). Used by
-        the trip on its way down and back up, and by the dive's own return to the main dungeon after the trip."""
+    def unblock(self, stairs, force=False):
+        """A Mines level whose wanted staircase (G.STAIR_DOWN / G.STAIR_UP) has stayed out of reach: what hides a
+        way on from AutoAscend's BFS, opened one rung at a time (TRIP_UNBLOCK_LADDER, see the hypothesis below).
+        (1) A diagonal step between two rock corners needs an inventory of 600 or less (hack.c test_move /
+        cant_squeeze_thru), and the Mines' caves are full of them: with a pick-axe the corner is dug out (nothing
+        is lost), else the pack drops to 550 (agent.unsqueeze's cap). (2) Every known trap is a wall to the BFS:
+        walk through the safe kinds (never a trap door or hole), and when that opens nothing -- or we are boxed in
+        on a handful of squares -- through the rest but a polymorph trap. Used by the trip on its way down and back
+        up, and by the dive's own return to the main dungeon after the trip."""
+        # hypothesis: the trip's failures and most of its deaths are one thing -- the hero stays on a Mines level
+        # for thousands of turns behind an obstacle the BFS calls a wall, praying for food every ~900 turns until a
+        # prayer fails or a pack finds her (parent, 61 games: 5 trips ended on the level budget and 3 more were
+        # stuck 3500-6000 turns on the way back; 4 of those 8 games died there). Read off the replays:
+        #   - the squeeze rule wanted 15 more squares behind the squeeze, but behind it lies the unexplored half of
+        #     the level (dev 386142: +1 square, 386148: +6): any gain counts once the level has been walked for
+        #     SQUEEZE_ANY_AFTER turns;
+        #   - a hero in plate mail (450) can never get under 600: she sat 6000 turns on one square (seed 13061).
+        #     A carried pick-axe digs out one rock corner of the squeeze instead (a sideways dig, never on the
+        #     town level: the Watch) -- which also keeps the pack for the altar;
+        #   - the one passage is an "unsafe" trap: an anti-magic field only drains Pw from a hero without magic
+        #     resistance (trap.c ANTI_MAGIC -> drain_en; dev 13: the level's west half lay behind one), and a
+        #     magic trap, sleeping gas, rust or fire trap is a far smaller risk than starving behind it (13061
+        #     stepped over a then-unknown magic trap into a dead end and never came out).
+        # Expected: fewer level-budget ends, shorter trips, fewer deaths in the Mines.
+        # sources: see the module header (hack.c test_move, trap.c ANTI_MAGIC / SPIKED_PIT, dokick.c, mines.des,
+        # the wiki's Minetown / Gnomish_Mines / Movement_tactics pages, Forum:OrcTown and the descension forum thread).
         dive = self.dive
         agent = self.agent
         bl = agent.blstats
         level = agent.current_level()
         key = level.key()
         now = int(bl.time)
-        if level.dungeon_number != Level.GNOMISH_MINES or dive.turns_on_level() < UNBLOCK_AFTER_TURNS:
+        # force (seek, TRIP_FAST_EXPLORE): the frontier walk has nothing left in reach, so the staircase is cut off
+        # for certain -- no waiting for UNBLOCK_AFTER_TURNS / TRAPS_AFTER_TURNS, any squeeze gain counts
+        if level.dungeon_number != Level.GNOMISH_MINES or \
+                (not force and dive.turns_on_level() < UNBLOCK_AFTER_TURNS):
             return False
-        if now - self._unblock_turn.get(key, -10 ** 9) < 80:
+        ladder = jf_config.TRIP_UNBLOCK_LADDER
+        if ladder and self._corner_dig is not None and self._corner_dig[0] == key:
+            return self._dig_corner()
+        if now - self._unblock_turn.get(key, -10 ** 9) < (12 if force else 80):
             return False
         dis = agent.bfs()
         if any(dis[p] != -1 for p in zip(*utils.isin(level.objects, stairs).nonzero())):
@@ -475,24 +610,266 @@ class MinetownTrip:
         self._unblock_turn[key] = now
         reach = int((dis != -1).sum())
         items = agent.inventory.items
-        if items.total_weight > 600 and now >= getattr(agent, '_squeeze_cap_until', -1):
-            wide = int((agent.bfs(force_squeeze=True) != -1).sum())
+        boxed = ladder and reach <= BOXED_REACH
+        if items.total_weight > 600:
+            wide_dis = agent.bfs(force_squeeze=True)
+            wide = int((wide_dis != -1).sum())
             agent.last_bfs_step = -1
             tool = dive.digging_tool()
+            gain = wide >= reach + 15 or (ladder and wide > reach and
+                                          (force or boxed or dive.turns_on_level() >= SQUEEZE_ANY_AFTER))
+            if gain and ladder and self._corner_dig_ok(tool, level) and self._plan_corner_dig(dis, wide_dis, key):
+                self.log(f'unblock on {key}: carrying {items.total_weight:.0f}, a squeeze reaches {wide} squares '
+                         f'instead of {reach}: digging out the corner {self._corner_dig[2]} from '
+                         f'{self._corner_dig[1]}')
+                return self._dig_corner()
             essential = sum(i.weight() for i in items.all_items if i.equipped or i is tool)
-            if wide >= reach + 15 and essential <= 540:
+            if gain and essential <= 540 and now >= getattr(agent, '_squeeze_cap_until', -1):
                 self.log(f'unblock on {key}: carrying {items.total_weight:.0f}, a squeeze reaches {wide} squares '
                          f'instead of {reach}: dropping to 550')
                 agent._squeeze_cap_until = now + 400
                 agent.inventory.arrange_items().run()
                 agent.inventory.unreachable_items_until[agent.inventory._here()] = now + 5000
                 return True
-        if dive.turns_on_level() >= TRAPS_AFTER_TURNS and utils.isin(level.objects, G.TRAPS).any() and \
+        traps = utils.isin(level.objects, G.TRAPS)
+        if force and traps.any() and agent._last_turn - agent._allow_walking_through_traps_turn <= 50 and \
+                agent._last_turn - getattr(agent, '_allow_unsafe_traps_turn', -float('inf')) > 50 and \
+                utils.isin(level.objects, agent.UNSAFE_TRAPS - agent.NEVER_TRAPS).any():
+            # the safe traps are open and still nothing is left to walk to: the rest but polymorph
+            agent._allow_unsafe_traps_turn = agent._last_turn
+            agent._allow_walking_through_traps_turn = agent._last_turn
+            agent.last_bfs_step = -1
+            self.log(f'unblock on {key}: {reach} squares in reach, nothing behind the safe traps: walking through '
+                     f'the known traps (all but polymorph)')
+            return True
+        if (force or dive.turns_on_level() >= TRAPS_AFTER_TURNS or boxed) and traps.any() and \
                 agent._last_turn - agent._allow_walking_through_traps_turn > 50:
-            self.log(f'unblock on {key}: {reach} squares in reach, walking through the safe known traps')
+            # the second rung: the safe kinds opened nothing new last time (or we are boxed in) -> the rest too
+            last = self._trap_reach.get(key)
+            risky = ladder and utils.isin(level.objects, agent.UNSAFE_TRAPS - agent.NEVER_TRAPS).any() and \
+                (boxed or (last is not None and reach <= last + 10))
+            self._trap_reach[key] = reach
+            if risky:
+                agent._allow_unsafe_traps_turn = agent._last_turn
+            self.log(f'unblock on {key}: {reach} squares in reach, walking through the '
+                     f'{"known traps (all but polymorph)" if risky else "safe known traps"}')
             dive._walk_through_traps(climbing=True)
             return True
         return False
+
+    def _fast_explore(self, found):
+        """TRIP_FAST_EXPLORE: the frontier walk -- AutoAscend's explore1 without its searching. The Mines' filler
+        levels are mkmap caves: no secret doors or corridors (mkmap.c joins every region), so the 15 searches
+        explore1 spends on each dead-end nook and the one search per new square for traps (found 1 time in 8)
+        only make the walk through the Mines' packs twice as long. Loot is still picked up (gather_items).
+        True: it walked; False: no unexplored square is left in reach."""
+        agent = self.agent
+        dive = self.dive
+        strat = Strategy(lambda: agent.exploration.explore1(
+            NO_SEARCH, trap_search_offset=0, kick_doors=False, check_altar_alignment=False).strategy())
+        return bool(strat.until(agent, dive._budgeted(found)).run(return_condition=True))
+
+    def seek(self, stairs, found=None):
+        """Look for a staircase kind on a Mines level: the frontier walk first; with nothing left to walk to, the
+        staircase is cut off, and unblock() opens the next rung at once. False: neither had anything to do (the
+        caller's old search-everything exploration takes over)."""
+        agent = self.agent
+        level = agent.current_level()
+        if not jf_config.TRIP_FAST_EXPLORE or level.dungeon_number != Level.GNOMISH_MINES:
+            return False
+        if found is None:
+            found = lambda: any(agent.bfs()[p] != -1 for p in
+                                zip(*utils.isin(agent.current_level().objects, stairs).nonzero()))
+        if found():
+            return False
+        before = agent.step_count
+        if self._fast_explore(found):
+            return True
+        if agent.step_count != before:
+            return True
+        if agent.current_level().key() != level.key():
+            return False
+        return bool(self.unblock(stairs, force=True) or self._kick_out())
+
+    def _kick_out(self):
+        """Shut in behind a locked door on a Mines level: the town maps built from rooms (mines.des minetn-2/3/4/7)
+        put each staircase in a room of its own, joined by corridors through doors that may be locked, and explore1
+        never kicks in the Mines (the Watch). The Watch only minds a door broken where a watchman can see it
+        (dokick.c: is_watchman && couldsee), and those stair rooms are not part of the town (hack.c in_town: the
+        room with subrooms). So: a handful of squares in reach, a closed door next to them that did not open, no
+        watchman in view, not in a shop -- kick it."""
+        agent = self.agent
+        dive = self.dive
+        bl = agent.blstats
+        level = agent.current_level()
+        now = int(bl.time)
+        if level.dungeon_number != Level.GNOMISH_MINES or now < getattr(agent, '_no_kick_until', -1):
+            return False
+        y0, x0 = int(bl.y), int(bl.x)
+        if level.shop[y0, x0] or level.shop_interior[y0, x0]:
+            return False
+        prop = agent.character.prop
+        if prop.polymorph or prop.blind or prop.hallu or prop.confusion or prop.stun:
+            return False
+        if utils.isin(agent.glyphs, dive._town_glyphs()).any():
+            return False
+        dis = agent.bfs()
+        # called when the frontier walk has nothing left in reach: a door that did not open is the way on. Only
+        # while the town itself is not in reach (a stair room, the corridors and rooms around the town: at most
+        # KICK_OUT_REACH squares; the town room alone is ~450) or from a corridor square: never the doors inside
+        # the town (shops, the temple, houses), and a shop's sign is read below all the same.
+        boxed = int((dis != -1).sum()) <= KICK_OUT_REACH
+        best = None
+        for y, x in zip(*utils.isin(agent.glyphs, G.DOOR_CLOSED).nonzero()):
+            y, x = int(y), int(x)
+            if level.door_open_count[y, x] < 1 or self._kicks.get((level.key(), (y, x)), 0) >= KICK_OUT_TRIES:
+                continue
+            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                if 0 <= ny < dis.shape[0] and 0 <= nx < dis.shape[1] and dis[ny, nx] != -1 and \
+                        (boxed or level.objects[ny, nx] in _CORRIDOR) and \
+                        (best is None or dis[ny, nx] < best[0]):
+                    best = (int(dis[ny, nx]), (ny, nx), (y, x))
+        if best is None:
+            return False
+        _, spot, door = best
+        dive._task('minetown trip: kick the locked door')
+        before = agent.step_count
+        if (y0, x0) != spot:
+            agent.go_to(*spot, max_steps=10, callback=lambda: bool(self._hostiles_within(2)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        if self._hostiles_within(2):
+            return False
+        k = (level.key(), door)
+        sign = ''.join(c for c in (agent.inventory.engraving_below_me or '').lower() if c.isalpha())
+        if sign and (difflib.SequenceMatcher(None, sign, 'closedforinventory').ratio() >= 0.55 or len(sign) >= 12):
+            # "Closed for inventory" in front of a shut shop (worn or not): its keeper kills for a broken door
+            self._kicks[k] = KICK_OUT_TRIES
+            self.log(f'door at {door}: a sign {sign!r} lies before it, not kicked')
+            return False
+        self._kicks[k] = self._kicks.get(k, 0) + 1
+        if self._kicks[k] == 1:
+            self.log(f'shut in ({int((dis != -1).sum())} squares in reach) behind the door at {door}: kicking it')
+        agent.kick(*door)
+        if agent.glyphs[door] not in G.DOOR_CLOSED:
+            self.log(f'door at {door} is open after {self._kicks[k]} kicks: {(agent.message or "")[:80]!r}')
+        agent.last_bfs_step = -1
+        return True
+
+    def way_back(self):
+        """The dive's return to the main dungeon after the trip (and the trip's own climb back to the town): with
+        no '<' in reach, the frontier walk and the ladder instead of return_to_main_dungeon's searching."""
+        agent = self.agent
+        level = agent.current_level()
+        if not jf_config.TRIP_FAST_EXPLORE or level.dungeon_number != Level.GNOMISH_MINES:
+            return False
+        dis = agent.bfs()
+        ups = set((int(y), int(x)) for y, x in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero()))
+        here = level.level_number
+        for p, d in level.stair_destination.items():   # as DiveLogic.return_to_main_dungeon (RETURN_FIX)
+            if d is not None and ((d[0][0] == level.dungeon_number and d[0][1] == here - 1) or
+                                  (here == 1 and d[0][0] == Level.DUNGEONS_OF_DOOM)):
+                ups.add((int(p[0]), int(p[1])))
+        if any(dis[p] != -1 or self.dive._neighbour_distance(dis, *p) is not None for p in ups):
+            return False
+        before = agent.step_count
+        self.dive._task('minetown: looking for the way up')
+        if not self.seek(G.STAIR_UP):
+            return False
+        if agent.step_count == before:
+            agent.search()
+        return True
+
+    def _corner_dig_ok(self, tool, level):
+        """A sideways dig is allowed: a pick-axe (a mattock only with the shield hand free), in our own form, and
+        not on the town level (digging there angers the Watch)."""
+        agent = self.agent
+        if tool is None or agent.character.prop.polymorph or level.key() in self._corner_dig_off:
+            return False
+        if level.key() == agent.global_logic.minetown_level or self.is_town_level(level):
+            return False
+        if ' mattock' in _words(tool) and agent.inventory.items.off_hand is not None:
+            return False
+        return True
+
+    def _plan_corner_dig(self, dis, wide_dis, key):
+        """The nearest squeeze: a reachable square p with a diagonal neighbour q that only a squeeze reaches; one of
+        the two corners between them (rock or wall, inside the map, nobody standing there) is dug out."""
+        agent = self.agent
+        level = agent.current_level()
+        h, w = dis.shape
+        best = None
+        for qy, qx in zip(*((wide_dis != -1) & (dis == -1)).nonzero()):
+            for dy in (-1, 1):
+                for dx in (-1, 1):
+                    py, px = int(qy) + dy, int(qx) + dx
+                    if not (0 <= py < h and 0 <= px < w) or dis[py, px] == -1:
+                        continue
+                    for cy, cx in ((py, int(qx)), (int(qy), px)):
+                        if not (1 <= cy < h - 1 and 1 <= cx < w - 2) or level.walkable[cy, cx]:
+                            continue
+                        if (key, (cy, cx)) in self._corner_failed or agent.monster_tracker.monster_mask[cy, cx] or \
+                                utils.isin(agent.glyphs[cy:cy + 1, cx:cx + 1], G.BOULDER, G.TRAPS, G.BARS).any():
+                            continue
+                        if best is None or dis[py, px] < best[0]:
+                            best = (int(dis[py, px]), (py, px), (cy, cx), (int(qy), int(qx)))
+        if best is None:
+            return False
+        self._corner_dig = (key, best[1], best[2], best[3], int(agent.blstats.time), 0)
+        return True
+
+    def _dig_corner(self):
+        """Walk to the squeeze and apply the pick-axe into the rock corner until it is floor."""
+        dive = self.dive
+        agent = self.agent
+        bl = agent.blstats
+        key, p, c, q, since, tries = self._corner_dig
+        level = agent.current_level()
+        tool = dive.digging_tool()
+        dis = agent.bfs()
+        now = int(bl.time)
+        if level.walkable[c] or dis[q] != -1 or agent.inventory.items.total_weight <= 600:
+            self.log(f'corner {c} is open' if level.walkable[c] else f'corner dig at {c} no longer needed')
+            self._corner_dig = None
+            agent.last_bfs_step = -1
+            return False
+        if not self._corner_dig_ok(tool, level) or now - since > 300 or tries >= 12 or dis[p] == -1:
+            self.log(f'corner dig at {c} given up (tries {tries}, {now - since} turns)')
+            self._corner_failed.add((key, c))
+            self._corner_dig = None
+            return False
+        if self._hostiles_within(2):
+            return False   # the fight first
+        dive._task('minetown trip: dig out a squeeze')
+        before = agent.step_count
+        if (int(bl.y), int(bl.x)) != p:
+            agent.go_to(*p, max_steps=10, callback=lambda: bool(self._hostiles_within(2)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        self._corner_dig = (key, p, c, q, since, tries + 1)
+        direction = agent.calc_direction(p[0], p[1], c[0], c[1])
+        with agent.atom_operation():
+            tool = agent.inventory.move_to_inventory(tool)
+            agent.step(A.Command.APPLY)
+            agent.type_text(agent.inventory.items.get_letter(tool))
+            prompted = 'In what direction do you want to dig?' in agent.single_message
+            if prompted:
+                agent.direction(direction)
+            elif agent.single_message.startswith('In what direction'):
+                agent.step(A.Command.ESC)
+        msg = agent.message or ''
+        self.log(f'corner dig {direction} into {c}: {msg[:120]!r}')
+        agent.last_bfs_step = -1
+        if not prompted or 'too hard to' in msg or 'cannot' in msg or "can't" in msg:
+            self._corner_failed.add((key, c))
+            self._corner_dig = None
+            if 'too hard to' in msg:
+                self._corner_dig_off.add(key)   # an undiggable level
+        if agent.step_count == before:
+            agent.search()
+        return True
 
     def post_hold(self):
         """Back in the main dungeon after the trip: the dive proper starts with an emergency prayer in hand, as the
@@ -555,7 +932,8 @@ class MinetownTrip:
         before = agent.step_count
         decided = lambda: self.is_town_level(agent.current_level()) or \
             self._middle_seen(agent.current_level()) >= MIDDLE_SEEN or agent.current_level().key() != key
-        explored = dive.exploration(0).until(agent, dive._budgeted(decided)).run(return_condition=True)
+        explored = (jf_config.TRIP_FAST_EXPLORE and self._fast_explore(decided)) or \
+            dive.exploration(0).until(agent, dive._budgeted(decided)).run(return_condition=True)
         if not explored and agent.current_level().key() == key and not decided():
             self._filler.add(key)
             self.log(f'{key} is a filler level (explored, no town sign)')
@@ -732,6 +1110,8 @@ class MinetownTrip:
             # gold for the priest, but no priest to be found
             self._priest_off = True
             return True
+        if self.pending is None and self.orcish(agent.current_level()):
+            return self._orc_step()
         here = (int(bl.y), int(bl.x))
         dis = agent.bfs()
         targets = [self.pending[0]] if self.pending is not None else self._altars()
@@ -752,11 +1132,206 @@ class MinetownTrip:
         dive._task('minetown trip: find the temple')
         found = lambda: any(agent.bfs()[p] != -1 or dive._neighbour_distance(agent.bfs(), *p) is not None
                             for p in self._altars())
+        if jf_config.TRIP_FAST_EXPLORE:
+            if self._fast_explore(found) or agent.step_count != before:
+                return True
+            # nothing left to walk to and no altar: shut in (a locked stair room, a squeeze, a trap)
+            if self.unblock(G.ALTAR, force=True) or self._kick_out():
+                if agent.step_count == before:
+                    agent.search()
+                return True
         if not dive.exploration(0).until(agent, dive._budgeted(found)).run(return_condition=True):
             dive.exploration(None).until(agent, dive._budgeted(found)).run()
         if agent.step_count == before:
             agent.search()
         return True
+
+    # ------------------------------------------------------------------ Orcish Town
+
+    def _orc_go(self, level):
+        """ORCISH_TOWN_BREACH: Orcish Town's altar is as good for the curse test as any (mines.des: "the altar's
+        defiled; useful for BUC but never coaligned"), but the town has no gate: "you must dig through the walls"
+        (wiki). With a pick-axe, a hero ready for its orcs (AC, XL, HP gate) and the map where it always lies,
+        the trip goes in through the wall below the temple; anything else ends the trip as before."""
+        agent = self.agent
+        bl = agent.blstats
+        if not jf_config.ORCISH_TOWN_BREACH or self._orc_off:
+            return False
+        why = None
+        tool = self.dive.digging_tool()
+        bars = set((int(y) - ORC_ORIGIN[0], int(x) - ORC_ORIGIN[1])
+                   for y, x in zip(*utils.isin(level.objects, G.BARS).nonzero()))
+        if tool is None or (' mattock' in _words(tool) and agent.inventory.items.off_hand is not None):
+            why = f'no pick-axe ({tool!r})'
+        elif not bars or not bars <= ORC_BARS:
+            why = f'the bars {sorted(bars)} are not where the map puts them'
+        elif self._town_since is not None and int(bl.time) - self._town_since > ORC_TURNS:
+            why = 'budget'
+        elif self._orc_col is None and (bl.armor_class > ORC_MAX_AC or bl.experience_level < ORC_MIN_XL or
+                                        bl.max_hitpoints < ORC_MIN_HP):
+            why = f'not ready (AC {bl.armor_class}, XL {bl.experience_level}, max HP {bl.max_hitpoints})'
+        if why is not None:
+            self._orc_off = True
+            self.log(f'Orcish Town: no breach -- {why}')
+            return False
+        if not self._orc_logged:
+            self._orc_logged = True
+            self.log(f'Orcish Town: going in through the wall below the temple (AC {bl.armor_class}, XL '
+                     f'{bl.experience_level}, hp {bl.hitpoints}/{bl.max_hitpoints}, tool {tool.text!r})')
+        return True
+
+    def _orc_line(self, col):
+        """Glyph squares of the breach in column col: (outside, town wall, street, temple wall, temple floor)."""
+        r0 = ORC_ORIGIN[0]
+        return tuple((r0 + y, col) for y in (18, 17, 16, 15, 14))
+
+    def _orc_step(self):
+        """One step of the breach: to the ring of floor below the temple, dig north through the town wall, cross
+        the one-square street, dig north through the temple's wall. Whenever something hostile is in view nearby the
+        hero holds her square: on the ring only the breach leads to her, in the street only its two ends do."""
+        dive = self.dive
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        prop = agent.character.prop
+        before = agent.step_count
+        dive._task('minetown trip: Orcish Town breach')
+        if prop.hallu or prop.blind or prop.confusion or prop.stun or prop.polymorph or \
+                self._hostiles_within(ORC_HOLD_RADIUS):
+            agent.search()
+            return True
+        if dive.rest_if_hurt():
+            return True
+        here = (int(bl.y), int(bl.x))
+        if self._orc_col is None:
+            for x in ORC_COLUMNS:
+                col = ORC_ORIGIN[1] + x
+                line = self._orc_line(col)
+                if not any(agent.glyphs[p] in G.BOULDER for p in line):
+                    self._orc_col = col
+                    break
+            else:
+                self._orc_off = True
+                self.log('Orcish Town: rubble on every way in')
+                return True
+        outside, wall1, street, wall2, inside = self._orc_line(self._orc_col)
+        dis = agent.bfs()
+        if not level.walkable[wall1]:
+            stand, target = outside, wall1
+        elif not level.walkable[wall2]:
+            stand, target = street, wall2
+        else:
+            stand, target = inside, None
+        if here != stand:
+            if dis[stand] == -1:
+                # the ring has not been walked yet: the frontier walk until the square is in reach
+                reach = lambda: agent.bfs()[stand] != -1
+                if not (self._fast_explore(reach) or agent.step_count != before or
+                        self.unblock(G.ALTAR, force=True) or self._break_boulder()):
+                    # rubble (the level's 10-19 boulders) or an unlit stretch: the old explorer for a while
+                    if self._orc_wait is None:
+                        self._orc_wait = int(bl.time)
+                    if int(bl.time) - self._orc_wait > ORC_REACH_TURNS:
+                        self._orc_off = True
+                        self.log(f'Orcish Town: {stand} cannot be reached')
+                    else:
+                        dive.exploration(None).until(agent, dive._budgeted(reach)).run()
+                if agent.step_count == before:
+                    agent.search()
+                return True
+            agent.go_to(*stand, max_steps=12, callback=lambda: bool(self._hostiles_within(ORC_HOLD_RADIUS)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        if target is None:
+            agent.search(3)   # in the temple: the altar job takes over as soon as the altar shows
+            self._orc_digs += 1
+            if self._orc_digs > 60:
+                self._orc_off = True
+                self.log('Orcish Town: no altar behind the wall')
+            return True
+        self._orc_digs += 1
+        if self._orc_digs > 40:
+            self._orc_off = True
+            self.log(f'Orcish Town: the wall at {target} does not give way')
+            return True
+        msg, prompted = self._apply_dig(target)
+        self.log(f'Orcish Town: digging into {target}: {msg[:100]!r}')
+        if not prompted or 'too hard to' in msg:
+            self._orc_off = True
+        if agent.step_count == before:
+            agent.search()
+        return True
+
+    def _boxed_by_boulders(self):
+        """Boulders are walls to the BFS: a hero with only a handful of squares in reach and a boulder beside them
+        (dev 71016 read-tested a scroll of earth in a corridor and stood between its boulders for 3350 turns,
+        fainting, with a pick-axe in the pack) breaks one."""
+        agent = self.agent
+        if self._hostiles_within(2) or agent.character.prop.polymorph:
+            return False
+        tool = self.dive.digging_tool()
+        if tool is None or (' mattock' in _words(tool) and agent.inventory.items.off_hand is not None):
+            return False
+        if not utils.isin(agent.glyphs, G.BOULDER).any():
+            return False
+        if int((agent.bfs() != -1).sum()) > BOXED_REACH:
+            return False
+        self.dive._task('minetown trip: break a boulder')
+        return self._break_boulder()
+
+    def _break_boulder(self):
+        """Orcish Town's rubble (mines.des: 9 + 2d5 times a 90% boulder, anywhere) on the ring of floor around the
+        walls: a boulder next to a square in reach is broken with the pick-axe (dig.c: a boulder dug at falls
+        apart; no Luck is lost outside Sokoban)."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        dis = agent.bfs()
+        best = None
+        for y, x in zip(*utils.isin(agent.glyphs, G.BOULDER).nonzero()):
+            y, x = int(y), int(x)
+            if self._boulders.get((y, x), 0) >= 6:
+                continue
+            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                if 0 <= ny < dis.shape[0] and 0 <= nx < dis.shape[1] and dis[ny, nx] != -1 and \
+                        (best is None or dis[ny, nx] < best[0]):
+                    best = (int(dis[ny, nx]), (ny, nx), (y, x))
+        if best is None:
+            return False
+        _, spot, boulder = best
+        before = agent.step_count
+        if (int(bl.y), int(bl.x)) != spot:
+            agent.go_to(*spot, max_steps=12, callback=lambda: bool(self._hostiles_within(ORC_HOLD_RADIUS)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        self._boulders[boulder] = self._boulders.get(boulder, 0) + 1
+        msg, prompted = self._apply_dig(boulder)
+        self.log(f'breaking the boulder at {boulder}: {msg[:100]!r}')
+        if not prompted:
+            self._boulders[boulder] = 99
+        if agent.step_count == before:
+            agent.search()
+        return True
+
+    def _apply_dig(self, target):
+        """Apply the digging tool sideways into the square next to us. (message, direction was asked)."""
+        agent = self.agent
+        bl = agent.blstats
+        tool = self.dive.digging_tool()
+        direction = agent.calc_direction(int(bl.y), int(bl.x), target[0], target[1])
+        with agent.atom_operation():
+            tool = agent.inventory.move_to_inventory(tool)
+            agent.step(A.Command.APPLY)
+            agent.type_text(agent.inventory.items.get_letter(tool))
+            prompted = 'In what direction do you want to dig?' in agent.single_message
+            if prompted:
+                agent.direction(direction)
+            elif agent.single_message.startswith('In what direction'):
+                agent.step(A.Command.ESC)
+        agent.last_bfs_step = -1
+        return agent.message or '', prompted
 
     # ------------------------------------------------------------------ the town's business
 
