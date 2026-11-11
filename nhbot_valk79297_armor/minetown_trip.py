@@ -55,7 +55,34 @@
 # priest's "Thou hast been rewarded for thy devotion" as quoted there from priest.c) and #862 (town recognition
 # without a shopkeeper); past run 20261106-211643 #85/#116 (a trip held before the first dive; the altar as its
 # exit condition); this engine's own agent.unsqueeze (no diagonal squeeze with more than 600 carried).
+#
+# ---- third iteration: THE ALTAR SHOWS ITS FLASH, THE PICK-AXE MAKES THE WAY BACK (ALTAR_FLASH, PICK_TUNNEL) ----
+# Where the parent's trips ended, on 139 fresh games (79 development, 60 held-out): the temple used with a flash
+# in 54%; no trip at all in 15% (dead in the grind, or a rescue dive); the level budget 13%; Orcish Town 6%; an
+# altar test that showed no flash 4%; dead in the Mines 5%; no Mines branch found 4%. Ideas tried, each measured
+# against the parent on the same seeds (est = progress x the run's multiplier rebuilt from XL, AC, the temple's
+# flash, holes and starvation):
+#   1. ALTAR_FLASH (_flash): an altar that stayed dark gets one object already known to be cursed or blessed, the
+#      wielded Excalibur if nothing else -- kept: all 5 dark altars of the 79 development games flashed
+#      (temple used 56% -> 63%), nothing else in those games changes before the altar;
+#   2. PICK_TUNNEL on the way back (tunnel_up, _tunnel_step): walk-and-dig straight to the known '<' that the BFS
+#      cannot reach, or to cut-off floor when no '<' is known -- kept: turns from the end of the trip to the main
+#      dungeon -30% (development) and -36% (held-out);
+#   3. the same tunnel on the way down plus a hole when the '>' stays cut off (DIG_AFTER_TURNS 1000) -- dropped: of
+#      the 8 level-budget trips with a pick-axe 2 reached the temple and 4 died on Mines 2-4;
+#   4. the way-down tunnel alone at 300 turns (TUNNEL_DOWN_AFTER) -- dropped: temple used 63% either way, raw
+#      progress 0.419 -> 0.401 on the 79 development games.
+# 1 + 2 together, parent -> this version: 79 development games (0-14, 386141-386150, 71000-71053): temple used
+# 56% -> 63%, raw progress 0.407 -> 0.419, est 0.393 -> 0.411; held-out 78367-78426 (60 games, run once, read
+# afterwards): temple used 52% -> 52%, raw 0.386 -> 0.392, est 0.378 -> 0.383. (About 5 games in 79 differ between
+# two runs of the same program: some move of the dive is timed.)
+# What is left for this stage: a trip that goes on from a stuck level dies as often as it arrives (3., 4.), so the
+# 13% of level-budget trips need a stronger hero rather than a way through; Orcish Town has no priest (its temple
+# is not "the temple"); no game came within half of the 400*XL gold for protection (median 3% of it).
 """
+import heapq
+
+import numpy as np
 import nle.nethack as nh
 from nle.nethack import actions as A
 
@@ -79,7 +106,21 @@ POST_HOLD_GAP = 800             # the dive proper starts this long after the las
 POST_HOLD_MAX = 1200            # ... or after this many turns of waiting for it
 DIG_AFTER_TURNS = 0             # (off) a '>' above the town still cut off after this many turns: dig down. Measured on
 # 79 development games: with 600 the trip used the temple in 75% of games instead of 63%, but a hole lands away from
-# the level's '<' and the way back up took 500+ turns instead of ~120: 5 deaths on the way back against 0-1
+# the level's '<' and the way back up took 500+ turns instead of ~120: 5 deaths on the way back against 0-1.
+# Measured again in the third iteration with PICK_TUNNEL as the way back: (a) the hole at 1000 turns plus the tunnel
+# to cut-off floor at 400, on the 8 development games whose trip had ended on the level budget with a pick-axe in
+# the pack: 2 reached the temple, 4 died on Mines level 2-4 (the parent: none -- they turned back at the budget and
+# dived); (b) the way-down tunnel alone at 300 turns, 79 development games: the temple used in 63% of games either
+# way, raw progress 0.419 -> 0.401. A hero who has been stuck for hundreds of turns goes on hungry and with her
+# prayer spent, and what a finished trip adds (+0.30 on the multiplier) is a third of what a death in the Mines
+# costs. Both stay off: the level budget is the safe end of such a trip.
+TUNNEL_DOWN_AFTER = 0           # (off, see above) the way down: known floor out of reach this long: tunnel to it
+TUNNEL_AFTER_TURNS = 400        # PICK_TUNNEL, the way up: no '<' known this long after arriving: to cut-off floor
+TUNNEL_UP_AFTER_TURNS = 120     # ... the known '<' still out of reach this long after arriving: tunnel to it
+TUNNEL_DIG_COST = 6             # a square of rock costs about this many turns of digging (dig.c: effort 100 at
+#                                 10 + d4 + abon + enchantment + damage bonus a turn, doubled for a dwarf)
+TUNNEL_MAX_DIGS = 60            # squares dug per level before the tunnel is given up there
+TUNNEL_SQUARE_TRIES = 6         # applications at one square before it counts as undiggable
 ALTAR_PICKUP_TRIES = 4
 DONATE_TRIES = 6
 
@@ -113,6 +154,8 @@ class MinetownTrip:
         self.altar_drops = 0
         self.flashes = 0
         self.pending = None            # (altar pos, glyphs dropped, turn) still to pick up
+        self._flash_tries = 0          # ALTAR_FLASH: second drops made (something known cursed / blessed)
+        self._rewield = None           # ... the glyph of the wielded weapon that went on the altar
         self._pickup_tries = 0
         self.donations = 0
         self.protection = 0
@@ -127,6 +170,14 @@ class MinetownTrip:
         self._hold_start = None
         self._hold_over = False
         self._escapes = 0
+        self._tunnel_blocked = set()   # PICK_TUNNEL: (level key, y, x) that did not dig / could not be stepped on
+        self._tunnel_tries = {}        # (level key, y, x) -> applications / step attempts
+        self._tunnel_digs = {}         # level key -> squares dug
+        self._tunnel_logged = set()
+        self._tunnel_quiet = {}        # level key -> turn until which no route is looked for
+        self._up_key = None            # the way up: the level we are on and the turn we arrived
+        self._up_since = 0
+        self.holes = 0
 
     # ------------------------------------------------------------------ helpers
 
@@ -284,7 +335,49 @@ class MinetownTrip:
             return False
         if self.can_donate() and self.in_town():
             return False
+        if self._flash_due():
+            return False
         return True
+
+    def _flash_count(self):
+        return int(getattr(self.agent, '_altar_flashes', 0))
+
+    def _flash_items(self):
+        """ALTAR_FLASH: one carried thing that is known to be cursed or blessed -- on an altar it flashes for
+        certain. Something from the pack first; else the wielded weapon when it is blessed (Excalibur always is)."""
+        from . import power_route
+        inv = self.agent.inventory.items
+        best = None
+        for it in inv:
+            if it.equipped or it.category in (nh.COIN_CLASS, nh.GEM_CLASS, nh.BALL_CLASS, nh.CHAIN_CLASS,
+                                              nh.ROCK_CLASS) or not it.can_be_dropped_from_inventory():
+                continue
+            w = _words(it)
+            if ' cursed ' not in w and ' blessed ' not in w:
+                continue
+            if it.category == nh.SCROLL_CLASS and power_route.SCARE_SCROLL in it.objs:
+                continue
+            if self._is_digging_tool(it) or it.is_container():
+                continue
+            if best is None or it.count < best.count:
+                best = it
+        if best is not None:
+            return [best]
+        main = inv.main_hand
+        if main is not None and ' blessed ' in _words(main) and main.can_be_dropped_from_inventory() and \
+                not self._is_digging_tool(main):
+            return [main]
+        return []
+
+    def _flash_due(self):
+        """ALTAR_FLASH: the altar has been used but has not flashed, and something that will flash is carried."""
+        if not jf_config.ALTAR_FLASH or not self.altar_tested or self.pending is not None or self.flashes or \
+                self._flash_tries >= 2 or not self.in_town():
+            return False
+        key = tuple(int(v) for v in self.agent.current_level().key())
+        if getattr(self.agent, '_altar_flash_levels', {}).get(key, 0):
+            return False   # this altar has flashed already (power_route's own test of the potions and scrolls)
+        return bool(self._flash_items())
 
     def _over(self):
         agent = self.agent
@@ -372,6 +465,10 @@ class MinetownTrip:
             if agent.step_count == before:
                 agent.search()
             return True
+        if self._tunnel_down():
+            if agent.step_count == before:
+                agent.search()
+            return True
         if self._dig_fallback():
             if agent.step_count == before:
                 agent.search()
@@ -412,7 +509,8 @@ class MinetownTrip:
         agent = self.agent
         dive = self.dive
         level = agent.current_level()
-        if not self.done or self.start_turn is None or self.altar_tested and self.pending is None:
+        if not self.done or self.start_turn is None or \
+                (self.altar_tested and self.pending is None and not self._flash_due()):
             return False
         if self.end_reason in ('serviced', 'Orcish Town', 'not started', 'prayer failed') or agent.prayer_failed:
             return False
@@ -421,16 +519,18 @@ class MinetownTrip:
         if agent.get_visible_monsters():
             return False
         job = self._next_job()
-        if job is None or job[0] not in ('altar', 'pickup'):
+        if job is None or job[0] not in ('altar', 'pickup', 'flash'):
             return False
         kind, target = job
         before = agent.step_count
         dive._task(f'minetown (passing): {kind}')
         if kind == 'pickup':
             self._pickup(target)
+        elif kind == 'flash':
+            self._flash(target)
         else:
             self._altar(target)
-        if self.altar_tested and self.pending is None:
+        if self.altar_tested and self.pending is None and not self._flash_due():
             self.end_reason = 'serviced'
             self.log('altar test done in passing: serviced')
         if agent.step_count == before:
@@ -443,7 +543,7 @@ class MinetownTrip:
         agent = self.agent
         dive._task('minetown trip: back up to the town')
         before = agent.step_count
-        if self.unblock(G.STAIR_UP):
+        if self.tunnel_up() or self.unblock(G.STAIR_UP):
             if agent.step_count == before:
                 agent.search()
             return True
@@ -672,8 +772,266 @@ class MinetownTrip:
         dive._task('minetown trip: dig down (stairs cut off)')
         if self._hostiles_within(2):
             return False   # the fight first
+        if ('hole', level.key()) not in self._tunnel_logged:
+            self._tunnel_logged.add(('hole', level.key()))
+            self.holes += 1
+            self.log(f"the '>' of {level.key()} is still cut off after {int(bl.time) - self._level_since} turns: "
+                     f'digging down with {tool.text!r}')
         dive.dig_with_tool(tool)
         return True
+
+    # ------------------------------------------------------------------ PICK_TUNNEL
+
+    def _tunnel_masks(self):
+        """(walk, dig): the squares a tunnel route may walk over, and those it may dig into (rock, cave wall, a
+        boulder). Known traps are neither (the tunnel goes round them); the map's outer ring does not dig."""
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        boulders = utils.isin(agent.glyphs, G.BOULDER)
+        traps = utils.isin(level.objects, G.TRAPS)
+        mons = agent.monster_tracker.monster_mask | agent.monster_tracker.peaceful_monster_mask
+        walk = level.walkable & ~boulders & ~traps & ~level.forbidden & ~agent.monster_tracker.peaceful_monster_mask
+        dig = (~level.walkable | boulders) & ~traps & ~mons
+        dig &= ~utils.isin(level.objects, G.BARS, G.TREE, G.DOORS, agent._wet_glyphs)
+        inner = np.zeros_like(dig)
+        inner[2:20, 1:78] = True
+        dig &= inner
+        for k, y, x in self._tunnel_blocked:
+            if k == key:
+                dig[y, x] = False
+                walk[y, x] = False
+        return walk, dig
+
+    def _tunnel_route(self, targets):
+        """The cheapest way from here to the nearest of `targets`, walking over open squares (1 a step; no
+        diagonal between two rock corners: hack.c test_move, it needs 600 or less carried) and digging into rock
+        (TUNNEL_DIG_COST a square, orthogonally only -- a dug square is entered straight). Returns (path, walk
+        mask) or None."""
+        agent = self.agent
+        bl = agent.blstats
+        walk, dig = self._tunnel_masks()
+        start = (int(bl.y), int(bl.x))
+        targets = set((int(y), int(x)) for y, x in targets) - {start}
+        if not targets:
+            return None
+        height, width = walk.shape
+        dist = {start: 0}
+        prev = {}
+        heap = [(0, start)]
+        found = None
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > dist.get(u, 10 ** 9):
+                continue
+            if u in targets:
+                found = u
+                break
+            uy, ux = u
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if not dy and not dx:
+                        continue
+                    vy, vx = uy + dy, ux + dx
+                    if not (0 <= vy < height and 0 <= vx < width):
+                        continue
+                    if walk[vy, vx]:
+                        if dy and dx and not (walk[uy, vx] or walk[vy, ux]):
+                            continue
+                        c = 1
+                    elif dig[vy, vx] and not (dy and dx):
+                        c = TUNNEL_DIG_COST
+                    else:
+                        continue
+                    if d + c < dist.get((vy, vx), 10 ** 9):
+                        dist[(vy, vx)] = d + c
+                        prev[(vy, vx)] = u
+                        heapq.heappush(heap, (d + c, (vy, vx)))
+        if found is None:
+            return None
+        path = [found]
+        while path[-1] != start:
+            path.append(prev[path[-1]])
+        path.reverse()
+        return path, walk
+
+    def _tunnel_step(self, targets, what):
+        """PICK_TUNNEL: one step of a walk-and-dig route to the nearest of `targets` with the carried pick-axe or
+        mattock (the way back up from the temple: tunnel_up). True: the tunnel acted."""
+        # hypothesis: the way back from the temple is where the trip stalls without anything to gain: on 26% of the
+        # development trips it took more than 500 turns (the median is 150) and on some 4000+, the hero standing on
+        # a filler level whose '<' she knows -- she came down by it -- but cannot walk to, because a trap door, an
+        # escape hole or a squeeze she no longer fits through had put her on the far side of a trap, a boulder or a
+        # diagonal gap that AutoAscend's BFS takes for a wall. Every such turn is a turn among the Mines' packs with
+        # the hunger clock running (the prayer is the trip's food and its lifeline). Two heroes in three carry a
+        # pick-axe or mattock there, and the Mines' rock and cave walls all dig (about seven turns a square for a
+        # St 18 Valkyrie; only Minetown's and Mines' End's walls do not): once the known '<' has stayed out of reach
+        # for TUNNEL_UP_AFTER_TURNS she walks and digs the cheapest route straight to it (round the trap, through the
+        # rock, through the boulder); with no '<' known for TUNNEL_AFTER_TURNS she tunnels to known floor she cannot
+        # walk to and looks on from there. Never on the town level (the Watch minds digging there), never toward a
+        # monster (a pick applied at one attacks it), never with a hostile within three squares.
+        # Measured (parent -> this, same seeds; the tunnel fired in 14 of 70 development trips and 11 of 48
+        # held-out ones): turns from the end of the trip to the main dungeon, summed over the trips that got back
+        # in both runs: 32496 -> 22926 on the development games, 65178 -> 41472 on the held-out block; with the
+        # '<' known the tunnel was faster in 13 trips of 14 (4308 -> 264, 2281 -> 479, 1597 -> 291 turns).
+        # The same tunnel on the way DOWN (TUNNEL_DOWN_AFTER, DIG_AFTER_TURNS) was measured and stays off: see there.
+        # sources: NetHack 3.6.6 src/dig.c (dig(): effort += 10 + rn2(5) + abon + uwep->spe - greatest erosion +
+        # udaminc + dbon, doubled for dwarves; rock and walls give way at effort > 100 -- "you succeed in cutting
+        # away some rock", on a cavernous level outside a town a dug wall becomes a corridor; a boulder "falls apart";
+        # "the <wall> here is too hard to dig in" for W_NONDIGGABLE; use_pick_axe2: a monster on the square is
+        # attacked instead; watch_dig: only walls and doors in_town() are the Watch's business) and src/hack.c
+        # (test_move: "You are carrying too much to get through" above 600) ;
+        # https://nethackwiki.com/wiki/Pick-axe ("tunnel through solid rock walls ... smash apart boulders"; the
+        # Watch "will warn a hero that they see trying to dig through doors or walls") ;
+        # https://nethackwiki.com/wiki/Staircase ("It is usually a good idea to locate the up staircase before
+        # proceeding further"; a boulder may cover the way; the pick-axe as the last resort when a staircase stays
+        # out of reach) ; https://nethackwiki.com/wiki/Gnomish_Mines (filler levels are "simple caverns" with 6
+        # random traps: "the mines are loaded with them"; "trap doors can cut you off from your ... escape path") ;
+        # player discussions: https://nethackwiki.com/wiki/Talk:Minetown ("I fell through a trapdoor to the
+        # 'Bustling town' but I couldn't find the stairs up") and
+        # https://groups.google.com/g/rec.games.roguelike.nethack/c/AQkz3Jm1NZU ("stuck in gnomish mines": the way
+        # out is back up; only Mines' End refuses the pick) ; the task brief ("digging sideways is a good tactic") ;
+        # /refs/history.md #2 (its replays named the same walls -- squeezes, traps, boulders -- on the way down and
+        # walked the unsafe traps; discarded on the held-out seeds. This change leaves the way down alone.) ;
+        # /refs/top/README.md (the 54 top programs are dive-first engines of this lineage: none goes to Minetown).
+        dive = self.dive
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        key = level.key()
+        if not jf_config.PICK_TUNNEL or level.dungeon_number != Level.GNOMISH_MINES or self.is_town_level(level):
+            return False
+        tool = dive.digging_tool()
+        if tool is None or agent.character.prop.polymorph or int(bl.time) < dive._dig_blocked_until:
+            return False
+        prop = agent.character.prop
+        if prop.stun or prop.confusion or prop.hallu or prop.blind:
+            return False
+        if self._tunnel_digs.get(key, 0) >= TUNNEL_MAX_DIGS or self._hostiles_within(3):
+            return False
+        if int(bl.time) < self._tunnel_quiet.get(key, -1):
+            return False
+        route = self._tunnel_route(targets)
+        if route is None:
+            self._tunnel_quiet[key] = int(bl.time) + 15   # nothing to tunnel to right now: not asked every step
+            return False
+        path, walk = route
+        digs = [p for p in path[1:] if not walk[p]]
+        if len(digs) > TUNNEL_MAX_DIGS - self._tunnel_digs.get(key, 0):
+            return False
+        here, nxt = path[0], path[1]
+        dive._task(f'minetown trip: tunnel to {what}')
+        if (key, what) not in self._tunnel_logged:
+            self._tunnel_logged.add((key, what))
+            self.log(f'tunnel on {key} to {what} at {path[-1]}: {len(path) - 1} steps, {len(digs)} squares to dig '
+                     f'{digs[:12]}, from {here}, with {tool.text!r}')
+        tkey = (key, nxt[0], nxt[1])
+        if not walk[nxt]:
+            tries = self._tunnel_tries.get(tkey, 0) + 1
+            self._tunnel_tries[tkey] = tries
+            if tries == 1:
+                self._tunnel_digs[key] = self._tunnel_digs.get(key, 0) + 1
+            if tries > TUNNEL_SQUARE_TRIES:
+                self.log(f'tunnel: {nxt} on {key} does not give way: closed')
+                self._tunnel_blocked.add(tkey)
+                agent.search()
+                return True
+            before = agent.step_count
+            dive.dig_toward(tool, *nxt)
+            msg = agent.message or ''
+            if 'too hard to' in msg or 'cannot reach' in msg or 'Clash!' in msg:
+                self.log(f'tunnel: {nxt} on {key} is too hard to dig: {msg[:80]!r}')
+                self._tunnel_blocked.add(tkey)
+            elif 'thin air' in msg:
+                level.walkable[nxt] = True
+                agent.last_bfs_step = -1
+            if agent.step_count == before:
+                agent.search()
+            return True
+        # walk: up to the last open square before the next rock
+        k = next((i for i, p in enumerate(path) if i and not walk[p]), len(path))
+        goal = path[k - 1]
+        dis = agent.bfs()
+        if goal != here and dis[goal] != -1:
+            agent.go_to(*goal, max_steps=12, callback=lambda: bool(self._hostiles_within(3)))
+            return True
+        # the bot's own BFS does not know this step (a freshly dug square, a squeeze it misjudges): one step by hand
+        tries = self._tunnel_tries.get(tkey, 0) + 1
+        self._tunnel_tries[tkey] = tries
+        if tries > TUNNEL_SQUARE_TRIES or agent.monster_tracker.monster_mask[nxt]:
+            if tries > TUNNEL_SQUARE_TRIES:
+                self._tunnel_blocked.add(tkey)
+            agent.search()
+            return True
+        agent.move(*nxt)
+        return True
+
+    def _cut_off_floor(self):
+        """Known open squares of this level that the BFS cannot reach from here."""
+        agent = self.agent
+        level = agent.current_level()
+        dis = agent.bfs()
+        walk, _ = self._tunnel_masks()
+        cut = walk & level.seen & (dis == -1)
+        cut[int(agent.blstats.y), int(agent.blstats.x)] = False
+        return list(zip(*cut.nonzero()))
+
+    def _tunnel_down(self):
+        """(Off: TUNNEL_DOWN_AFTER.) The way down: the '>' has stayed out of reach -- tunnel to known floor that
+        cannot be walked to (see _tunnel_step)."""
+        agent = self.agent
+        level = agent.current_level()
+        if not jf_config.PICK_TUNNEL or not TUNNEL_DOWN_AFTER or \
+                int(agent.blstats.time) - self._level_since < TUNNEL_DOWN_AFTER:
+            return False
+        dis = agent.bfs()
+        if any(dis[p] != -1 for p in self.dive._stairs_down(level)):
+            return False
+        cut = self._cut_off_floor()
+        if not cut:
+            return False
+        return self._tunnel_step(cut, 'cut-off floor')
+
+    def _known_ups(self, level):
+        """The level's '<' squares: those on the map and those known from the stairs we came down by."""
+        ups = set((int(y), int(x)) for y, x in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero()))
+        here = level.level_number
+        for p, d in level.stair_destination.items():
+            if d is None:
+                continue
+            if (d[0][0] == level.dungeon_number and d[0][1] == here - 1) or \
+                    (here == 1 and d[0][0] == Level.DUNGEONS_OF_DOOM):
+                ups.add((int(p[0]), int(p[1])))
+        return ups
+
+    def tunnel_up(self):
+        """The way back up (during the trip and after it): the known '<' of a filler level is out of reach from
+        where we arrived (a hole had taken us past the obstacle) -- tunnel straight to it; no '<' known for long:
+        tunnel to cut-off floor. See _tunnel_step."""
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        now = int(agent.blstats.time)
+        if not jf_config.PICK_TUNNEL or self.start_turn is None or level.dungeon_number != Level.GNOMISH_MINES:
+            return False
+        if key != self._up_key:
+            self._up_key = key
+            self._up_since = now
+        if self.is_town_level(level) or self.dive.digging_tool() is None:
+            return False
+        dis = agent.bfs()
+        ups = self._known_ups(level)
+        here = (int(agent.blstats.y), int(agent.blstats.x))
+        if ups:
+            if here in ups or any(dis[p] != -1 for p in ups) or now - self._up_since < TUNNEL_UP_AFTER_TURNS:
+                return False
+            return self._tunnel_step(ups, "the '<'")
+        if now - self._up_since < TUNNEL_AFTER_TURNS:
+            return False
+        cut = self._cut_off_floor()
+        if not cut:
+            return False
+        return self._tunnel_step(cut, 'cut-off floor')
 
     def _to_the_mines(self):
         dive = self.dive
@@ -718,6 +1076,8 @@ class MinetownTrip:
                 self._pickup(target)
             elif kind == 'altar':
                 self._altar(target)
+            elif kind == 'flash':
+                self._flash(target)
             elif kind == 'priest':
                 self._donate(target)
             else:
@@ -761,7 +1121,7 @@ class MinetownTrip:
     # ------------------------------------------------------------------ the town's business
 
     def _next_job(self):
-        """('pickup' | 'altar' | 'priest' | 'wait', target) or None."""
+        """('pickup' | 'altar' | 'flash' | 'priest' | 'wait', target) or None."""
         agent = self.agent
         bl = agent.blstats
         prop = agent.character.prop
@@ -778,6 +1138,11 @@ class MinetownTrip:
             alts = [p for p in self._altars() if p == here or dis[p] != -1]
             if alts:
                 return 'altar', min(alts, key=lambda p: 0 if p == here else dis[p])
+            return None
+        if self._flash_due():
+            alts = [p for p in self._altars() if p == here or dis[p] != -1]
+            if alts:
+                return 'flash', min(alts, key=lambda p: 0 if p == here else dis[p])
             return None
         if self.can_donate() and self.in_town():
             priests = self._priests()
@@ -819,13 +1184,72 @@ class MinetownTrip:
         self.pending = (tuple(int(v) for v in pos), frozenset(_glyph(i) for i in items), int(bl.time))
         self._pickup_tries = 0
         self.altar_drops += 1
+        seen = self._flash_count()
         ok = agent.inventory.drop(items)
         msg = ' '.join([agent.message or ''] + list(agent.popup or []))
-        self.flashes += msg.count(' flash as ')
-        self.log(f'altar answer (drop ok={ok}, free slots before {free}): {msg[:400]!r}')
+        self.flashes += self._flash_count() - seen
+        self.log(f'altar answer (drop ok={ok}, free slots before {free}, flashes {self.flashes}): {msg[:400]!r}')
         if ok is False:
             self.pending = None
         self.altar_tested = True
+
+    def _flash(self, pos):
+        """ALTAR_FLASH: the temple altar has not flashed for anything we dropped -- put something on it that is
+        known to be cursed or blessed."""
+        # hypothesis: an altar answers a dropped object with a flash only when it is cursed or blessed ("There is a
+        # black flash as ... hits the altar" / "an amber flash"), and that message is what shows -- to the player and
+        # to this run's scorer -- that the curse status was checked: 5 of the 48 development trips that dropped
+        # their pack on the temple altar saw no flash at all (3-11 stacks, all uncursed: weapons and armor are
+        # uncursed 78% of the time, wands 94%, food and most tools always), so the game had walked to Minetown and
+        # used its temple with nothing to show for it. The flash does not depend on what the hero already knows --
+        # do.c doaltarobj() prints it for every blessed or cursed object -- and every one of the five carried such
+        # an object with its status already known (a cursed scroll and blessed daggers from an earlier altar, a
+        # cursed ring of adornment; twice only Excalibur in hand, which the fountain always blesses): the trip had
+        # left exactly those in the pack as "nothing to learn". So when the altar has stayed dark, one such object
+        # goes on it and comes straight back: something from the pack, else the blessed weapon in hand (two turns
+        # in the temple, only with nothing hostile in view, wielded again at once). An altar that has flashed
+        # already (the trip's own drop, or power_route's test of the potions and scrolls) is left alone.
+        # Measured (parent -> this, same seeds): all five dark altars flashed; games that reached and used the
+        # temple with a flash: 44 -> 50 of 79 development games; the held-out block had no dark altar (31 of 60
+        # both ways).
+        # sources: NetHack 3.6.6 src/do.c doaltarobj() ("There is %s flash as %s %s the altar" when obj->blessed ||
+        # obj->cursed, whatever bknown says; "%s %s on the altar" otherwise; nothing when blind) and
+        # src/fountain.c dipfountain() (Excalibur: bless, erodeproof) ; https://nethackwiki.com/wiki/Altar ("A
+        # black flash marks a cursed item, while an amber flash marks a blessed one", none for uncursed; a thrown
+        # object gives no answer) ; https://nethackwiki.com/wiki/Curse (the generation table: weapons 8.6% blessed /
+        # 78.2% uncursed / 13.2% cursed, wands 94% uncursed, comestibles and "other tools" 100% uncursed) ;
+        # https://nethackwiki.com/wiki/Excalibur ("the sword will be blessed and made rustproof") ; player
+        # discussion: https://nethackwiki.com/wiki/Talk:Minetown (the temple as the town's point; "Minetown is the
+        # only fixed layout level ... to have coaligned temples at all") ; /refs/parent-eval-extra.json (the
+        # scorer's altar_tests equals the number of flash messages in the game: 0 for seed 386149, whose four
+        # stacks were all uncursed, although its Excalibur would have flashed).
+        agent = self.agent
+        bl = agent.blstats
+        if (int(bl.y), int(bl.x)) != tuple(pos):
+            self._walk(pos)
+            return
+        items = self._flash_items()
+        if not items:
+            agent.search()
+            return
+        wielded = items[0].equipped
+        if wielded and self._hostiles_within(8):
+            agent.search(2)   # the weapon stays in hand while anything hostile is near
+            return
+        self._flash_tries += 1
+        self._rewield = _glyph(items[0]) if wielded else None
+        self.log(f'no flash so far: {items[0].text!r} (known cursed / blessed'
+                 f'{", in hand" if wielded else ""}) goes on the altar at {tuple(pos)}')
+        self.pending = (tuple(int(v) for v in pos), frozenset(_glyph(i) for i in items), int(bl.time))
+        self._pickup_tries = 0
+        self.altar_drops += 1
+        seen = self._flash_count()
+        ok = agent.inventory.drop(items)
+        self.flashes += self._flash_count() - seen
+        self.log(f'altar answer to the second drop (ok={ok}): flashes {self.flashes}')
+        if ok is False:
+            self.pending = None
+            self._rewield = None
 
     def _pickup(self, pos):
         agent = self.agent
@@ -843,16 +1267,26 @@ class MinetownTrip:
                 inv.pickup(mine)
             left = [it for it in (inv.items_below_me or []) if _glyph(it) in glyphs]
         except Exception:
-            if self._pickup_tries >= ALTAR_PICKUP_TRIES:
+            if self._pickup_tries >= ALTAR_PICKUP_TRIES * (4 if self._rewield is not None else 1):
                 self.log('altar pickup given up after errors')
                 self.pending = None
             raise
         self.log(f'altar pickup: took {len(mine) - len(left)} of {len(mine)} stacks back'
                  f'{"" if not left else f"; left {[it.text for it in left][:20]}"}')
-        if not left or self._pickup_tries >= ALTAR_PICKUP_TRIES:
+        if not left or self._pickup_tries >= ALTAR_PICKUP_TRIES * (4 if self._rewield is not None else 1):
             self.pending = None
         if not mine:
             agent.search()
+        if self.pending is None and self._rewield is not None:
+            # ALTAR_FLASH: the weapon that lay on the altar goes back in hand
+            glyph, self._rewield = self._rewield, None
+            weapon = next((it for it in inv.items if _glyph(it) == glyph and not it.equipped and
+                           ' blessed ' in _words(it)), None)
+            if weapon is not None:
+                ok = inv.wield(weapon)
+                self.log(f'{weapon.text!r} wielded again: {ok}')
+            else:
+                self.log('the weapon that lay on the altar is not in the pack')
         if self.pending is None:
             self._wear()   # the altar has spoken: what is not cursed and better than what is worn goes on
 

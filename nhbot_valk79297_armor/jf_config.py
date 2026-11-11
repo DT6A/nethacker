@@ -66,6 +66,13 @@ STARVE_CLOCK = False
 # MINETOWN_TRIP (minetown_trip.py): before the planned dive, a stairs trip to Minetown's temple -- BUC-test the pack
 # on the altar, buy protection from the priest when the gold is there -- then the dive
 MINETOWN_TRIP = True
+# ALTAR_FLASH (minetown_trip._flash): when the temple altar showed no flash for what was dropped, something known to
+# be cursed or blessed goes on it as well (the altar flashes for every cursed or blessed object, known or not)
+ALTAR_FLASH = True
+# PICK_TUNNEL (minetown_trip._tunnel_step): on a Mines filler level whose stairs stay cut off, a carried pick-axe
+# tunnels sideways to the known floor behind the obstacle, digs down only when nothing is left to tunnel to, and
+# tunnels to the known '<' on the way back
+PICK_TUNNEL = True
 # no direction (move, attack, zap) is given while stunned or confused with a shopkeeper, watchman or priest next to us:
 # the random direction would land on them (agent.direction)
 STUN_TOWN_GUARD = True

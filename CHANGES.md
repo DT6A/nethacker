@@ -1,3 +1,14 @@
+# Minetown trip, third iteration: the altar's flash and the way back (2026-11-11)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, hooks in `agent.py`, `dive_logic.py`, flags in `jf_config.py`).
+`ALTAR_FLASH`: when the temple altar showed no black or amber flash for what the trip dropped on it (everything was
+uncursed), one object already known to be cursed or blessed goes on it and comes back -- from the pack, else the
+blessed weapon in hand (Excalibur), wielded again at once. `PICK_TUNNEL`: on the way back up through the Mines, a
+known `<` that the path-finder cannot reach (the hero fell or dug past a trap, boulder or diagonal squeeze) is
+tunnelled to with the carried pick-axe or mattock; never on the town level. The same tunnel and a dug hole on the
+way *down* were measured and left off (they kill as many trips as they finish). Numbers and sources are in the
+header of `minetown_trip.py` and at `_flash` / `_tunnel_step`.
+
 # Minetown trip for val-hum-law-fem (2026-11-10)
 
 Engine `nhbot_valk79297_armor` only. New module `minetown_trip.py` (hooks in `dive_logic.py`, `global_logic.py`,

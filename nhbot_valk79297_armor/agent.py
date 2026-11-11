@@ -472,6 +472,16 @@ class Agent:
         self.cursor_pos = (observation['tty_cursor'][0] - 1, observation['tty_cursor'][1])
         if jf_log.enabled():
             self._dev_hook(observation)   # dev runs only (JF_LOG_DIR): the events the run's scorer counts
+        if b' flash as ' in bytes(observation['message']):
+            # ALTAR_FLASH (minetown_trip._flash): the altar's answer is one message per cursed or blessed stack,
+            # shown between two --More-- of the drop; counted here, where every message passes
+            self._altar_flashes = getattr(self, '_altar_flashes', 0) + 1
+            try:
+                where = (int(observation['blstats'][23]), int(observation['blstats'][24]))
+                levels = self.__dict__.setdefault('_altar_flash_levels', {})
+                levels[where] = levels.get(where, 0) + 1
+            except Exception:
+                pass
 
         if hasattr(self, 'blstats'):
             for item in flatten_items(self.inventory.items):
