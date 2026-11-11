@@ -66,20 +66,6 @@ STARVE_CLOCK = False
 # MINETOWN_TRIP (minetown_trip.py): before the planned dive, a stairs trip to Minetown's temple -- BUC-test the pack
 # on the altar, buy protection from the priest when the gold is there -- then the dive
 MINETOWN_TRIP = True
-# TRIP_UNBLOCK_LADDER (minetown_trip.unblock): a Mines level whose stairs stay out of reach is opened rung by rung --
-# a squeeze that reaches any new square (dug out with a carried pick-axe, else the pack drops to 550), the safe
-# traps, an anti-magic field (harmless without magic resistance), and as the last resort every trap but polymorph
-TRIP_UNBLOCK_LADDER = True
-# TRIP_FAST_EXPLORE (minetown_trip.seek): on the trip's Mines levels the stairs are looked for with a frontier walk
-# (explore1 without searching: mkmap caves have no secret passages), and the ladder opens its next rung as soon as
-# that walk has nothing left in reach
-TRIP_FAST_EXPLORE = True
-# ORCISH_TOWN_BREACH (minetown_trip._orc_step): Orcish Town (1 of the 7 town maps) has no gate; a ready hero with a
-# pick-axe digs in through the wall below the temple and uses its altar
-ORCISH_TOWN_BREACH = True
-# RING_TEST_TOWN_GUARD (power_route._ring_test_ready): an unknown ring is not tried on in Minetown, in a shop or with
-# a shopkeeper, watchman or priest in view (a ring of conflict turns them on the hero)
-RING_TEST_TOWN_GUARD = True
 # no direction (move, attack, zap) is given while stunned or confused with a shopkeeper, watchman or priest next to us:
 # the random direction would land on them (agent.direction)
 STUN_TOWN_GUARD = True

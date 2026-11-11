@@ -35,7 +35,6 @@ import nle.nethack as nh
 from nle.nethack import actions as A
 
 from . import jf_config
-from . import utils
 from . import objects as O
 from .glyph import SS
 from .level import Level
@@ -676,22 +675,6 @@ def _ring_test_ready(agent):
         return None
     if _hostiles_within(agent, 6):
         return None
-    if jf_config.RING_TEST_TOWN_GUARD:
-        # hypothesis: the wear test follows the altar's curse test at once, i.e. in Minetown's temple next to its
-        # priest -- and one of the ring types is conflict, which sets every peaceful in sight on the hero (seed
-        # 31521: 'The priestess of Odin wields a mace!' one turn after the ring went on; dead two turns later).
-        # No wear test on the town level, in a shop, or with a shopkeeper, watchman or priest in view: the ring is
-        # tried on back in the main dungeon, where conflict only turns hostiles on each other.
-        # sources: https://nethackwiki.com/wiki/Ring_of_conflict ("peaceful monsters begin fighting you"; the
-        # common death of wearing it in a temple and "quickly dying from the attacks of the aligned priest standing
-        # next to you"; "Do not use the ring near peacefuls armed with wands, such as shopkeepers"; testing a ring
-        # near a dangerous peaceful "is completely inadvisable") ; https://nethackwiki.com/wiki/Minetown
-        level = agent.current_level()
-        y, x = int(bl.y), int(bl.x)
-        if level.key() == agent.global_logic.minetown_level or dive.minetown.is_town_level(level) or \
-                level.shop[y, x] or level.shop_interior[y, x] or \
-                utils.isin(agent.glyphs, dive._town_glyphs()).any():
-            return None
     return cands[0]
 
 

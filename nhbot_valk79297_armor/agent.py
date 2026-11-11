@@ -438,6 +438,24 @@ class Agent:
         except Exception:
             self._poly_control_rings = None
 
+    def _dev_hook(self, observation):
+        """Dev diagnostics (only with JF_LOG_DIR): altar flashes, holes dug, donations, XL / AC changes."""
+        try:
+            m = bytes(observation['message']).decode('latin-1').strip('\x00 ')
+            b = observation['blstats']
+            hp, hpmax, ac, xl, t, dnum, dlvl, gold = (int(b[10]), int(b[11]), int(b[16]), int(b[18]), int(b[20]),
+                                                      int(b[23]), int(b[24]), int(b[13]))
+            st = getattr(self, '_dev_state', None)
+            if st != (ac, xl):
+                self._dev_state = (ac, xl)
+                jf_log.log(f'DEV stat t={t} d={dnum}:{dlvl} xl={xl} ac={ac} hp={hp}/{hpmax} gold={gold}')
+            if m and any(k in m for k in (' flash as ', ' on the altar', 'dig a hole through', 'thy devotion',
+                                          'Cheapskate', 'thy contribution', 'selfless', 'hopefulness',
+                                          'reconciliation')):
+                jf_log.log(f'DEV msg t={t} d={dnum}:{dlvl} xl={xl} ac={ac} hp={hp}/{hpmax} gold={gold} {m!r}')
+        except Exception:
+            pass
+
     def step(self, action, additional_action_iterator=None):
         if self._no_step_calls:
             raise ValueError("Shouldn't call step now")
@@ -452,6 +470,8 @@ class Agent:
         self.score += reward
 
         self.cursor_pos = (observation['tty_cursor'][0] - 1, observation['tty_cursor'][1])
+        if jf_log.enabled():
+            self._dev_hook(observation)   # dev runs only (JF_LOG_DIR): the events the run's scorer counts
 
         if hasattr(self, 'blstats'):
             for item in flatten_items(self.inventory.items):
@@ -2413,24 +2433,8 @@ class Agent:
             # climbing out of a branch (CLIMB_NO_FALL)
             dive = self.global_logic.dive
             exits_ok = dive.diving and not (jf_config.CLIMB_NO_FALL and dive.climbing())
-            unsafe = self.UNSAFE_TRAPS
-            if jf_config.TRIP_UNBLOCK_LADDER and dive.minetown.start_turn is not None:
-                # (from the start of the Minetown trip on: the grind before it plays exactly as it did)
-                # minetown_trip.unblock: an anti-magic field only drains Pw from a hero without magic resistance
-                # (trap.c ANTI_MAGIC) -- no risk to a Valkyrie; and with the last-resort allowance (boxed in, or the
-                # safe traps opened nothing) every kind but a polymorph trap is walked
-                if self._last_turn - getattr(self, '_allow_unsafe_traps_turn', -float('inf')) <= 50:
-                    unsafe = self.NEVER_TRAPS
-                else:
-                    if self.character.role == Character.VALKYRIE:
-                        unsafe = unsafe - {SS.S_anti_magic_trap}
-                    if not self.character.poison_resistant:
-                        # trap.c SPIKED_PIT: 1 fall in 6 is poisoned, and poisoned(..., fatal 8) kills 1 time in 8
-                        # without poison resistance ("fall onto poison spikes"); DART_TRAP: 1 dart in 6 is
-                        # poisoned, fatal 1 time in 30 ("poisoned by a little dart" ended dev game 71006 at full
-                        # HP, walking a known one): neither is one of the safe kinds
-                        unsafe = unsafe | {SS.S_spiked_pit, SS.S_dart_trap}
-            walkable &= ~utils.isin(level.objects, unsafe if exits_ok else unsafe | self.LEVEL_EXIT_TRAPS)
+            walkable &= ~utils.isin(level.objects, self.UNSAFE_TRAPS if exits_ok
+                                    else self.UNSAFE_TRAPS | self.LEVEL_EXIT_TRAPS)
 
         # a shopkeeper blocks the door to anyone carrying a pick-axe or mattock ('Will you please leave
         # your pick-axe outside?'): walking to the goods (check_items) looped at shop doors for 3000-16000
@@ -2484,7 +2488,6 @@ class Agent:
     UNSAFE_TRAPS = frozenset({SS.S_polymorph_trap, SS.S_fire_trap, SS.S_sleeping_gas_trap, SS.S_magic_trap,
                               SS.S_anti_magic_trap, SS.S_rust_trap})
     LEVEL_EXIT_TRAPS = frozenset({SS.S_trap_door, SS.S_hole, SS.S_level_teleporter})
-    NEVER_TRAPS = frozenset({SS.S_polymorph_trap})   # not even as a last resort (TRIP_UNBLOCK_LADDER)
 
     def _diagonal_step_ok(self, masks, y, x, ty, tx):
         """The BFS rule for a diagonal step (y, x) -> (ty, tx) (utils.bfs)."""

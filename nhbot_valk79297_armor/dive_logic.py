@@ -1893,7 +1893,7 @@ class DiveLogic:
         if dnum not in MAIN_LINE:
             # MINETOWN_TRIP: the way back from the town -- a '<' cut off by a squeeze or a trap (minetown_trip.unblock)
             if dnum == Level.GNOMISH_MINES and self.minetown.done and self.minetown.start_turn is not None and \
-                    (self.minetown.passing() or self.minetown.unblock(G.STAIR_UP) or self.minetown.way_back()):
+                    (self.minetown.passing() or self.minetown.unblock(G.STAIR_UP)):
                 return
             self._task('return to main dungeon')
             return self.return_to_main_dungeon()
