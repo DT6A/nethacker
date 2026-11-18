@@ -1917,6 +1917,30 @@ DEEP_PRAYER_READY = True
 DEEP_PRAYER_MIN_DEPTH = 20
 DEEP_PRAYER_MAX_WAIT = 1200
 
+# SQUEEZE_CORNER_FIX (agent.bfs / agent._corner_open, utils.bfs): a proven rule fix, carried next to the trip's stall
+# handling because the trip is where it showed.
+# hypothesis: the path-finder refuses a diagonal step for a hero carrying more than 600 unless one of the two
+# orthogonal neighbours is "walkable" -- but its walkable mask has the known traps, boulders, peaceful monsters and
+# forbidden squares taken out. The game (hack.c test_move) refuses that step only when BOTH neighbours are bad_rock():
+# solid rock or wall (a boulder counts in Sokoban only). So one known trap, boulder or peaceful dwarf at a cave corner
+# closed a passage the game leaves open, for as long as the pack stayed over 600 -- and the Mines' caves are made of
+# such corners, and the Valkyrie's pack is over 600 on most trips (610-960 in every stalled trip looked at). Replays
+# of the parent's trips that ended on the level budget: public seed 13 stood 1740 turns on Mines 2 with the way west
+# past one trap corner (4 squares more with the terrain asked; the trap walk never opened it: an unsafe kind), a
+# development game stood on ONE square for 1900 turns with 240 squares open the moment the terrain is asked. With the
+# fix the corner test asks the terrain (level.walkable: what has been seen as floor, whatever stands or lies on it);
+# with 600 or less carried nothing changes (every diagonal was allowed already), nor in Sokoban.
+# sources: NetHack 3.6.6 src/hack.c test_move() ("if (dx && dy && bad_rock(youmonst.data, ux, y) &&
+# bad_rock(youmonst.data, x, uy))" -> cant_squeeze_thru(): "You are carrying too much to get through" for
+# inv_weight() + weight_cap() > 600) and bad_rock() ("(Sokoban && sobj_at(BOULDER, x, y)) || (IS_ROCK(levl[x][y].typ)
+# && ...)") as quoted at https://nethackwiki.com/wiki/Source:NetHack_3.6.0/src/hack.c ;
+# https://nethackwiki.com/wiki/Movement_tactics ("You can only pass diagonally through a tight gap if your total
+# inventory weight is 600 or less ... applies to all tight gaps, not just those in the Gnomish Mines") ;
+# https://nethackwiki.com/wiki/Gnomish_Mines (filler levels: caverns, 6 random traps each, lawful dwarves peaceful
+# to a lawful human) ; /refs/history.md #2 and #6 (the same stalls, opened there only by dropping the pack to 550 or
+# by walking through the trap).
+SQUEEZE_CORNER_FIX = True
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

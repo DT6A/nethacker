@@ -10,8 +10,16 @@ import toolz
 from .strategy import Strategy
 
 
+def bfs(y, x, *, walkable, walkable_diagonally, can_squeeze, corner_open=None):
+    # corner_open (SQUEEZE_CORNER_FIX, see jf_config): the squares that are not rock for hack.c's diagonal-squeeze
+    # test; None: the walkable mask itself, as before
+    if corner_open is None:
+        corner_open = walkable
+    return _bfs(y, x, walkable, walkable_diagonally, can_squeeze, corner_open)
+
+
 @nb.njit(cache=True)
-def bfs(y, x, *, walkable, walkable_diagonally, can_squeeze):
+def _bfs(y, x, walkable, walkable_diagonally, can_squeeze, corner_open):
     dis = np.zeros(walkable.shape, dtype=np.int32)
     dis[:] = -1
     dis[y, x] = 0
@@ -31,7 +39,7 @@ def bfs(y, x, *, walkable, walkable_diagonally, can_squeeze):
                     if (walkable[py, px] and
                             (abs(dy) + abs(dx) <= 1 or
                              (walkable_diagonally[py, px] and walkable_diagonally[y, x] and
-                              (can_squeeze or walkable[py, x] or walkable[y, px])))):
+                              (can_squeeze or corner_open[py, x] or corner_open[y, px])))):
                         if dis[py, px] == -1:
                             dis[py, px] = dis[y, x] + 1
                             buf[size] = (py, px)

@@ -1,3 +1,14 @@
+# Minetown trip, fifth iteration: the squeeze rule asks the terrain; #6's stall handling re-tried (2026-11-18)
+
+Engine `nhbot_valk79297_armor` only. `SQUEEZE_CORNER_FIX` (`agent.bfs` / `agent._corner_open`, `utils.bfs`): the
+path-finder's diagonal-squeeze rule (more than 600 carried) now asks the terrain for the two corner squares, as
+hack.c `test_move` / `bad_rock` do -- a known trap, a boulder, a peaceful monster or a forbidden square at a cave
+corner is not rock (never changed in Sokoban, where boulders do count). On top of it the stall handling of the fourth
+iteration below (discarded on the judge's games, where three of its trips died on other paths) is kept unchanged.
+Parent -> this version: development seeds (0-14, 386141-386150) temple used 16 -> 20 of 25, raw 0.459 -> 0.460;
+held-out 49728-49787 temple used 23 -> 32 of 60, raw 0.394 -> 0.399. Tried and dropped: the trip at XL 6
+(raw 0.460 -> 0.386 on the development seeds). The hypothesis, numbers and sources are at `agent._corner_open`.
+
 # Minetown trip, fourth iteration: the trip never stalls on a level (2026-11-18)
 
 Engine `nhbot_valk79297_armor` only (`minetown_trip.py`: `seek`, `_frontier_walk`, `unblock(force=True)`, `_kick_out`,
