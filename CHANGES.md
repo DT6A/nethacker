@@ -1,3 +1,16 @@
+# Minetown trip, fourth iteration: the trip never stalls on a level (2026-11-18)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`: `seek`, `_frontier_walk`, `unblock(force=True)`, `_kick_out`,
+`_wait_for_peaceful`, `_boulder_out`; flags in `jf_config.py`). On the trip's Mines levels the way on is looked for with
+a frontier walk (AutoAscend's explore1 without its searching: the Mines' caves hide nothing), and the moment that walk
+has nothing left in reach the obstacle is dealt with at once instead of after 150-350 turns: a peaceful in the only
+passage is waited for, a squeeze or the safe known traps are opened (then anti-magic fields and rust traps, never the
+dangerous kinds), a boulder is dug apart or pushed, and a locked door of a stair room in a room-built town is kicked
+when nobody of the town is in view. Two livelocks found in the replays are fixed alongside: `UNTRAP_TARGET_FIX`
+(`exploration_logic.untrap_traps` walked to a trap it was never going to disarm, every 10 steps) and
+`OILSKIN_SUIT_FIRST` (`inventory.wear_oilskin_cloak` put the cloak back on each time `wear_best_stuff` took it off for
+a suit: 4 of 100 parent games). Numbers and sources are at `minetown_trip.seek`.
+
 # Minetown trip, third iteration: the altar's flash and the way back (2026-11-11)
 
 Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, hooks in `agent.py`, `dive_logic.py`, flags in `jf_config.py`).

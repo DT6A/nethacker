@@ -73,6 +73,29 @@ ALTAR_FLASH = True
 # tunnels sideways to the known floor behind the obstacle, digs down only when nothing is left to tunnel to, and
 # tunnels to the known '<' on the way back
 PICK_TUNNEL = True
+# TRIP_FRONTIER_WALK (minetown_trip.seek / _frontier_walk): on the Mines levels of the trip the hero looks for the
+# way on with a frontier walk -- AutoAscend's explore1 without its searching (mkmap caves have no secret doors or
+# corridors) -- instead of the search-everything exploration; the hypothesis, numbers and sources are at
+# minetown_trip.seek
+TRIP_FRONTIER_WALK = True
+# TRIP_UNBLOCK_NOW: ... and the moment that walk has nothing left in reach, unblock() opens its next rung (a squeeze
+# that reaches any new square, the safe known traps) without waiting out UNBLOCK_AFTER_TURNS / TRAPS_AFTER_TURNS
+TRIP_UNBLOCK_NOW = True
+# TRIP_MILD_TRAPS: ... and, with the safe traps open and still nothing in reach, anti-magic fields and rust traps too
+# (agent.MILD_TRAPS; never polymorph, sleeping gas, fire or magic traps, never a trap door or hole)
+TRIP_MILD_TRAPS = True
+# TRIP_KICK_OUT (minetown_trip._kick_out): shut in a stair room of a room-built town behind a locked door, with
+# nobody of the town in view: kick the door open
+TRIP_KICK_OUT = True
+# TRIP_TOWN_WALK: the frontier walk also looks for the temple on the town level (the searching exploration follows
+# when it has nothing left: the room-built towns do have secret doors)
+TRIP_TOWN_WALK = True
+# TRIP_PEACEFUL_WAIT (minetown_trip._wait_for_peaceful): ... a peaceful standing in the only passage is waited for
+TRIP_PEACEFUL_WAIT = True
+# TRIP_BOULDER (minetown_trip._boulder_out): ... a boulder in the only passage is dug apart (pick-axe) or pushed
+TRIP_BOULDER = True
+# UNTRAP_TARGET_FIX (exploration_logic.untrap_traps): walk only to the traps that will be disarmed, never onto one
+UNTRAP_TARGET_FIX = True
 # no direction (move, attack, zap) is given while stunned or confused with a shopkeeper, watchman or priest next to us:
 # the random direction would land on them (agent.direction)
 STUN_TOWN_GUARD = True
@@ -222,6 +245,9 @@ SPARE_WISHES = True
 # u_slip_free: a non-cursed slippery cloak skips a grabbing attack's wrap/hug/drown roll outright). Water
 # deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster after minotaurs.
 OILSKIN_GUARD = True
+# OILSKIN_SUIT_FIRST: ... but not while wear_best_stuff has a suit or shirt to put on under it (it takes the cloak off
+# for that; putting it straight back on looped forever, see inventory.wear_oilskin_cloak)
+OILSKIN_SUIT_FIRST = True
 # a wished-for object is not formally identified (zap.c makewish: 'p - a granite ring'): name its appearance
 # after the wish (power.learn_wished). Without it SPARE_WISHES wished for an amulet of life saving again and
 # again and never wore one (base5-public s4, base5arm-jf16 s5), and castle_logic wished 3 rings of levitation,

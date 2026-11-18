@@ -112,6 +112,7 @@ class Agent:
 
         # when (number of turn) there was last decision about allowing these actions (e.g. agent is somewhat stuck)
         self._allow_walking_through_traps_turn = -float('inf')
+        self._allow_mild_traps_turn = -float('inf')
         self._allow_attack_all_turn = -float('inf')
         self._hb_actions = Counter()   # actions and go_to targets since the last STATUS heartbeat
         self._hb_gotos = Counter()
@@ -2443,8 +2444,10 @@ class Agent:
             # climbing out of a branch (CLIMB_NO_FALL)
             dive = self.global_logic.dive
             exits_ok = dive.diving and not (jf_config.CLIMB_NO_FALL and dive.climbing())
-            walkable &= ~utils.isin(level.objects, self.UNSAFE_TRAPS if exits_ok
-                                    else self.UNSAFE_TRAPS | self.LEVEL_EXIT_TRAPS)
+            unsafe = self.UNSAFE_TRAPS
+            if self._last_turn - self._allow_mild_traps_turn <= 50:
+                unsafe = unsafe - self.MILD_TRAPS   # TRIP_MILD_TRAPS (minetown_trip.unblock)
+            walkable &= ~utils.isin(level.objects, unsafe if exits_ok else unsafe | self.LEVEL_EXIT_TRAPS)
 
         # a shopkeeper blocks the door to anyone carrying a pick-axe or mattock ('Will you please leave
         # your pick-axe outside?'): walking to the goods (check_items) looped at shop doors for 3000-16000
@@ -2498,6 +2501,7 @@ class Agent:
     UNSAFE_TRAPS = frozenset({SS.S_polymorph_trap, SS.S_fire_trap, SS.S_sleeping_gas_trap, SS.S_magic_trap,
                               SS.S_anti_magic_trap, SS.S_rust_trap})
     LEVEL_EXIT_TRAPS = frozenset({SS.S_trap_door, SS.S_hole, SS.S_level_teleporter})
+    MILD_TRAPS = frozenset({SS.S_anti_magic_trap, SS.S_rust_trap})
 
     def _diagonal_step_ok(self, masks, y, x, ty, tx):
         """The BFS rule for a diagonal step (y, x) -> (ty, tx) (utils.bfs)."""

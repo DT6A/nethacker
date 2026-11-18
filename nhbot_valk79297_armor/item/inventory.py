@@ -1515,6 +1515,20 @@ class Inventory:
         if cloak is None:
             yield False
             return
+        if jf_config.OILSKIN_SUIT_FIRST:
+            # hypothesis: a livelock, not a tactic -- wear_best_stuff takes the cloak off to put a better suit or
+            # shirt on under it (its ARM_SUIT / ARM_SHIRT step), and this strategy, which preempts it, put the cloak
+            # straight back on before the suit could follow: 423 on/off pairs in a row on dev seed 64012 (a banded
+            # mail in the pack), the trip's level budget spent on the spot and the hero dead there. While
+            # wear_best_stuff still has a suit or shirt to change, the cloak slot is left to it (it wears the best
+            # cloak -- this one -- itself once the suit is on). Expected: no score change beyond the games that hit it.
+            # sources: this engine's own inventory.wear_best_stuff (the cloak comes off first for ARM_SUIT/ARM_SHIRT)
+            # and global_logic's preempt order (wear_oilskin_cloak before wear_best_stuff); NetHack 3.6.6
+            # do_wear.c canwearobj ("You cannot wear armor over a cloak"); replay of dev seed 64012.
+            best = self.get_best_armorset(armor_up=jf_config.ARMOR_UP)
+            if best[O.ARM_SUIT] != self.items.suit or best[O.ARM_SHIRT] != self.items.shirt:
+                yield False
+                return
         yield True
         self.agent.log(f'OILSKIN putting on {cloak.text!r}')
         self.wear(cloak)

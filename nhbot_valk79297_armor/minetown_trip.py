@@ -122,6 +122,12 @@ TUNNEL_DIG_COST = 6             # a square of rock costs about this many turns o
 TUNNEL_MAX_DIGS = 60            # squares dug per level before the tunnel is given up there
 TUNNEL_SQUARE_TRIES = 6         # applications at one square before it counts as undiggable
 ALTAR_PICKUP_TRIES = 4
+NO_SEARCH = 10 ** 9             # TRIP_FRONTIER_WALK: an explore1 search priority that no square reaches
+FORCED_UNBLOCK_GAP = 12         # ... turns between two forced unblock() rungs on one level
+KICK_OUT_REACH = 200            # TRIP_KICK_OUT: at most this many squares in reach -- the town is still behind the door
+KICK_OUT_TRIES = 60             # ... kicks at one door
+PEACEFUL_WAIT_TURNS = 150       # TRIP_PEACEFUL_WAIT: turns a level spent waiting for a peaceful to leave a passage
+BOULDER_TRIES = 2               # TRIP_BOULDER: pushes at one boulder from one side
 DONATE_TRIES = 6
 
 
@@ -170,6 +176,9 @@ class MinetownTrip:
         self._hold_start = None
         self._hold_over = False
         self._escapes = 0
+        self._kicks = {}               # TRIP_KICK_OUT: (level key, door) -> kicks
+        self._peaceful_waited = {}     # TRIP_PEACEFUL_WAIT: level key -> turns waited for a peaceful to move
+        self._boulder_tries = {}       # TRIP_BOULDER: (level key, spot, boulder, 'dig' | 'push') -> tries
         self._tunnel_blocked = set()   # PICK_TUNNEL: (level key, y, x) that did not dig / could not be stepped on
         self._tunnel_tries = {}        # (level key, y, x) -> applications / step attempts
         self._tunnel_digs = {}         # level key -> squares dug
@@ -500,6 +509,8 @@ class MinetownTrip:
         if seen and dive._take_stairs(seen, '>'):
             return
         reachable = lambda: any(agent.bfs()[p] != -1 for p in dive._stairs_down(agent.current_level()))
+        if self.seek(G.STAIR_DOWN, reachable):
+            return
         if not dive.exploration(0).until(agent, dive._budgeted(reachable)).run(return_condition=True):
             dive.exploration(None).until(agent, dive._budgeted(reachable)).run()
 
@@ -552,7 +563,7 @@ class MinetownTrip:
             agent.search()
         return True
 
-    def unblock(self, stairs):
+    def unblock(self, stairs, force=False):
         """A Mines level whose wanted staircase (G.STAIR_DOWN / G.STAIR_UP) has stayed out of reach: the two things
         that hide a way on from AutoAscend's BFS. (1) A diagonal step between two rock corners needs an inventory of
         600 or less (hack.c test_move / cant_squeeze_thru), and the Mines' caves are full of them: when squeezing
@@ -565,12 +576,16 @@ class MinetownTrip:
         level = agent.current_level()
         key = level.key()
         now = int(bl.time)
-        if level.dungeon_number != Level.GNOMISH_MINES or dive.turns_on_level() < UNBLOCK_AFTER_TURNS:
+        # force (seek, TRIP_FRONTIER_WALK): the frontier walk has nothing left in reach, so what is wanted lies
+        # behind a squeeze or a trap for certain: no waiting for UNBLOCK_AFTER_TURNS / TRAPS_AFTER_TURNS, and a
+        # squeeze counts when it reaches any new square (what lies behind it is the unexplored part of the level)
+        if level.dungeon_number != Level.GNOMISH_MINES or \
+                (not force and dive.turns_on_level() < UNBLOCK_AFTER_TURNS):
             return False
-        if now - self._unblock_turn.get(key, -10 ** 9) < 80:
+        if now - self._unblock_turn.get(key, -10 ** 9) < (FORCED_UNBLOCK_GAP if force else 80):
             return False
         dis = agent.bfs()
-        if any(dis[p] != -1 for p in zip(*utils.isin(level.objects, stairs).nonzero())):
+        if not force and any(dis[p] != -1 for p in zip(*utils.isin(level.objects, stairs).nonzero())):
             return False
         self._unblock_turn[key] = now
         reach = int((dis != -1).sum())
@@ -580,19 +595,299 @@ class MinetownTrip:
             agent.last_bfs_step = -1
             tool = dive.digging_tool()
             essential = sum(i.weight() for i in items.all_items if i.equipped or i is tool)
-            if wide >= reach + 15 and essential <= 540:
+            if (wide >= reach + 15 or (force and wide > reach)) and essential <= 540:
                 self.log(f'unblock on {key}: carrying {items.total_weight:.0f}, a squeeze reaches {wide} squares '
                          f'instead of {reach}: dropping to 550')
                 agent._squeeze_cap_until = now + 400
                 agent.inventory.arrange_items().run()
                 agent.inventory.unreachable_items_until[agent.inventory._here()] = now + 5000
                 return True
-        if dive.turns_on_level() >= TRAPS_AFTER_TURNS and utils.isin(level.objects, G.TRAPS).any() and \
+        traps = utils.isin(level.objects, G.TRAPS)
+        if force and traps.any() and agent._last_turn - agent._allow_walking_through_traps_turn <= 50:
+            # the safe traps are open and the frontier walk still has nothing in reach: the mild ones too
+            # (agent.MILD_TRAPS: an anti-magic field, a rust trap)
+            if jf_config.TRIP_MILD_TRAPS and utils.isin(level.objects, agent.MILD_TRAPS).any() and \
+                    agent._last_turn - agent._allow_mild_traps_turn > 50:
+                agent._allow_mild_traps_turn = agent._last_turn
+                agent._allow_walking_through_traps_turn = agent._last_turn
+                agent.last_bfs_step = -1
+                self.log(f'unblock on {key}: {reach} squares in reach, nothing behind the safe traps: walking '
+                         f'through anti-magic fields and rust traps too')
+                return True
+            return False
+        if (force or dive.turns_on_level() >= TRAPS_AFTER_TURNS) and traps.any() and \
                 agent._last_turn - agent._allow_walking_through_traps_turn > 50:
-            self.log(f'unblock on {key}: {reach} squares in reach, walking through the safe known traps')
+            self.log(f'unblock on {key}: {reach} squares in reach, walking through the safe known traps'
+                     f'{" (frontier walked out)" if force else ""}')
             dive._walk_through_traps(climbing=True)
             return True
         return False
+
+    def _frontier_walk(self, found):
+        """TRIP_FRONTIER_WALK: AutoAscend's explore1 without its searching -- it walks to the nearest reachable
+        square that borders unseen ground (and still gathers items and disarms a trap in a chokepoint), and has
+        nothing to do once no such square is left. True: it walked; False: nothing unexplored is in reach."""
+        agent = self.agent
+        strat = Strategy(lambda: agent.exploration.explore1(
+            NO_SEARCH, trap_search_offset=0, kick_doors=False, check_altar_alignment=False).strategy())
+        return bool(strat.until(agent, self.dive._budgeted(found)).run(return_condition=True))
+
+    def seek(self, stairs, found):
+        """Look for something on a Mines level (`found()` says when it is in reach; `stairs` is the staircase kind
+        unblock() works for, None on the town level): the frontier walk first; with nothing left to walk to, what
+        is wanted is cut off and unblock() opens its next rung at once, or a locked door is kicked (_kick_out).
+        False: none of them had anything to do -- the caller's own exploration (the searching one) takes over, as
+        before."""
+        # hypothesis: THE TRIP NEVER STALLS ON A LEVEL. On 100 fresh games the parent's trip used the temple in 54%;
+        # the largest loss after "no trip at all" (dead in the grind, 15%) was the level budget: 13 trips stood
+        # 1500 turns on a Mines level without reaching its '>'. Their replays show no wall at all in most of them:
+        # half of the trip's actions are searches (explore1 searches every dead-end nook of the cave 15 times), a
+        # known trap or squeeze is opened only after 150-350 turns and then for 50 turns in every 80, and four
+        # things the BFS calls a wall are never dealt with. Ideas tried, each measured against the parent on the
+        # same development seeds (used = games that reached the town and got an altar flash; est = progress x
+        # (1 + 0.3 x used)); the ones that helped are combined here:
+        #   1. the frontier walk (_frontier_walk: explore1 with no search priority in reach; mkmap caves have no
+        #      secret doors or corridors) + the forced unblock rung the moment that walk has nothing left
+        #      (unblock(force=True): any squeeze gain, the safe traps at once, then anti-magic fields and rust traps
+        #      -- agent.MILD_TRAPS; never polymorph / sleeping gas / fire / magic traps, never a trap door or hole).
+        #      60 games: level-budget ends 11 -> 2, used 60% -> 67%, raw progress 0.430 -> 0.410, est 0.520 -> 0.512;
+        #   2. + the same walk on the town level and a kicked door when shut in a stair room (_kick_out; the towns
+        #      built from rooms lock 1 door in 8, and 2 trips of 60 sat 1500-3000 turns behind one). 100 games:
+        #      used 54% -> 59%, raw 0.380 -> 0.374, est 0.454 -> 0.462; the kick opened its door in 4 trips of 4;
+        #   3. + a peaceful in the only passage is waited for (_wait_for_peaceful) and a boulder in it is dug apart or
+        #      pushed (_boulder_out), + the two livelock fixes found in these replays (UNTRAP_TARGET_FIX in
+        #      exploration_logic.untrap_traps, OILSKIN_SUIT_FIRST in inventory.wear_oilskin_cloak: 4 of the parent's
+        #      100 games swapped a cloak on and off for 400-9500 turns). 100 games (0-14, 386141-386150,
+        #      52000-52034, 64000-64039): used 54% -> 61%, level-budget ends 13 -> 1, raw 0.380 -> 0.382,
+        #      est 0.454 -> 0.475; no game aborted;
+        #   held-out (run once, read afterwards): 19333-19392 (60 games): raw 0.366 -> 0.390, est 0.447 -> 0.478,
+        #      used 58% -> 56% (half of that block ran on an overloaded machine, where a few games take another
+        #      path); 20560-20589 (30 games): raw 0.416 -> 0.400, est 0.486 -> 0.489, used 47% -> 60%, level-budget
+        #      ends 5 -> 2. Together, 90 games: raw 0.383 -> 0.393, est 0.460 -> 0.482, used 54% -> 57%.
+        #   Measured and left out: the same frontier walk for an unknown '<' on the climb back to the town
+        #      (20560-20589: est 0.489 -> 0.483, nothing gained).
+        # Not built / dropped: Orcish Town's altar (7-9% of games; behind a wall, 5-15 orc-captains and Uruk-hai
+        # inside: /refs/history.md #2 breached it and 2 of 4 heroes died), an AC gate for the trip (deaths by
+        # starting AC over 85 trips: >= 4: 3 of 15, <= 3: 2 of 70 -- too few to gate on), the fire / magic /
+        # sleeping-gas traps of #2's ladder. What is left: deaths on the trip (5-8 in 100: soldier ants, poison,
+        # a mumak or lycanthrope on the town level), Orcish Town, a hidden Mines branch (6%).
+        # sources: https://nethackwiki.com/wiki/Minetown (the seven maps; Orcish Town's wall, bars and garrison;
+        # what the Watch minds) ; NetHack 3.6.6 dat/mines.des as fetched from
+        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des (minefill:
+        # INIT_MAP mines, no doors, six random traps; minetn-1 "the altar's defiled; useful for BUC but never
+        # coaligned") ; https://nethackwiki.com/wiki/Door (the Watch reacts to a kicked door only when a watchman
+        # sees it; "Closed for inventory" marks a shop's locked door) ;
+        # https://nethackwiki.com/wiki/Movement_tactics (the 600 squeeze rule; a boulder needs a free square
+        # behind it) ; player discussions: https://gamefaqs.gamespot.com/boards/582497-nethack/42269598 ("How to
+        # open locked doors? aka 'How dare you break my door'": kick the unmarked ones, leave the shop's) and
+        # https://groups.google.com/g/rec.games.roguelike.nethack/c/CN7lUjtzw3Q (what the Watch sees in Minetown) ;
+        # NetHack 3.6.6 src/mkmap.c (join_map: every cave region is joined, nothing is hidden), src/dokick.c
+        # (watchman && couldsee), src/trap.c (ANTI_MAGIC: drain_en without magic resistance; RUST_TRAP: one worn
+        # piece rusts), src/hack.c (moverock, test_move) ; /refs/history.md #2 (the same stalls and the frontier
+        # walk / door kick, discarded on the judge's seeds together with its Orcish Town breach and its all-trap
+        # ladder, which are left out here) ; /refs/top/README.md and /refs/reference/README.md (skimmed: the top
+        # programs are dive-first engines without a Minetown trip; reference #862/#369 end their trip on the town's
+        # recognition and have no stall handling to port).
+        agent = self.agent
+        level = agent.current_level()
+        if not jf_config.TRIP_FRONTIER_WALK or level.dungeon_number != Level.GNOMISH_MINES or \
+                agent.character.prop.blind:
+            return False
+        if found():
+            return False
+        before = agent.step_count
+        if self._frontier_walk(found) or agent.step_count != before:
+            return True
+        if agent.current_level().key() != level.key():
+            return False
+        if jf_config.TRIP_PEACEFUL_WAIT and self._wait_for_peaceful():
+            return True
+        if stairs is not None and jf_config.TRIP_UNBLOCK_NOW and self.unblock(stairs, force=True):
+            return True
+        if jf_config.TRIP_BOULDER and self._boulder_out():
+            return True
+        return bool(jf_config.TRIP_KICK_OUT and self._kick_out())
+
+    def _wait_for_peaceful(self):
+        """TRIP_PEACEFUL_WAIT: the frontier walk has nothing left in reach, and the BFS takes every peaceful's square
+        for a wall. When more of the level is in reach with those squares open, a peaceful dwarf, gnome or
+        townsman standing in a one-square passage is what cuts us off: wait for it to move on (it does: peacefuls
+        wander) instead of walking the traps or dropping the pack -- for PEACEFUL_WAIT_TURNS a level at most."""
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        peaceful = agent.monster_tracker.peaceful_monster_mask
+        if not peaceful.any() or self._peaceful_waited.get(key, 0) >= PEACEFUL_WAIT_TURNS:
+            return False
+        dis = agent.bfs()
+        opened = agent.bfs(open_mask=peaceful)
+        agent.last_bfs_step = -1
+        if int((opened != -1).sum()) <= int((dis != -1).sum()) + int(peaceful.sum()):
+            return False
+        if self._hostiles_within(3):
+            return False
+        if key not in self._peaceful_waited:
+            self.log(f'frontier walked out on {key} with {int((dis != -1).sum())} squares in reach, '
+                     f'{int((opened != -1).sum())} with the peacefuls out of the way: waiting for them to move')
+        t0 = int(agent.blstats.time)
+        self.dive._task('minetown trip: wait for a peaceful to move')
+        agent.search(3)
+        self._peaceful_waited[key] = self._peaceful_waited.get(key, 0) + max(1, int(agent.blstats.time) - t0)
+        return True
+
+    def _boulder_out(self):
+        """TRIP_BOULDER: the frontier walk has nothing left in reach and a boulder stands between the squares we can
+        walk and ground we cannot (AutoAscend's BFS never plans through a boulder, and nothing in the explorer
+        pushes one). With a pick-axe or mattock it is dug apart from a square straight beside it (dig.c: a boulder
+        gives way like rock; not on the town level); else it is pushed from the reachable side when the square
+        behind it is not known to be a wall or another boulder (hack.c moverock). A boulder that did not move
+        BOULDER_TRIES times from one side is left alone."""
+        agent = self.agent
+        dive = self.dive
+        bl = agent.blstats
+        level = agent.current_level()
+        key = level.key()
+        prop = agent.character.prop
+        if level.dungeon_number != Level.GNOMISH_MINES or prop.blind or prop.stun or prop.confusion or \
+                prop.hallu or prop.polymorph or self._hostiles_within(3):
+            return False
+        boulders = utils.isin(agent.glyphs, G.BOULDER)
+        if not boulders.any():
+            return False
+        dis = agent.bfs()
+        height, width = dis.shape
+        mons = agent.monster_tracker.monster_mask | agent.monster_tracker.peaceful_monster_mask
+        tool = None
+        if jf_config.PICK_TUNNEL and not self.is_town_level(level) and int(bl.time) >= dive._dig_blocked_until:
+            tool = dive.digging_tool()
+            if tool is not None and ' mattock' in _words(tool) and agent.inventory.items.off_hand is not None:
+                tool = None   # (dig_toward drops the shield for the two-handed mattock: not for a boulder)
+        walls = utils.isin(level.objects, G.WALL)
+        best = None
+        for by, bx in zip(*boulders.nonzero()):
+            by, bx = int(by), int(bx)
+            # something lies behind it: a square beside the boulder that we cannot walk to and that is open or unseen
+            behind = False
+            for ny in range(max(0, by - 1), min(height, by + 2)):
+                for nx in range(max(0, bx - 1), min(width, bx + 2)):
+                    if (ny, nx) != (by, bx) and dis[ny, nx] == -1 and not boulders[ny, nx] and \
+                            (level.walkable[ny, nx] or not level.seen[ny, nx]) and not walls[ny, nx]:
+                        behind = True
+            if not behind:
+                continue
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if not dy and not dx:
+                        continue
+                    y, x = by - dy, bx - dx
+                    ty, tx = by + dy, bx + dx
+                    if not (0 <= y < height and 0 <= x < width) or dis[y, x] == -1:
+                        continue
+                    straight = not (dy and dx)
+                    if tool is not None and straight and \
+                            self._boulder_tries.get((key, (y, x), (by, bx), 'dig'), 0) < TUNNEL_SQUARE_TRIES:
+                        cand = ((0, 0, int(dis[y, x])), (y, x), (by, bx), 'dig')
+                    else:
+                        if not (1 <= ty < height - 1 and 1 <= tx < width - 1) or boulders[ty, tx] or \
+                                mons[ty, tx] or walls[ty, tx] or \
+                                (level.seen[ty, tx] and not level.walkable[ty, tx]):
+                            continue
+                        if self._boulder_tries.get((key, (y, x), (by, bx), 'push'), 0) >= BOULDER_TRIES:
+                            continue
+                        cand = ((1 + (not level.walkable[ty, tx]), int(not straight), int(dis[y, x])),
+                                (y, x), (by, bx), 'push')
+                    if best is None or cand[0] < best[0]:
+                        best = cand
+        if best is None:
+            return False
+        _, spot, boulder, how = best
+        dive._task(f'minetown trip: {how} the boulder in the way')
+        before = agent.step_count
+        if (int(bl.y), int(bl.x)) != spot:
+            agent.go_to(*spot, max_steps=12, callback=lambda: bool(self._hostiles_within(3)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        k = (key, spot, boulder, how)
+        self._boulder_tries[k] = self._boulder_tries.get(k, 0) + 1
+        if self._boulder_tries[k] == 1:
+            self.log(f'frontier walked out on {key} ({int((dis != -1).sum())} squares in reach): {how} the boulder '
+                     f'at {boulder} from {spot}' + (f' with {tool.text!r}' if how == 'dig' else ''))
+        if how == 'dig':
+            dive.dig_toward(tool, *boulder)
+        else:
+            try:
+                agent.move(agent.calc_direction(spot[0], spot[1], *boulder))
+            except Exception as e:
+                if agent.step_count == before:
+                    self.log(f'boulder at {boulder} did not move: {type(e).__name__} {(agent.message or "")[:70]!r}')
+        agent.last_bfs_step = -1
+        if agent.step_count == before:
+            agent.search()
+        return True
+
+    def _kick_out(self):
+        """TRIP_KICK_OUT: shut in behind a locked door on a Mines level. The town maps built from rooms (Town Square,
+        Alley Town, College Town) put each staircase in a room of its own, joined to the town by corridors through
+        doors that may be locked, and explore1 never kicks a door in the Mines (the Watch). The Watch only minds a
+        door kicked where a watchman sees it (dokick.c: is_watchman && couldsee), so: the frontier walk has nothing
+        left, only a stair room and its corridors are in reach (KICK_OUT_REACH squares; the town is ~450), a closed
+        door next to them did not open, nobody of the town is in view, we are not in a shop -- kick it."""
+        agent = self.agent
+        dive = self.dive
+        bl = agent.blstats
+        level = agent.current_level()
+        now = int(bl.time)
+        if level.dungeon_number != Level.GNOMISH_MINES or now < getattr(agent, '_no_kick_until', -1):
+            return False
+        y0, x0 = int(bl.y), int(bl.x)
+        if level.shop[y0, x0] or level.shop_interior[y0, x0]:
+            return False
+        prop = agent.character.prop
+        if prop.polymorph or prop.blind or prop.hallu or prop.confusion or prop.stun:
+            return False
+        if utils.isin(agent.glyphs, dive._town_glyphs()).any():
+            return False
+        dis = agent.bfs()
+        reach = int((dis != -1).sum())
+        if reach > KICK_OUT_REACH:
+            return False
+        best = None
+        for y, x in zip(*utils.isin(agent.glyphs, G.DOOR_CLOSED).nonzero()):
+            y, x = int(y), int(x)
+            if level.door_open_count[y, x] < 1 or self._kicks.get((level.key(), (y, x)), 0) >= KICK_OUT_TRIES:
+                continue
+            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                if 0 <= ny < dis.shape[0] and 0 <= nx < dis.shape[1] and dis[ny, nx] != -1 and \
+                        (best is None or dis[ny, nx] < best[0]):
+                    best = (int(dis[ny, nx]), (ny, nx), (y, x))
+        if best is None:
+            return False
+        _, spot, door = best
+        dive._task('minetown trip: kick the locked door')
+        before = agent.step_count
+        if (y0, x0) != spot:
+            agent.go_to(*spot, max_steps=10, callback=lambda: bool(self._hostiles_within(2)))
+            if agent.step_count == before:
+                agent.search()
+            return True
+        if self._hostiles_within(2):
+            return False
+        k = (level.key(), door)
+        sign = ''.join(c for c in (agent.inventory.engraving_below_me or '').lower() if c.isalpha())
+        if sign and sign != 'elbereth':
+            # "Closed for inventory" lies in front of a shut shop (worn or not): its keeper kills for a broken door
+            self._kicks[k] = KICK_OUT_TRIES
+            self.log(f'door at {door}: a sign {sign!r} lies before it, not kicked')
+            return False
+        self._kicks[k] = self._kicks.get(k, 0) + 1
+        if self._kicks[k] == 1:
+            self.log(f'shut in ({reach} squares in reach) behind the door at {door}: kicking it')
+        agent.kick(*door)
+        if agent.glyphs[door] not in G.DOOR_CLOSED:
+            self.log(f'door at {door} is open after {self._kicks[k]} kicks: {(agent.message or "")[:80]!r}')
+        agent.last_bfs_step = -1
+        return True
 
     def post_hold(self):
         """Back in the main dungeon after the trip: the dive proper starts with an emergency prayer in hand, as the
@@ -655,6 +950,8 @@ class MinetownTrip:
         before = agent.step_count
         decided = lambda: self.is_town_level(agent.current_level()) or \
             self._middle_seen(agent.current_level()) >= MIDDLE_SEEN or agent.current_level().key() != key
+        if self.seek(G.STAIR_DOWN, decided):
+            return True
         explored = dive.exploration(0).until(agent, dive._budgeted(decided)).run(return_condition=True)
         if not explored and agent.current_level().key() == key and not decided():
             self._filler.add(key)
@@ -1112,6 +1409,10 @@ class MinetownTrip:
         dive._task('minetown trip: find the temple')
         found = lambda: any(agent.bfs()[p] != -1 or dive._neighbour_distance(agent.bfs(), *p) is not None
                             for p in self._altars())
+        if jf_config.TRIP_TOWN_WALK and self.seek(None, found):
+            if agent.step_count == before:
+                agent.search()
+            return True
         if not dive.exploration(0).until(agent, dive._budgeted(found)).run(return_condition=True):
             dive.exploration(None).until(agent, dive._budgeted(found)).run()
         if agent.step_count == before:
