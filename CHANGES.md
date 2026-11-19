@@ -1,26 +1,14 @@
-# Minetown trip, fifth iteration: the squeeze rule asks the terrain; #6's stall handling re-tried (2026-11-18)
+# Minetown trip, fourth iteration: through the Mines' tight spots (2026-11-19)
 
-Engine `nhbot_valk79297_armor` only. `SQUEEZE_CORNER_FIX` (`agent.bfs` / `agent._corner_open`, `utils.bfs`): the
-path-finder's diagonal-squeeze rule (more than 600 carried) now asks the terrain for the two corner squares, as
-hack.c `test_move` / `bad_rock` do -- a known trap, a boulder, a peaceful monster or a forbidden square at a cave
-corner is not rock (never changed in Sokoban, where boulders do count). On top of it the stall handling of the fourth
-iteration below (discarded on the judge's games, where three of its trips died on other paths) is kept unchanged.
-Parent -> this version: development seeds (0-14, 386141-386150) temple used 16 -> 20 of 25, raw 0.459 -> 0.460;
-held-out 49728-49787 temple used 23 -> 32 of 60, raw 0.394 -> 0.399. Tried and dropped: the trip at XL 6
-(raw 0.460 -> 0.386 on the development seeds). The hypothesis, numbers and sources are at `agent._corner_open`.
-
-# Minetown trip, fourth iteration: the trip never stalls on a level (2026-11-18)
-
-Engine `nhbot_valk79297_armor` only (`minetown_trip.py`: `seek`, `_frontier_walk`, `unblock(force=True)`, `_kick_out`,
-`_wait_for_peaceful`, `_boulder_out`; flags in `jf_config.py`). On the trip's Mines levels the way on is looked for with
-a frontier walk (AutoAscend's explore1 without its searching: the Mines' caves hide nothing), and the moment that walk
-has nothing left in reach the obstacle is dealt with at once instead of after 150-350 turns: a peaceful in the only
-passage is waited for, a squeeze or the safe known traps are opened (then anti-magic fields and rust traps, never the
-dangerous kinds), a boulder is dug apart or pushed, and a locked door of a stair room in a room-built town is kicked
-when nobody of the town is in view. Two livelocks found in the replays are fixed alongside: `UNTRAP_TARGET_FIX`
-(`exploration_logic.untrap_traps` walked to a trap it was never going to disarm, every 10 steps) and
-`OILSKIN_SUIT_FIRST` (`inventory.wear_oilskin_cloak` put the cloak back on each time `wear_best_stuff` took it off for
-a suit: 4 of 100 parent games). Numbers and sources are at `minetown_trip.seek`.
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `agent.py`, `utils.py`, flags in `jf_config.py`). Trips that
+ended with a living hero and no temple stood behind a diagonal gap between two cave corners with a pack over 600, or
+in a town's stair room behind a locked door. `SQUEEZE_CORNER_FIX`: on the trip's Mines levels the path-finder's
+squeeze rule asks the terrain, as `hack.c` `test_move` does (a trap, boulder or peaceful beside a corner is not
+rock). The way-down tunnel (`TUNNEL_DOWN_AFTER` 300): a `>` out of reach for 300 turns with known floor behind the
+obstacle is tunnelled to with the carried pick-axe. `TRIP_KICK_OUT`: shut in a stair room with nobody of the town in
+view, the locked door is kicked open. Measured on 85 games against the parent: temple used 60% -> 65%, Minetown
+reached 67% -> 76%, score unchanged. Numbers, dropped ideas and sources: the fourth-iteration block at the top of
+`minetown_trip.py`.
 
 # Minetown trip, third iteration: the altar's flash and the way back (2026-11-11)
 

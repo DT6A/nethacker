@@ -112,7 +112,6 @@ class Agent:
 
         # when (number of turn) there was last decision about allowing these actions (e.g. agent is somewhat stuck)
         self._allow_walking_through_traps_turn = -float('inf')
-        self._allow_mild_traps_turn = -float('inf')
         self._allow_attack_all_turn = -float('inf')
         self._hb_actions = Counter()   # actions and go_to targets since the last STATUS heartbeat
         self._hb_gotos = Counter()
@@ -2444,10 +2443,8 @@ class Agent:
             # climbing out of a branch (CLIMB_NO_FALL)
             dive = self.global_logic.dive
             exits_ok = dive.diving and not (jf_config.CLIMB_NO_FALL and dive.climbing())
-            unsafe = self.UNSAFE_TRAPS
-            if self._last_turn - self._allow_mild_traps_turn <= 50:
-                unsafe = unsafe - self.MILD_TRAPS   # TRIP_MILD_TRAPS (minetown_trip.unblock)
-            walkable &= ~utils.isin(level.objects, unsafe if exits_ok else unsafe | self.LEVEL_EXIT_TRAPS)
+            walkable &= ~utils.isin(level.objects, self.UNSAFE_TRAPS if exits_ok
+                                    else self.UNSAFE_TRAPS | self.LEVEL_EXIT_TRAPS)
 
         # a shopkeeper blocks the door to anyone carrying a pick-axe or mattock ('Will you please leave
         # your pick-axe outside?'): walking to the goods (check_items) looped at shop doors for 3000-16000
@@ -2486,12 +2483,17 @@ class Agent:
             self.current_level().dungeon_number != Level.SOKOBAN
         if can_squeeze and not force_squeeze and jf_config.ROBUST_FIXES2 and self._squeeze_blocked():
             can_squeeze = False
-        dis = utils.bfs(y, x,
-                        walkable=walkable,
-                        walkable_diagonally=walkable_diagonally,
-                        can_squeeze=can_squeeze,
-                        corner_open=self._corner_open(level, walkable),
-                        )
+        corner_open = self._corner_open(level)
+        if corner_open is None:
+            dis = utils.bfs(y, x,
+                            walkable=walkable,
+                            walkable_diagonally=walkable_diagonally,
+                            can_squeeze=can_squeeze,
+                            )
+        else:
+            dis = utils.bfs_corner(int(y), int(x), np.ascontiguousarray(walkable),
+                                   np.ascontiguousarray(walkable_diagonally), bool(can_squeeze),
+                                   np.ascontiguousarray(corner_open))
 
         if y == self.blstats.y and x == self.blstats.x and not force_squeeze and open_mask is None:
             self.last_bfs_dis = dis
@@ -2502,69 +2504,32 @@ class Agent:
     UNSAFE_TRAPS = frozenset({SS.S_polymorph_trap, SS.S_fire_trap, SS.S_sleeping_gas_trap, SS.S_magic_trap,
                               SS.S_anti_magic_trap, SS.S_rust_trap})
     LEVEL_EXIT_TRAPS = frozenset({SS.S_trap_door, SS.S_hole, SS.S_level_teleporter})
-    MILD_TRAPS = frozenset({SS.S_anti_magic_trap, SS.S_rust_trap})
 
-    # hypothesis: the Minetown trip (stage "use Minetown": the parent used the temple in 64% of 25 development games
-    # and 37% of 30 held-out ones) is lost mostly where the hero stands on a Mines level whose way on the path-finder
-    # does not see -- 12% of all games end their trip on the 1500-turn level budget. Ideas tried this iteration, each
-    # measured against the parent on the same seeds, and the ones combined here:
-    #   1. SQUEEZE_CORNER_FIX (new; this function): the diagonal-squeeze rule asks the terrain, as hack.c does. The
-    #      BFS refused a diagonal step to a hero carrying over 600 unless a neighbour was in its own `walkable` mask,
-    #      from which known traps, boulders, peaceful monsters and forbidden squares are taken out -- one trap or
-    #      peaceful dwarf at a cave corner closed a passage the game leaves open (public seed 13: 1740 turns on Mines
-    #      2 behind one trap corner; a development game: 1900 turns on ONE square with 240 squares open). Every
-    #      level-budget trip looked at carried 610-960.
-    #   2. the stall handling of /refs/history.md #6, re-tried (minetown_trip.seek: a frontier walk instead of the
-    #      search-everything exploration, a squeeze / the safe and mild traps opened the moment that walk has nothing
-    #      left, a peaceful in the passage waited for, a boulder dug or pushed, a locked stair-room door kicked) with
-    #      its two proven livelock fixes (UNTRAP_TARGET_FIX, OILSKIN_SUIT_FIRST). #6 was discarded on the judge's 25
-    #      games: three of its trips died on public seeds 0, 2 and 4 (reproduced here, 0.075 each). With 1. those
-    #      three games take other paths (0.466 / 0.126 / 0.426) and nothing else of #6 is changed.
-    #      1 + 2 against the parent -- development (0-14, 386141-386150): temple used 16 -> 20 of 25, raw progress
-    #      0.459 -> 0.460, est (progress x the run's multiplier rebuilt from XL, AC, temple use and holes) 0.433 ->
-    #      0.467; public 0-14 alone: used 10 -> 13 of 15, raw 0.517 -> 0.509; held-out 49728-49787 (60 games, each
-    #      block of 30 run once and read afterwards): used 23 -> 32 of 60 (38% -> 53%), raw 0.394 -> 0.399, est
-    #      0.353 -> 0.376 (0.339 -> 0.361 and 0.368 -> 0.392 on the two blocks), games ending on Dlvl <= 5: 13 -> 13.
-    #      (With the multiplier floored at 1 -- the form that comes closest to the run's public figure for the
-    #      parent, 0.5421: 0.553 for the parent's games as replayed here, where seed 1 scored 0.16 higher than in
-    #      the judge's run, against 0.48 unfloored -- the same games give 0.5528 -> 0.5529 on the public seeds and
-    #      0.408 -> 0.419 held-out: the temple's +0.30 then only counts once XL and AC have paid off the dig-dive's
-    #      -0.50, so the next gain for this stage would be AC and XL at the dive rather than more temple visits.)
-    #   3. an earlier trip (XL 6 with AC <= 3 instead of the dive's XL 7-8, to replace the last third of the grind,
-    #      where the hero lives on prayer): dropped -- development: raw 0.460 -> 0.386, 6 games ending on Dlvl <= 5
-    #      instead of 2 (rothes, a vrock and a homunculus met at XL 6 with ~50 HP).
-    #   4. Orcish Town's altar (4 of 55 games): not built -- the town is fully walled (mines.des minetn-1), 6-15
-    #      orc-captains / Uruk-hai press against the wall being dug, and #2's breach lost 2 heroes in 4.
-    # What is left after 1 + 2 (55 games): no Mines branch found on Dlvl 2-4 (11%), Orcish Town (7%), dead in the
-    # grind before the trip (9%).
-    # sources: NetHack 3.6.6 src/hack.c test_move() ("if (dx && dy && bad_rock(youmonst.data, ux, y) &&
-    # bad_rock(youmonst.data, x, uy))" -> cant_squeeze_thru(): inv_weight() + weight_cap() > 600: "You are carrying
-    # too much to get through") and bad_rock() ("(Sokoban && sobj_at(BOULDER, x, y)) || (IS_ROCK(levl[x][y].typ) &&
-    # ...)"), read at https://nethackwiki.com/wiki/Source:NetHack_3.6.0/src/hack.c ;
-    # https://nethackwiki.com/wiki/Movement_tactics (the 600 rule "applies to all tight gaps, not just those in the
-    # Gnomish Mines"; one monster at a time in a corridor) ; https://nethackwiki.com/wiki/Gnomish_Mines (fillers:
-    # caverns, 50% dark, 6 random traps; "you will tend to get swarmed as you enter each new level"; lawful dwarves
-    # leave a lawful human alone) ; https://nethackwiki.com/wiki/Minetown (Orcish Town: "fully walled", "need a
-    # digging tool", poisoned arrows through the bars; what the Watch minds) ; https://nethackwiki.com/wiki/Valkyrie
-    # ("an AC of roughly -5 by the end of the Gnomish Mines is a reasonable goal"; for a lawful human "most dwarves
-    # are peaceful") ; NetHack 3.6.6 dat/mines.des from
-    # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des (minefill: STAIR
-    # random; minetn-1: the closed wall, ALTAR:(20,13),noalign "useful for BUC", the orc army inside) ; player
-    # discussions: https://nethackwiki.com/wiki/Forum:OrcTown ("kind of crippling to early game", "break in with a
-    # wand of digging right into the temple") and https://groups.google.com/g/rec.games.roguelike.nethack/c/ugsH00JMaqw
-    # ("Lets face it: it's the Altar": curse-testing works on any altar) ; /refs/history.md #6 (the stall handling
-    # and its measurements on 190 games), #2 (the Orcish Town breach, the trip at XL 6 "not built") ;
-    # /refs/top/README.md (the top programs of all characters are dive-first engines of this family with no
-    # Minetown trip to port) ; /refs/reference/README.md (#918/#862: buy_protection and town recognition, already
-    # in the parent's trip).
-    def _corner_open(self, level, walkable):
-        """SQUEEZE_CORNER_FIX (jf_config): the squares that are open ground for the diagonal-squeeze rule. hack.c
-        test_move refuses a diagonal step for a load over 600 only when BOTH orthogonal neighbours are bad_rock() --
-        solid rock or wall (and, in Sokoban only, a boulder). The BFS asked its own `walkable` mask instead, from
-        which known traps, boulders, peaceful monsters and forbidden squares have been removed: one of those at a
-        cave corner closed a passage the game leaves open. Outside Sokoban the terrain itself is asked."""
-        if not jf_config.SQUEEZE_CORNER_FIX or level.dungeon_number == Level.SOKOBAN:
-            return walkable
+    def _corner_open(self, level):
+        """SQUEEZE_CORNER_FIX (jf_config): the squares that are not rock for the diagonal-squeeze rule, or None where
+        the BFS keeps its old rule (everywhere but the Gnomish Mines from the start of the Minetown trip on)."""
+        # hypothesis: (the rule fix of this iteration's change -- the whole of it is described at the top of
+        # minetown_trip.py, "fourth iteration") hack.c test_move refuses a diagonal step to a hero carrying more
+        # than 600 only when BOTH orthogonal neighbours are bad_rock() -- solid rock or wall (a boulder only in
+        # Sokoban). The BFS asked its own `walkable` mask instead, from which known traps, boulders, peaceful
+        # monsters and forbidden squares have been taken out: one trap, boulder or peaceful dwarf beside a cave
+        # corner closed a passage the game leaves open, and the trip stood behind it until its level budget ran out.
+        # On the trip's Mines levels the terrain itself (level.walkable) is asked. Unseen squares count as rock, so
+        # the rule only opens steps the game allows; a squeeze the game has just refused switches it off again.
+        # sources: NetHack 3.6.x src/hack.c, read at https://nethackwiki.com/wiki/Source:NetHack_3.6.1/src/hack.c --
+        # test_move(): "if (dx && dy && bad_rock(youmonst.data, ux, y) && bad_rock(youmonst.data, x, uy))" ->
+        # cant_squeeze_thru(): "amt = ... inv_weight() + weight_cap() ... if (amt > 600) return 2" ("You are carrying
+        # too much to get through."); bad_rock(): "(Sokoban && sobj_at(BOULDER, x, y)) || (IS_ROCK(levl[x][y].typ)
+        # && ...)" ; /refs/history.md #9 (found the rule; bundled with a new explorer for the trip, not kept).
+        if not jf_config.SQUEEZE_CORNER_FIX or level.dungeon_number != Level.GNOMISH_MINES:
+            return None
+        try:
+            if self.global_logic.dive.minetown.start_turn is None:
+                return None
+        except AttributeError:
+            return None
+        if jf_config.ROBUST_FIXES2 and self._squeeze_blocked():
+            return None   # the game has just refused a squeeze: the old, stricter rule until that is cleared
         return level.walkable
 
     def _diagonal_step_ok(self, masks, y, x, ty, tx):

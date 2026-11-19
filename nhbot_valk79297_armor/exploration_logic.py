@@ -586,28 +586,9 @@ class ExplorationLogic:
             yield False
             return
 
-        if jf_config.UNTRAP_TARGET_FIX:
-            # hypothesis: a livelock in AutoAscend's explore1, not a tactic. The walk went to the nearest square
-            # beside ANY web / bear trap / land mine / dart or arrow trap, but #untrap is only tried on those
-            # worth_untrapping (in a chokepoint): with the nearest trap in open ground and a "worth" one elsewhere
-            # on the level, the hero walked to the first, did nothing there, and was pulled back to it every 10
-            # steps for the rest of her stay (dev seed 14, Mines 1: 290 round trips between that trap and an
-            # unexplored square 13 steps away, the trip's level budget spent, '>' never seen). Only the traps
-            # that will be disarmed are walked to, and never onto the trap's own square (reachable while the
-            # walk-through-traps window is open; standing on it nothing is disarmed either). Expected: no such
-            # stalls; no other change.
-            # sources: this file (trap_locations is filtered by worth_untrapping, trap_mask was not); NetHack 3.6.6
-            # trap.c untrap() / try_disarm() (the trap must be on an adjacent square: "You know of no traps there",
-            # or dountrap's own-square branch which only handles a container); replay of dev seed 14.
-            trap_mask = np.zeros_like(trap_mask)
-            for trap_y, trap_x in trap_locations:
-                trap_mask[trap_y, trap_x] = True
-        trap_squares = trap_mask.copy()
         trap_mask = cv2.dilate(trap_mask.astype(np.uint8), kernel=np.ones((3, 3))).astype(bool)
         bfs = self.agent.bfs()
         trap_mask[self.agent.blstats.y, self.agent.blstats.x] = 0  # don't try to untrap when standing on it
-        if jf_config.UNTRAP_TARGET_FIX:
-            trap_mask &= ~trap_squares
         trap_mask &= (bfs >= 0)
         if not trap_mask.any():
             yield False

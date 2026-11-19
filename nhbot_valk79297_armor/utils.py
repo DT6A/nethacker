@@ -10,16 +10,40 @@ import toolz
 from .strategy import Strategy
 
 
-def bfs(y, x, *, walkable, walkable_diagonally, can_squeeze, corner_open=None):
-    # corner_open (SQUEEZE_CORNER_FIX, see jf_config): the squares that are not rock for hack.c's diagonal-squeeze
-    # test; None: the walkable mask itself, as before
-    if corner_open is None:
-        corner_open = walkable
-    return _bfs(y, x, walkable, walkable_diagonally, can_squeeze, corner_open)
+@nb.njit(cache=True)
+def bfs(y, x, *, walkable, walkable_diagonally, can_squeeze):
+    dis = np.zeros(walkable.shape, dtype=np.int32)
+    dis[:] = -1
+    dis[y, x] = 0
+
+    buf = np.zeros((walkable.shape[0] * walkable.shape[1], 2), dtype=np.uint32)
+    index = 0
+    buf[index] = (y, x)
+    size = 1
+    while index < size:
+        y, x = buf[index]
+        index += 1
+
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                py, px = y + dy, x + dx
+                if 0 <= py < walkable.shape[0] and 0 <= px < walkable.shape[1] and (dy != 0 or dx != 0):
+                    if (walkable[py, px] and
+                            (abs(dy) + abs(dx) <= 1 or
+                             (walkable_diagonally[py, px] and walkable_diagonally[y, x] and
+                              (can_squeeze or walkable[py, x] or walkable[y, px])))):
+                        if dis[py, px] == -1:
+                            dis[py, px] = dis[y, x] + 1
+                            buf[size] = (py, px)
+                            size += 1
+
+    return dis
 
 
 @nb.njit(cache=True)
-def _bfs(y, x, walkable, walkable_diagonally, can_squeeze, corner_open):
+def bfs_corner(y, x, walkable, walkable_diagonally, can_squeeze, corner_open):
+    """utils.bfs with the diagonal-squeeze rule asking `corner_open` (the terrain) instead of the walkable mask:
+    SQUEEZE_CORNER_FIX, see agent._corner_open. Everything else is bfs() line for line."""
     dis = np.zeros(walkable.shape, dtype=np.int32)
     dis[:] = -1
     dis[y, x] = 0
@@ -46,6 +70,20 @@ def _bfs(y, x, walkable, walkable_diagonally, can_squeeze, corner_open):
                             size += 1
 
     return dis
+
+
+def _warm_bfs_corner():
+    """Compile bfs_corner when the engine is imported (bot start-up) instead of in the first trip action that
+    needs it -- the same reason the adapter warms utils.bfs."""
+    try:
+        w = np.zeros((21, 79), dtype=bool)
+        w[10, 10:13] = True
+        bfs_corner(10, 10, w, w, False, w)
+    except Exception:
+        pass
+
+
+_warm_bfs_corner()
 
 
 def translate(array, y_offset, x_offset, out=None):

@@ -73,29 +73,14 @@ ALTAR_FLASH = True
 # tunnels sideways to the known floor behind the obstacle, digs down only when nothing is left to tunnel to, and
 # tunnels to the known '<' on the way back
 PICK_TUNNEL = True
-# TRIP_FRONTIER_WALK (minetown_trip.seek / _frontier_walk): on the Mines levels of the trip the hero looks for the
-# way on with a frontier walk -- AutoAscend's explore1 without its searching (mkmap caves have no secret doors or
-# corridors) -- instead of the search-everything exploration; the hypothesis, numbers and sources are at
-# minetown_trip.seek
-TRIP_FRONTIER_WALK = True
-# TRIP_UNBLOCK_NOW: ... and the moment that walk has nothing left in reach, unblock() opens its next rung (a squeeze
-# that reaches any new square, the safe known traps) without waiting out UNBLOCK_AFTER_TURNS / TRAPS_AFTER_TURNS
-TRIP_UNBLOCK_NOW = True
-# TRIP_MILD_TRAPS: ... and, with the safe traps open and still nothing in reach, anti-magic fields and rust traps too
-# (agent.MILD_TRAPS; never polymorph, sleeping gas, fire or magic traps, never a trap door or hole)
-TRIP_MILD_TRAPS = True
+# SQUEEZE_CORNER_FIX (agent._corner_open, utils.bfs_corner): on the Minetown trip's Mines levels the path-finder's
+# diagonal-squeeze rule asks the terrain, as hack.c test_move does (a trap, boulder or peaceful beside a cave corner
+# is not rock). With it the trip's way-down tunnel is on (minetown_trip.TUNNEL_DOWN_AFTER): see the fourth-iteration
+# notes at the top of minetown_trip.py
+SQUEEZE_CORNER_FIX = True
 # TRIP_KICK_OUT (minetown_trip._kick_out): shut in a stair room of a room-built town behind a locked door, with
-# nobody of the town in view: kick the door open
+# nobody of the town in view, the trip kicks the door open (explore1 never kicks a door in the Mines)
 TRIP_KICK_OUT = True
-# TRIP_TOWN_WALK: the frontier walk also looks for the temple on the town level (the searching exploration follows
-# when it has nothing left: the room-built towns do have secret doors)
-TRIP_TOWN_WALK = True
-# TRIP_PEACEFUL_WAIT (minetown_trip._wait_for_peaceful): ... a peaceful standing in the only passage is waited for
-TRIP_PEACEFUL_WAIT = True
-# TRIP_BOULDER (minetown_trip._boulder_out): ... a boulder in the only passage is dug apart (pick-axe) or pushed
-TRIP_BOULDER = True
-# UNTRAP_TARGET_FIX (exploration_logic.untrap_traps): walk only to the traps that will be disarmed, never onto one
-UNTRAP_TARGET_FIX = True
 # no direction (move, attack, zap) is given while stunned or confused with a shopkeeper, watchman or priest next to us:
 # the random direction would land on them (agent.direction)
 STUN_TOWN_GUARD = True
@@ -245,9 +230,6 @@ SPARE_WISHES = True
 # u_slip_free: a non-cursed slippery cloak skips a grabbing attack's wrap/hug/drown roll outright). Water
 # deaths (shark/giant eel/drowned/python) are this run's second-largest death cluster after minotaurs.
 OILSKIN_GUARD = True
-# OILSKIN_SUIT_FIRST: ... but not while wear_best_stuff has a suit or shirt to put on under it (it takes the cloak off
-# for that; putting it straight back on looped forever, see inventory.wear_oilskin_cloak)
-OILSKIN_SUIT_FIRST = True
 # a wished-for object is not formally identified (zap.c makewish: 'p - a granite ring'): name its appearance
 # after the wish (power.learn_wished). Without it SPARE_WISHES wished for an amulet of life saving again and
 # again and never wore one (base5-public s4, base5arm-jf16 s5), and castle_logic wished 3 rings of levitation,
@@ -1916,30 +1898,6 @@ AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ 
 DEEP_PRAYER_READY = True
 DEEP_PRAYER_MIN_DEPTH = 20
 DEEP_PRAYER_MAX_WAIT = 1200
-
-# SQUEEZE_CORNER_FIX (agent.bfs / agent._corner_open, utils.bfs): a proven rule fix, carried next to the trip's stall
-# handling because the trip is where it showed.
-# hypothesis: the path-finder refuses a diagonal step for a hero carrying more than 600 unless one of the two
-# orthogonal neighbours is "walkable" -- but its walkable mask has the known traps, boulders, peaceful monsters and
-# forbidden squares taken out. The game (hack.c test_move) refuses that step only when BOTH neighbours are bad_rock():
-# solid rock or wall (a boulder counts in Sokoban only). So one known trap, boulder or peaceful dwarf at a cave corner
-# closed a passage the game leaves open, for as long as the pack stayed over 600 -- and the Mines' caves are made of
-# such corners, and the Valkyrie's pack is over 600 on most trips (610-960 in every stalled trip looked at). Replays
-# of the parent's trips that ended on the level budget: public seed 13 stood 1740 turns on Mines 2 with the way west
-# past one trap corner (4 squares more with the terrain asked; the trap walk never opened it: an unsafe kind), a
-# development game stood on ONE square for 1900 turns with 240 squares open the moment the terrain is asked. With the
-# fix the corner test asks the terrain (level.walkable: what has been seen as floor, whatever stands or lies on it);
-# with 600 or less carried nothing changes (every diagonal was allowed already), nor in Sokoban.
-# sources: NetHack 3.6.6 src/hack.c test_move() ("if (dx && dy && bad_rock(youmonst.data, ux, y) &&
-# bad_rock(youmonst.data, x, uy))" -> cant_squeeze_thru(): "You are carrying too much to get through" for
-# inv_weight() + weight_cap() > 600) and bad_rock() ("(Sokoban && sobj_at(BOULDER, x, y)) || (IS_ROCK(levl[x][y].typ)
-# && ...)") as quoted at https://nethackwiki.com/wiki/Source:NetHack_3.6.0/src/hack.c ;
-# https://nethackwiki.com/wiki/Movement_tactics ("You can only pass diagonally through a tight gap if your total
-# inventory weight is 600 or less ... applies to all tight gaps, not just those in the Gnomish Mines") ;
-# https://nethackwiki.com/wiki/Gnomish_Mines (filler levels: caverns, 6 random traps each, lawful dwarves peaceful
-# to a lawful human) ; /refs/history.md #2 and #6 (the same stalls, opened there only by dropping the pack to 550 or
-# by walking through the trap).
-SQUEEZE_CORNER_FIX = True
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
