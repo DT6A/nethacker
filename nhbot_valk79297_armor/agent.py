@@ -453,6 +453,12 @@ class Agent:
                                           'Cheapskate', 'thy contribution', 'selfless', 'hopefulness',
                                           'reconciliation')):
                 jf_log.log(f'DEV msg t={t} d={dnum}:{dlvl} xl={xl} ac={ac} hp={hp}/{hpmax} gold={gold} {m!r}')
+            elif m and jf_log.enabled():
+                php = getattr(self, '_dev_prev_hp', hp)
+                if hp < php - 9 or hp * 3 < hpmax or any(k in m for k in ('bolt of', 'You zap', 'zaps', 'bounces',
+                                                                           'You faint', 'You die', 'murderer')):
+                    jf_log.log(f'DEV hurt t={t} d={dnum}:{dlvl} hp={hp}/{hpmax} (was {php}) {m!r}')
+            self._dev_prev_hp = hp
         except Exception:
             pass
 
