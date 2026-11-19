@@ -92,6 +92,87 @@ from .glyph import G, MON, Hunger
 from .level import Level
 from .strategy import Strategy
 
+# ---- sixth iteration: THE TRIPS THAT END ALIVE WITHOUT THE TEMPLE, AGAIN -- THE BREACH FROM XL 8, A SHORTER
+# ---- BRANCH SEARCH ----
+# hypothesis: (stage "use Minetown") of 130 parent games replayed with logs -- 45 fresh development games
+# 5348-5392, the held-out blocks 63532-63561 and 59936-59965, the public seeds and the extra development seeds
+# -- the temple altar was used in 74 (57%). Of the other 56, 19 heroes died before the trip and 9 on it; in 28
+# the hero was alive and the trip simply ended: 12 on the 1500-turn level budget of a Mines filler level, 11 at
+# Orcish Town's wall, 4 without the Mines branch, 1 on the town budget. The first two are what /refs/history #11
+# built SECOND_WIND and ORCISH_ALTAR for (its notes follow below as the "fifth iteration"). It was discarded on
+# the run's score, which is mean progress: both act only where the parent's trip was already over, so they move
+# the stage's figure and not that one. They are combined here, re-measured on seeds #11 never saw, with one rule
+# changed from what those games showed and one budget cut where the trip only loses heroes:
+#   1. SECOND_WIND (unchanged): fired in 9 of the parent's 12 level-budget trips; 7 of the 9 went on to use the
+#      temple and 2 found Orcish Town (one of them used its altar); nobody died on the added turns. The 3 trips
+#      it left alone stood on a level that was not opening (reach 300 -> 300, 426 -> 448, 423 -> 432).
+#   2. ORCISH_ALTAR, the breach only from XL 8 (ORC_MIN_XL 7 -> 8): in this iteration's runs 7 heroes breached
+#      the wall at XL 8 and all 7 used the altar and left the town alive; 3 breached at XL 7, as #11's rule
+#      allowed: 2 died inside (70 and 48 max HP, seven orcs with three orc-captains round the altar; an
+#      orc-captain has two weapon attacks a turn) and 1 gave the wall up. An XL 7 hero leaves the town alone
+#      again, as the parent does.
+#   3. BRANCH_TURNS 3000 -> 1700 (new): the search for the Mines branch ends where it stops finding. In all the
+#      runs of this iteration 230 trips reached the Mines, half of them within 100 turns of the trip's start, 95%
+#      within 610, the slowest after 1532; of the 19 that searched on, none found it, and 2 of the parent's 6 such
+#      heroes died in that tail (turns 2547 and 2583 of the search, on Dlvl 2-4 at XL 8-9, living on hunger
+#      prayers). On the parent's 6 such games: 1 of the 2 deaths avoided (0.117 -> 0.554; the other
+#      hero was held by her hunger past the new budget and died as before), the 4 others dive 1300 turns
+#      earlier and are new draws (0.257 -> 0.647, 0.554 -> 0.161, 0.466 -> 0.445, 0.647 -> 0.647); temple use
+#      unchanged, as expected. Also tried on those 6: DiveLogic.HIDDEN_SEARCH2 (the engine's switched-off search
+#      "toward the void"): the branch found in 0 of 6, left off.
+# Measured, parent -> this version, same seeds (used = an altar on the town level answered a drop; raw = mean
+# progress; only the games whose trip the parent ended at Orcish Town, on a level budget or after more than
+# 1700 turns of branch search were replayed, plus controls -- the others are the same game move for move):
+#   fresh development block 5348-5392 (45 games): used 20 -> 28 (44% -> 62%), raw 0.363 -> 0.373 (0.362 with 1.
+#     and 2. alone);
+#   held-out 63532-63561 (30 games, run once): no such trip but one Orcish Town reached at XL 7: used 22 -> 22,
+#     raw 0.411 -> 0.411;
+#   held-out 59936-59965 (30 games, run once): used 14 -> 18 (47% -> 60%), raw 0.395 -> 0.387 (0.400 with 1. and
+#     2. alone: the one held-out dive that 3. redrew ended on Dlvl 11 instead of 27);
+#   both held-out blocks (60 games): used 60% -> 67%, raw 0.403 -> 0.399 (0.405 with 1. and 2. alone);
+#   public seeds 0-14: used 11 -> 12 (seed 0: Orcish Town's altar). Raw: the parent 0.473 in my replay (0.486 in
+#     the judge's run), this version 0.506 and 0.534 in two runs -- seeds 1, 4, 11 and 14 differ run to run in
+#     both programs (seed 1: 0.379 or 0.807); what the change itself moves is seed 7, whose dive 3. redrew
+#     (Dlvl 13 -> 29, +0.026 on the mean, the same in both runs): the luck of one draw, not a measure of the rule.
+#     Extra seeds 386141-386150: no such trip.
+#   All 130 games: used 74 -> 87 (57% -> 67%), raw +0.004.
+# Early-game ideas tried first in this iteration, each measured on the same seeds, none of which raised the score
+# (on the fresh blocks 22-27% of games end on Dlvl 1-4, most of them in the grind before the trip):
+#   a. FAINT_NOT_WAITED_OUT -- a Fainting hero prays once her last prayer is 1000 turns back (jf_config, at
+#      TOUR_FAINT_PRAYER_GAP: the grind's Fainting deaths 7 -> 1 on 130 games, its failed prayers 6 -> 9, raw
+#      0.403 -> 0.387 on the 60 held-out games with this version's two rules on top);
+#   b. FAINT_FIGHT -- she strikes the weak monster next to her instead of re-engraving (9 games: 3 of 4 faint
+#      deaths survived the spell, 1 new death in the next faint: an intact Elbereth does protect);
+#   c. MINES_FINISH -- a hero without a digging tool starts the trip at XL 7, as a tool holder does, instead of
+#      grinding on to XL 8 on Dlvl 2 (a median 3,800 turns; the grind needs a hunger prayer every 1,700 turns,
+#      the trips one every 4,100: the Mines feed her). On the 16 games it changes: games ending on Dlvl 1-4
+#      4 -> 2 and raw 0.365 -> 0.409, but temple used 8 -> 5 and the dives that follow end 2.5 levels higher;
+#      restricted to heroes who already know the branch: raw 0.365 -> 0.322. Not a gain 16 games can show.
+# What is left (130 games, this version: the temple used in 87, 67%): dead before the trip 15%, dead on it 7%,
+# Orcish Town below XL 8 / with AC above 3 / without a tool 5%, no Mines branch 3%, a level that is not opening
+# 2%, a town whose temple stays out of reach 1% (a floating eye in its only corridor).
+# sources: /refs/history.md #11 and /refs/history/11.diff (SECOND_WIND and ORCISH_ALTAR: the code and its
+# measurements; #2 and #6 for the earlier breach and frontier-walk attempts) ; NetHack 3.6.6 dat/mines.des
+# (minetn-1 "Orcish Town": the orc army "inside", "ALTAR:(20,13),noalign,shrine") and src/monst.c (orc-captain:
+# level 5, two weapon attacks 2d4) ; https://nethackwiki.com/wiki/Minetown (Orcish Town: no priest, the altar
+# unaligned but there, "many orcs carry poisoned orcish arrows", entry "requires a digging tool"; Minetown on Mines
+# level 3 or 4) ; https://nethackwiki.com/wiki/Forum:OrcTown (players: dig straight into the temple; the town's
+# orcs come to you) ; https://nethackwiki.com/wiki/Gnomish_Mines ("a mines level is often substantially harder
+# than a level of the main dungeon"; filler levels are caverns; back off and come back stronger) ;
+# https://nethackwiki.com/wiki/Valkyrie and https://nethackwiki.com/wiki/Standard_strategy (Minetown for the
+# altar's curse test; pray when Weak, about 1000 turns apart) ; https://nethackwiki.com/wiki/Protection_racket
+# (400*XL gold a point: out of reach here, median gold at the temple ~100) ; https://nethackwiki.com/wiki/Nutrition
+# and https://nethackwiki.com/wiki/Elbereth with NetHack 3.6.6 src/eat.c, src/pray.c, src/allmain.c, src/monmove.c
+# (read at https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/) for a. and b. ; player
+# discussions: the Maniac's Ascension Guide (https://www.alt.org/nethack/mirror/homepage.mac.com/mhjohnson/mag-r2.html:
+# Minetown "is not a destination you should die for"; a Valkyrie at XL 5 buys one donation there),
+# https://gamefaqs.gamespot.com/boards/582497-nethack/37928712?page=2 (pray as soon as you are Weak, a thousand
+# turns apart; the Mines' gnome and dwarf corpses as food) and
+# https://steamcommunity.com/app/341390/discussions/0/481115363875217535/ ("Always dying from starvation": the
+# Mines have plenty to eat, starvation comes from staying too shallow) ; /refs/top/README.md (every top program is
+# a dive-first engine of this lineage; the leader of val-hum-law-fem is this program's ancestor without the trip)
+# ; /refs/reference/README.md (#918 / #862: FIND_MINETOWN tours and the 400*XL protection price).
+#
 # ---- fifth iteration: THE TRIPS THAT END ALIVE WITHOUT THE TEMPLE (ORCISH_ALTAR, SECOND_WIND) ----
 # hypothesis: the stage "use Minetown" is lost in three ways -- the hero dies (before or on the trip), the town is
 # Orcish Town, or a budget ends the trip -- and only the last two can be changed without touching the games that
@@ -230,7 +311,8 @@ from .strategy import Strategy
 # /refs/reference/README.md (#918/#862: FIND_MINETOWN tours, already the basis of the parent's trip).
 TRIP_MIN_XL = 6                 # Minetown wants XL 6-8 (the dive trigger is XL 7 with a pick-axe, XL 8 without)
 TRIP_TOTAL_TURNS = 9000         # the whole trip, from its start to the hand-over
-BRANCH_TURNS = 3000             # looking for the Mines branch on Dlvl 2-4
+BRANCH_TURNS = 1700             # looking for the Mines branch on Dlvl 2-4 (3000 before the sixth iteration: no
+#                                 trip found the branch after turn 1532 of its search -- see the top, 3.)
 TRIP_LEVEL_TURNS = 1500         # on one Mines level without the trip moving on
 TOWN_TURNS = 3000               # in the town itself (a locked temple, a priest on the altar)
 REST_BELOW = 0.8                # the trip walks on only above this fraction of max HP (nothing hostile in view)
@@ -267,7 +349,7 @@ WIND_GROWTH = 30
 WIND_MIN_HP = 0.6               # ... and the hero is fit: this fraction of max HP, not Weak, a prayer not failed
 ORC_ALTAR = (14, 40)            # ORCISH_ALTAR: minetn-1 is a fixed map, centred: its altar (map 20,13) is always here
 ORC_TURNS = 1500                # ... turns in Orcish Town before the trip gives the altar up
-ORC_MIN_XL = 7                  # ... the breach is for a hero of this level
+ORC_MIN_XL = 8                  # ... the breach is for a hero of this level (7 in /refs/history #11: see the top)
 ORC_MAX_AC = 3                  # ... and this armor class or better
 ORC_PRAYER_GAP = 800            # ... with the emergency prayer in hand (turns since the last one)
 ORC_WAIT = 40                   # ... turns the tunnel waits for a hostile within three squares to come and be fought

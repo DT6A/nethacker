@@ -248,22 +248,39 @@ class ExplorationLogic:
     def mines_walk(self):
         """SECOND_WIND (minetown_trip._second_wind): the Minetown trip is on a Mines filler level whose budget was
         extended -- the level is walked without the explorer's searching (see minetown_trip.py, fifth iteration)."""
-        # hypothesis: (one part of this iteration's change; the whole of it -- ORCISH_ALTAR and SECOND_WIND, with
-        # the measured numbers -- is described at the top of minetown_trip.py, "fifth iteration") a Minetown trip
-        # whose 1500-turn level budget runs out on a Mines filler level that is still opening has not met a wall,
-        # it is exploring slowly: explore1 searches every dead end 15 times and once after every step onto new
-        # ground, and dwarves tunnel such a level into hundreds of dead ends. The Mines' filler levels are mkmap
-        # caves, which have no secret doors or corridors, and one search finds an adjacent hidden trap 1 time in
-        # 8: on the extended budget the level is walked without either. Expected: the trips that ended on the
-        # level budget with new ground still coming into reach arrive at the town instead (6 of 6 measured).
-        # sources: NetHack 3.6.6 src/mkmap.c join_map ("dig_corridor(&sm, &em, FALSE, fg_typ, bg_typ)") with
-        # src/sp_lev.c dig_corridor ("if (ftyp != CORR || rn2(100)) crm->typ = ftyp; else crm->typ = SCORR": the
-        # Mines' fg_typ is ROOM -- no secret corridor, and a cave has no doors) and src/detect.c dosearch0()
-        # ("!trap->tseen && !rnl(8)"), read at
-        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/ ; dat/mines.des minefill (INIT_MAP
-        # mines, "STAIR: random") ; https://nethackwiki.com/wiki/Gnomish_Mines (filler levels are "simple
-        # caverns") ; /refs/history.md #6 and #9 (the same walk from the trip's first turn: temple use up, score
-        # not -- here it starts only where the parent's trip had ended).
+        # hypothesis: (sixth iteration of the Minetown trip; the whole of it with every number is the "sixth
+        # iteration" block at the top of minetown_trip.py) the temple is used in 57% of 130 parent games; in 28
+        # of the other 56 the hero is alive and her trip simply ended -- on a 1500-turn level budget (12), at
+        # Orcish Town's wall (11), without the Mines branch (4). Ideas combined, each measured against the parent
+        # on the same seeds: 1. SECOND_WIND (this function; from /refs/history #11): a level budget that runs out
+        # on a Mines level still opening gives a fit hero 1200 more turns, walked without the explorer's dead-end
+        # and trap searching -- fired in 9 of 12 such trips, 8 of them used an altar; 2. ORCISH_ALTAR (#11) with
+        # the breach only from XL 8 (new): Orcish Town's priestless altar still shows curse status, a fit hero
+        # with a pick-axe digs in south of the temple -- all 7 heroes who breached at XL 8 used the altar and
+        # lived, 2 of 3 at XL 7 died inside; 3. BRANCH_TURNS 3000 -> 1700 (new): 230 trips reached the Mines, the
+        # slowest 1532 turns after its start, none of the 19 that searched on found the branch and 2 heroes
+        # died in that tail. Together: temple used 44% -> 62% on 45 fresh development games and 60% -> 67% on 60
+        # held-out games, mean progress within noise (0.363 -> 0.373, 0.403 -> 0.399). Three early-game ideas
+        # were measured first and left out, none raised the score: a Fainting hero praying from a 1000-turn gap
+        # (Fainting deaths in the grind 7 -> 1 on 130 games, failed prayers 6 -> 9, held-out 0.403 -> 0.387),
+        # striking the weak monster beside a Fainting hero, a tool-less hero's trip at XL 7.
+        # sources: /refs/history.md #11 with /refs/history/11.diff (the code of 1. and 2.) ; NetHack 3.6.6
+        # src/mkmap.c join_map ("dig_corridor(&sm, &em, FALSE, fg_typ, bg_typ)") with src/sp_lev.c dig_corridor
+        # ("if (ftyp != CORR || rn2(100)) crm->typ = ftyp; else crm->typ = SCORR": the Mines' fg_typ is ROOM -- no
+        # secret corridor, and a cave has no doors) and src/detect.c dosearch0() ("!trap->tseen && !rnl(8)"),
+        # src/eat.c newuhs(), src/pray.c, src/allmain.c, src/monmove.c, read at
+        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/ ; dat/mines.des (minefill:
+        # INIT_MAP mines, "STAIR: random"; minetn-1 Orcish Town: "ALTAR:(20,13),noalign,shrine") ;
+        # https://nethackwiki.com/wiki/Minetown ; https://nethackwiki.com/wiki/Gnomish_Mines (filler levels are
+        # "simple caverns"; "a mines level is often substantially harder than a level of the main dungeon") ;
+        # https://nethackwiki.com/wiki/Valkyrie ; https://nethackwiki.com/wiki/Standard_strategy ;
+        # https://nethackwiki.com/wiki/Protection_racket ; https://nethackwiki.com/wiki/Nutrition ;
+        # https://nethackwiki.com/wiki/Elbereth ; player discussions: https://nethackwiki.com/wiki/Forum:OrcTown,
+        # https://www.alt.org/nethack/mirror/homepage.mac.com/mhjohnson/mag-r2.html (Maniac's Ascension Guide),
+        # https://gamefaqs.gamespot.com/boards/582497-nethack/37928712?page=2 and
+        # https://steamcommunity.com/app/341390/discussions/0/481115363875217535/ (hunger: pray when Weak, the
+        # Mines' corpses as food) ; /refs/top/README.md and /refs/reference/README.md (no top program goes to
+        # Minetown; #918 / #862 for the tour and the protection price).
         if not jf_config.SECOND_WIND:
             return False
         try:

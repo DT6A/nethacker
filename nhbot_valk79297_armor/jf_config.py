@@ -455,6 +455,20 @@ DIVE_FED_MAX_WAIT = 2000
 # ON (train 3.2, grind-food A047/A058/t32): 90 games 0.4025 vs 0.3964; in-lane losses 6 vs 10, failed prayers 3 vs 7 (was: 0)
 TOUR_WEAK_PRAYER_GAP = 1700
 # ON (train 3.2, grind-food A047/A058/t32): 90 games 0.4025 vs 0.3964; in-lane losses 6 vs 10, failed prayers 3 vs 7 (was: 0)
+# Measured in this run's sixth iteration and left at 1600 (FAINT_NOT_WAITED_OUT, an early-loss attempt): a Fainting
+# hero prays once her last prayer is 1000 turns back instead of standing 350 turns on a dust Elbereth first. What
+# it targets is real: on 130 parent games with logs (5348-5392, 63532-63561, 59936-59965, 0-14, 386141-386150)
+# the grind's Fainting spells lasted 30,184 turns and 7 heroes were killed in them from full HP by a giant bat,
+# a gecko, a hobgoblin, a cave spider and the like, against 6 failed prayers among 588 hunger prayers. With 1000:
+# 3,251 Fainting turns and 1 such death -- but 134 prayers at a 1000-1249 gap instead of 44, 8 of which failed
+# (6%; pray.c: P(rnz(350) > gap + 200) is 5.5% at 1000, 2.3% at 1200, 1.3% at 1600), and every hero whose prayer
+# failed in the grind died within 900 turns. Net of both, mean progress did not rise: fresh development block
+# 0.363 -> 0.374 (together with the Minetown half), held-out blocks 0.403 -> 0.387 (60 games), public seeds
+# 0.473 -> 0.442 -- no gain that 130 games can show, so the gap stays. (eat.c newuhs: Fainting faints with
+# probability (1 - uhunger/10) / (20 - uhunger/10) a turn for 10 - uhunger/10 turns; allmain.c wipes the dust
+# under her 1 turn in 40 + 3 Dex; monmove.c dochug: an intact Elbereth does stop melee, "!scared".) Also tried
+# there: FAINT_FIGHT -- strike the weak monster next to a Fainting hero instead of re-engraving (9 games: 3 of 4
+# faint deaths survived their spell, one hero who had stopped renewing her Elbereth was killed in her next faint).
 TOUR_FAINT_PRAYER_GAP = 1600
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []

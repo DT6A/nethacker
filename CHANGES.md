@@ -1,3 +1,19 @@
+# Minetown trip, sixth iteration: the two trip rescues re-measured, the breach from XL 8 (2026-11-19)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `exploration_logic.py`, flags in `jf_config.py`). The entry
+below (`ORCISH_ALTAR`, `SECOND_WIND`, from an earlier iteration of this run) is in, with one rule changed:
+`ORC_MIN_XL` 7 -> 8 -- in this iteration's games all 7 heroes who breached Orcish Town's wall at XL 8 used the altar and
+came out alive, and 2 of the 3 who breached at XL 7 died inside. Both rules act only where the parent's trip was
+already over. New: `BRANCH_TURNS` 3000 -> 1700 -- 230 trips of this iteration's runs reached the Mines, the slowest
+1532 turns after its start; none of the 19 that searched on found the branch and two heroes died in that tail.
+Measured against the parent on the same seeds: temple used 44% -> 62% on 45 fresh development games, 60% -> 67% on
+60 held-out games (63532-63561, 59936-59965), mean progress within noise (0.363 -> 0.373, 0.403 -> 0.399).
+Three early-game ideas were measured first and left out, none raised the score: a Fainting hero praying from a
+1000-turn gap (`TOUR_FAINT_PRAYER_GAP`; Fainting deaths in the grind 7 -> 1 on 130 games but failed prayers 6 -> 9,
+held-out progress 0.403 -> 0.387), striking the weak monster next to a Fainting hero instead of re-engraving, and
+starting the trip of a tool-less hero at XL 7. Numbers and sources: the sixth-iteration block at the top of
+`minetown_trip.py` and the note at `TOUR_FAINT_PRAYER_GAP` in `jf_config.py`.
+
 # Minetown trip, fifth iteration: Orcish Town's altar and a second wind for a slow level (2026-11-19)
 
 Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `exploration_logic.py`, flags in `jf_config.py`). Two things
