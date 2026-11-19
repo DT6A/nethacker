@@ -245,8 +245,40 @@ class ExplorationLogic:
         yield True
         return self.agent.go_to(y, x, *args, **kwargs)
 
+    def mines_walk(self):
+        """SECOND_WIND (minetown_trip._second_wind): the Minetown trip is on a Mines filler level whose budget was
+        extended -- the level is walked without the explorer's searching (see minetown_trip.py, fifth iteration)."""
+        # hypothesis: (one part of this iteration's change; the whole of it -- ORCISH_ALTAR and SECOND_WIND, with
+        # the measured numbers -- is described at the top of minetown_trip.py, "fifth iteration") a Minetown trip
+        # whose 1500-turn level budget runs out on a Mines filler level that is still opening has not met a wall,
+        # it is exploring slowly: explore1 searches every dead end 15 times and once after every step onto new
+        # ground, and dwarves tunnel such a level into hundreds of dead ends. The Mines' filler levels are mkmap
+        # caves, which have no secret doors or corridors, and one search finds an adjacent hidden trap 1 time in
+        # 8: on the extended budget the level is walked without either. Expected: the trips that ended on the
+        # level budget with new ground still coming into reach arrive at the town instead (6 of 6 measured).
+        # sources: NetHack 3.6.6 src/mkmap.c join_map ("dig_corridor(&sm, &em, FALSE, fg_typ, bg_typ)") with
+        # src/sp_lev.c dig_corridor ("if (ftyp != CORR || rn2(100)) crm->typ = ftyp; else crm->typ = SCORR": the
+        # Mines' fg_typ is ROOM -- no secret corridor, and a cave has no doors) and src/detect.c dosearch0()
+        # ("!trap->tseen && !rnl(8)"), read at
+        # https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/ ; dat/mines.des minefill (INIT_MAP
+        # mines, "STAIR: random") ; https://nethackwiki.com/wiki/Gnomish_Mines (filler levels are "simple
+        # caverns") ; /refs/history.md #6 and #9 (the same walk from the trip's first turn: temple use up, score
+        # not -- here it starts only where the parent's trip had ended).
+        if not jf_config.SECOND_WIND:
+            return False
+        try:
+            trip = self.agent.global_logic.dive.minetown
+            level = self.agent.current_level()
+            return trip.active and level.key() in trip._winds and \
+                level.dungeon_number == Level.GNOMISH_MINES and not trip.is_town_level(level)
+        except AttributeError:
+            return False
+
     @Strategy.wrap
     def search_neighbors_for_traps(self, offset=0):
+        if self.mines_walk():
+            yield False
+            return
         search_count = 0
         level = self.agent.current_level()
         for y, x in self.agent.neighbors(self.agent.blstats.y, self.agent.blstats.x, shuffle=False):
@@ -468,6 +500,8 @@ class ExplorationLogic:
 
                 to_visit = to_visit_func()
                 to_search = to_search_func(search_prio_limit if search_prio_limit is not None else 0)
+                if self.mines_walk():
+                    to_search[:] = False   # SECOND_WIND: no nook is searched while there is ground to see
 
                 if check_altar_alignment:
                     for (y, x), alignment in self.agent.current_level().altars.items():

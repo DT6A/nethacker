@@ -92,6 +92,91 @@ from .glyph import G, MON, Hunger
 from .level import Level
 from .strategy import Strategy
 
+# ---- fifth iteration: THE TRIPS THAT END ALIVE WITHOUT THE TEMPLE (ORCISH_ALTAR, SECOND_WIND) ----
+# hypothesis: the stage "use Minetown" is lost in three ways -- the hero dies (before or on the trip), the town is
+# Orcish Town, or a budget ends the trip -- and only the last two can be changed without touching the games that
+# already succeed (every game replays move for move until the trip's own decision differs). Of 175 parent games
+# replayed with logs (development 0-14, 386141-386150, 72855-72899; held-out 48857-48916 and 73613-73657) the
+# temple altar flashed in 96 (55%); 19 trips ended at Orcish Town's wall and 11 on the 1500-turn level budget of
+# a Mines filler level; 40 heroes died before or on the trip.
+# Ideas tried, each against the parent on the same seeds, and the two combined here:
+#   1. ORCISH_ALTAR (_orc_go, _orc_step; new): Orcish Town (1 town in 7) has no priest, but its altar is there
+#      ("useful for BUC", mines.des) and shows a black / amber flash like any other; the map is fixed and centred,
+#      so the altar's square is known before it is seen. A hero with a pick-axe or mattock, XL 7+ and not below
+#      the level's depth, AC 3 or better, not Weak and with her prayer in hand (800 turns since the last one)
+#      walks round the town on the strip of floor outside its wall to the point south of the temple and digs in
+#      there: the outer wall, the lane, the temple's back wall, the altar -- two walls, four steps (dig.c: the
+#      level is a maze level without NON_DIGGABLE, a dug wall becomes floor; no Watch to mind it). The opened wall
+#      is held from OUTSIDE first: what comes out comes one at a time and only the lane square behind the gap has
+#      a line of fire to her (the wiki: "breach the walls strategically, to funnel the orcs"; many orcs shoot
+#      poisoned arrows) -- until nothing hostile has been in view for 25 turns, then rest, then in. A floating eye
+#      or mold is neither waited for nor walked into. A town whose wall a dwarf has already opened is simply
+#      walked into (tool or not). Measured on the 8 heroes it was built on (4 development games, 4 of the block
+#      48857-48916): first version (nearest wall, no prayer rule): 4 of 5 at the altar, 1 dead (she had prayed 95
+#      turns earlier); south entry without the hold: 5 of 8 at the altar, 2 dead within 40 turns of opening the
+#      wall; with the hold (this version): 7 of 8 flashed the altar, none died in the town, 1 turned back Weak.
+#      On the fresh block 73613-73657 (run once, after the code was final): 5 heroes qualified, 4 flashed the
+#      altar, 1 turned back, none died in the town.
+#   2. SECOND_WIND (_second_wind, exploration_logic.mines_walk; new): the level budget ended 9 trips whose level
+#      was still opening -- the squares in reach had grown by 30 to 340 in the last 400 turns: slow exploration,
+#      not a wall (dwarves had tunnelled the level into hundreds of corridor squares, each dead end of which
+#      AutoAscend's explorer searches 15 times, and every step onto new ground is followed by a search for traps
+#      that finds an adjacent one 1 time in 8). Such a trip, with a fit hero (60% HP, not Weak), gets 1200 more
+#      turns once per level and walks them without that searching: the Mines' caves have no secret doors or
+#      corridors (mkmap.c join_map joins them with floor, sp_lev.c dig_corridor hides a square only in a real
+#      corridor). A trip that stands still ends as before. Measured:
+#      fired in 6 of the 9 (3 development, 3 held-out): all 6 reached the town, 5 used the temple and the 6th
+#      found Orcish Town (used with 1.); no death on the extended levels. Fresh block 73613-73657: fired in 2
+#      trips, 1 used the temple, 1 ran out the next level's budget standing still.
+#   3. TRIP_FAST_EXPLORE -- the same search-free walk for every trip from its first turn (/refs/history #6's
+#      frontier walk on its own): 70 development games, temple used 45 -> 46, raw progress 0.429 -> 0.418, deaths
+#      on the trip 5 -> 7, and every game takes another path (a change that diverges all games needs hundreds of
+#      games to judge): dropped for 2., which acts only where the parent's trip had ended.
+# Both act only at a point where the parent's trip was over, so every other game is unchanged move for move
+# (checked on control seeds). Results are at the end of this block's sources.
+# Not done: the towns built from rooms where the temple stays unfound (3 of 70: a hero boxed in by a scroll of
+# earth's boulders, a mold in a doorway that the explorer keeps walking to, a floating eye in the temple door);
+# protection from the priest (median gold at the temple 100, 400*XL = 2800+ needed).
+# sources: NetHack 3.6.6 dat/mines.des as shipped with NLE (nle/nethackdir/dat/mines.des: minetn-1 "Orcish Town":
+# the MAP with its closed outer wall and iron bars, "ALTAR:(20,13),noalign,shrine", "the altar's defiled; useful for
+# BUC but never coaligned", the orc army "inside", no NON_DIGGABLE line; minefill: "STAIR: random", INIT_MAP mines) ;
+# https://nethackwiki.com/wiki/Minetown (Orcish Town: "requires a digging tool or a means of breaching the iron
+# bars"; "Use the corridors, or breach the walls strategically, to funnel the orcs into rows and columns"; "many
+# orcs carry poisoned orcish arrows and will shoot through the bars"; orcs are slow; no Watch, shopkeepers or
+# priest) ; https://nethackwiki.com/wiki/Gnomish_Mines (filler levels are "simple caverns"; "a mines level is often
+# substantially harder than a level of the main dungeon") ; https://nethackwiki.com/wiki/Valkyrie ("smart
+# retreating and Elbereth usage ... especially against groups such as soldier ants and Mordor orcs"; "an AC of
+# roughly -5 by the end of the Gnomish Mines") ; https://nethackwiki.com/wiki/Pick-axe (tunnels through walls;
+# digging is an occupation a hostile's approach interrupts; the Watch warns only where there is one) ;
+# https://nethackwiki.com/wiki/Altar (a dropped object flashes black / amber on any altar) ; NetHack 3.6 src/dig.c
+# dig() ("if (level.flags.is_maze_lev) lev->typ = ROOM": a dug wall of this level is floor), src/mkmap.c join_map
+# ("dig_corridor(&sm, &em, FALSE, fg_typ, bg_typ)") with src/sp_lev.c dig_corridor ("if (ftyp != CORR || rn2(100))
+# crm->typ = ftyp; else crm->typ = SCORR": the Mines' fg_typ is ROOM, so nothing is hidden) and src/detect.c
+# dosearch0() ("!trap->tseen && !rnl(8)": one search finds an adjacent trap 1 time in 8), read at
+# https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/ ; player discussions: https://nethack-yanis.github.io/tag/orctown (players on Orcish
+# Town: entry "takes digging or acid", "conquer Orctown" by killing the orcs, the lost priest as the complaint) and
+# the search summaries of r/nethack and rec.games.roguelike.nethack for "Orcish Town" (no thread with a tactic
+# beyond the wiki's funnel; "the priestless altar as the level's sole upside") ; /refs/history.md #2 (a breach
+# through the nearest wall: 4 of 4 entered, 2 died -- here the entry point, the prayer rule and the hold), #6 and
+# #9 (the frontier walk for every trip; discarded on the held-out seeds) ; /refs/top/README.md (the top programs
+# are dive-first engines without a Minetown trip) ; /refs/reference/README.md (#862: Orcish Town recognised and
+# skipped; #918: protection needs 400*XL gold).
+# Measured, parent -> this version, same seeds (used = an altar on the town level flashed for a dropped object;
+# raw = mean progress; est = progress x 1.3 where the temple was used, the stage's share of the run's multiplier):
+#   development, 70 games (0-14, 386141-386150, 72855-72899): used 45 -> 51 (64% -> 73%), raw 0.429 -> 0.429,
+#     est 0.525 -> 0.539; games ending on Dlvl <= 4: 9 -> 9;
+#   held-out 48857-48916, 60 games: used 27 -> 33 (45% -> 55%), raw 0.331 -> 0.335, est 0.398 -> 0.416 (run once
+#     for SECOND_WIND; its four Orcish games were read before the hold was added, so for ORCISH_ALTAR they are
+#     development games);
+#   held-out 73613-73657, 45 games, run once with the final code: used 24 -> 29 (53% -> 64%), raw 0.354 -> 0.339,
+#     est 0.423 -> 0.424 (nobody died on the trip; two of the six changed games died earlier in the dive that
+#     follows it -- the dive after a changed trip is a new draw);
+#   both held-out blocks, 105 games: used 49% -> 59%, raw 0.341 -> 0.337, est 0.408 -> 0.420; games ending on
+#     Dlvl <= 4: 29 -> 29. Public seeds 0-14 (the official command): raw progress unchanged on every seed but the
+#     two that differ between two runs of the same program; seed 0 now uses Orcish Town's altar.
+# (Only the games whose trip the parent ended at Orcish Town or on a level budget were replayed, plus controls:
+# the others are identical move for move.)
+#
 # ---- fourth iteration: THE TRIP GETS THROUGH THE MINES' TIGHT SPOTS (SQUEEZE_CORNER_FIX, the way-down tunnel,
 # ---- TRIP_KICK_OUT) ----
 # hypothesis: of 85 parent games replayed with logs (0-14, 386141-386150, 71000-71029 and the held-out block
@@ -176,6 +261,21 @@ TUNNEL_DIG_COST = 6             # a square of rock costs about this many turns o
 #                                 10 + d4 + abon + enchantment + damage bonus a turn, doubled for a dwarf)
 TUNNEL_MAX_DIGS = 60            # squares dug per level before the tunnel is given up there
 TUNNEL_SQUARE_TRIES = 6         # applications at one square before it counts as undiggable
+WIND_TURNS = 1200               # SECOND_WIND: turns added to a level budget that runs out with the level still opening
+WIND_LOOK_BACK = 400            # ... "still opening": the squares in reach grew by WIND_GROWTH over this many turns
+WIND_GROWTH = 30
+WIND_MIN_HP = 0.6               # ... and the hero is fit: this fraction of max HP, not Weak, a prayer not failed
+ORC_ALTAR = (14, 40)            # ORCISH_ALTAR: minetn-1 is a fixed map, centred: its altar (map 20,13) is always here
+ORC_TURNS = 1500                # ... turns in Orcish Town before the trip gives the altar up
+ORC_MIN_XL = 7                  # ... the breach is for a hero of this level
+ORC_MAX_AC = 3                  # ... and this armor class or better
+ORC_PRAYER_GAP = 800            # ... with the emergency prayer in hand (turns since the last one)
+ORC_WAIT = 40                   # ... turns the tunnel waits for a hostile within three squares to come and be fought
+ORC_HOLD_QUIET = 25             # ... the opened wall is held from outside until nothing hostile was in view this long
+ORC_HOLD_MAX = 150              # ... or for this many turns
+ORC_RECT = (2, 18, 21, 55)      # the town's outer wall on the screen: rows 2-18, columns 21-55 (map 1-17 / 1-35)
+ORC_ENTRY = ((18, 40), (17, 40), (16, 40), (15, 40))   # the way in from the south: the outer wall, the lane behind
+#                                 it, the temple's back wall, the temple floor in front of the altar
 ALTAR_PICKUP_TRIES = 4
 DONATE_TRIES = 6
 
@@ -234,6 +334,13 @@ class MinetownTrip:
         self._up_key = None            # the way up: the level we are on and the turn we arrived
         self._up_since = 0
         self.holes = 0
+        self._reach_log = {}           # SECOND_WIND: level key -> [(turn, squares in reach)]
+        self._winds = {}               # ... level key -> the turn its extended budget ends
+        self._orc_since = None         # ORCISH_ALTAR: the turn Orcish Town was recognised
+        self._orc_wait = 0
+        self._orc_ok = None
+        self._orc_hold = None          # [first turn, last turn something hostile was in view] at the opened wall
+        self._orc_held = False
 
     # ------------------------------------------------------------------ helpers
 
@@ -304,6 +411,20 @@ class MinetownTrip:
     def _hostiles_within(self, radius):
         bl = self.agent.blstats
         return [m for m in self.agent.get_visible_monsters() if max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= radius]
+
+    def _active_hostiles_within(self, radius):
+        """ORCISH_ALTAR: hostiles within `radius` that come and fight -- not the floating eye, mold or jelly the
+        fight strategy leaves alone (waiting for one of those to attack is waiting for ever)."""
+        from .combat.monster_utils import ONLY_RANGED_SLOW_MONSTERS
+        return [m for m in self._hostiles_within(radius) if m[3].mname not in ONLY_RANGED_SLOW_MONSTERS]
+
+    def _passive_mask(self):
+        from .combat.monster_utils import ONLY_RANGED_SLOW_MONSTERS
+        mask = np.zeros(self.agent.current_level().walkable.shape, dtype=bool)
+        for m in self.agent.get_visible_monsters():
+            if m[3].mname in ONLY_RANGED_SLOW_MONSTERS:
+                mask[int(m[1]), int(m[2])] = True
+        return mask
 
     def _priests(self):
         agent = self.agent
@@ -451,7 +572,7 @@ class MinetownTrip:
             return 'prayer failed'
         if self.business_done():
             return 'serviced'
-        if self.in_town() and self.orcish(level):
+        if self.in_town() and self.orcish(level) and not self._orc_go(level):
             return 'Orcish Town'
         if level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES):
             return 'off the route'
@@ -465,9 +586,47 @@ class MinetownTrip:
         elif self._town_since is not None:
             if now - self._town_since > TOWN_TURNS and (self.altar_tested or self._next_job() is None):
                 return 'town budget'
-        elif now - self._level_since > TRIP_LEVEL_TURNS and level.level_number <= 4:
-            return 'level budget'   # (below the town the climb is the dive's own way back anyway)
+        elif level.level_number <= 4:
+            self._note_reach(level, now)
+            if now - self._level_since > TRIP_LEVEL_TURNS and not self._second_wind(level, now):
+                return 'level budget'   # (below the town the climb is the dive's own way back anyway)
         return None
+
+    def _note_reach(self, level, now):
+        """SECOND_WIND: how many squares the path-finder reaches on this level, sampled every 50 turns."""
+        if not jf_config.SECOND_WIND:
+            return
+        log = self._reach_log.setdefault(level.key(), [])
+        if log and now - log[-1][0] < 50:
+            return
+        log.append((now, int((self.agent.bfs() != -1).sum())))
+
+    def _second_wind(self, level, now):
+        """SECOND_WIND: the level budget has run out. A trip that stands still ends here, as before; one whose
+        level is still opening (new ground in reach over the last WIND_LOOK_BACK turns) with a fit hero gets
+        WIND_TURNS more, once per level, and walks them without the explorer's searching
+        (exploration_logic.mines_walk). See the fifth-iteration notes at the top."""
+        agent = self.agent
+        bl = agent.blstats
+        key = level.key()
+        if not jf_config.SECOND_WIND:
+            return False
+        if key in self._winds:
+            return now <= self._winds[key]   # one per level
+        log = self._reach_log.get(key) or []
+        past = [r for t, r in log if t <= now - WIND_LOOK_BACK]
+        if not past or not log:
+            return False
+        grown = log[-1][1] - past[-1]
+        fit = bl.hitpoints >= WIND_MIN_HP * bl.max_hitpoints and bl.hunger_state < Hunger.WEAK and \
+            not agent.prayer_failed and not agent.character.prop.polymorph
+        self.log(f'level budget on {key}: reach {past[-1]} -> {log[-1][1]} in the last {WIND_LOOK_BACK} turns, '
+                 f'hp {bl.hitpoints}/{bl.max_hitpoints}, hunger {int(bl.hunger_state)}: '
+                 f'{"a second wind" if fit and grown >= WIND_GROWTH else "the budget stands"}')
+        if not fit or grown < WIND_GROWTH:
+            return False
+        self._winds[key] = now + WIND_TURNS
+        return True
 
     def _end(self, why):
         agent = self.agent
@@ -716,6 +875,102 @@ class MinetownTrip:
             return True
         return False
 
+    def _orc_altar_reach(self):
+        agent = self.agent
+        dis = agent.bfs()
+        here = (int(agent.blstats.y), int(agent.blstats.x))
+        return any(p == here or dis[p] != -1 for p in self._altars())
+
+    def _orc_go(self, level):
+        """ORCISH_ALTAR: is Orcish Town's altar worth going for? (See the fifth-iteration notes at the top.)"""
+        agent = self.agent
+        bl = agent.blstats
+        if not jf_config.ORCISH_ALTAR:
+            return False
+        if self.pending is not None:
+            return True   # our things lie on the altar
+        now = int(bl.time)
+        if self._orc_since is None:
+            self._orc_since = now
+        if now - self._orc_since > ORC_TURNS:
+            return False
+        if self._orc_altar_reach():
+            return True   # the wall is open already (a dwarf dug through it): the altar is a walk away
+        tool = self.dive.digging_tool()
+        if self._orc_ok is None:
+            last = agent.last_prayer_turn
+            self._orc_ok = tool is not None and bl.experience_level >= max(ORC_MIN_XL, int(bl.depth)) and \
+                bl.armor_class <= ORC_MAX_AC and not agent.character.prop.polymorph and \
+                bl.hunger_state < Hunger.WEAK and (last is None or now - last >= ORC_PRAYER_GAP)
+            self.log(f'Orcish Town: tool {None if tool is None else tool.text!r}, XL {bl.experience_level}, '
+                     f'AC {bl.armor_class}, hp {bl.hitpoints}/{bl.max_hitpoints}, hunger {int(bl.hunger_state)}, '
+                     f'last prayer {None if last is None else now - last} turns ago: '
+                     f'{"breaching the wall for the altar" if self._orc_ok else "left alone"}')
+        return self._orc_ok and tool is not None and bl.hunger_state < Hunger.WEAK
+
+    def _orc_step(self):
+        """ORCISH_ALTAR: one step of the walk-and-dig route to Orcish Town's altar (its place is known from the
+        map before it is seen). False: nothing done here (no tool, or the tunnel has no route)."""
+        agent = self.agent
+        dive = self.dive
+        level = agent.current_level()
+        if not jf_config.ORCISH_ALTAR or not self.orcish(level) or dive.digging_tool() is None:
+            return False
+        near = 3
+        if self._active_hostiles_within(3):
+            # what comes for us is fought first, at the breach (the fight strategy does that); what only stands
+            # off behind the wall or the bars is not waited for for ever
+            self._orc_wait += 1
+            if self._orc_wait <= ORC_WAIT or self._active_hostiles_within(1):
+                dive._task('minetown trip: Orcish Town, the fight first')
+                agent.search(1)
+                return True
+            near = 1
+        else:
+            self._orc_wait = 0
+        seen = self._altars()
+        targets = seen if seen else [ORC_ALTAR]
+        bl = agent.blstats
+        y0, y1, x0, x1 = ORC_RECT
+        overlay = None
+        if not (y0 <= bl.y <= y1 and x0 <= bl.x <= x1):
+            gap = ORC_ENTRY[0]
+            if not self._orc_held and level.walkable[gap] and (int(bl.y), int(bl.x)) == (gap[0] + 1, gap[1]):
+                # the wall is open and we stand outside in front of it: what comes out comes one at a time, and
+                # only the lane square behind the gap has a line of fire to us -- the breach is held here until
+                # the town has stopped sending orcs (then _rest brings the HP back before the walk in)
+                now = int(bl.time)
+                if self._orc_hold is None:
+                    self._orc_hold = [now, now]
+                    self.log(f'Orcish Town: the wall is open at {gap}, holding the breach from outside')
+                if self._active_hostiles_within(100):
+                    self._orc_hold[1] = now
+                if now - self._orc_hold[1] < ORC_HOLD_QUIET and now - self._orc_hold[0] < ORC_HOLD_MAX:
+                    dive._task('minetown trip: Orcish Town, holding the breach')
+                    agent.search(1)
+                    return True
+                self._orc_held = True
+                self.log(f'Orcish Town: breach held for {now - self._orc_hold[0]} turns, hp '
+                         f'{bl.hitpoints}/{bl.max_hitpoints}: going in')
+                if bl.hitpoints < REST_BELOW * bl.max_hitpoints:
+                    return True   # plan_step's rest comes first
+            # outside the wall: the route is the one a player would take with the map in her head -- round the town
+            # on the strip of floor outside the wall to the point south of the temple, in through the wall there
+            # (two walls and four steps to the altar; the west and east sides are 15 squares of shops and orcs)
+            extra = np.zeros(level.walkable.shape, dtype=bool)
+            extra[y0 - 1, x0 - 1:x1 + 2] = True
+            extra[y1 + 1, x0 - 1:x1 + 2] = True
+            extra[y0 - 1:y1 + 2, x0 - 1] = True
+            extra[y0 - 1:y1 + 2, x1 + 1] = True
+            forbid = np.zeros(level.walkable.shape, dtype=bool)
+            forbid[y0:y1 + 1, x0:x1 + 1] = True
+            for p in ORC_ENTRY + (ORC_ALTAR,):
+                forbid[p] = False
+            for p in (ORC_ENTRY[1], ORC_ENTRY[3], ORC_ALTAR):
+                extra[p] = True
+            overlay = (extra, forbid)
+        return self._tunnel_step(targets, 'the altar of Orcish Town', town=True, near=near, overlay=overlay)
+
     def post_hold(self):
         """Back in the main dungeon after the trip: the dive proper starts with an emergency prayer in hand, as the
         grind's DIVE_PRAYER_GAP hold arranged before the trip (the trip's hunger and HP prayers reset the timeout:
@@ -925,7 +1180,7 @@ class MinetownTrip:
                 walk[y, x] = False
         return walk, dig
 
-    def _tunnel_route(self, targets):
+    def _tunnel_route(self, targets, overlay=None, skip_passive=False):
         """The cheapest way from here to the nearest of `targets`, walking over open squares (1 a step; no
         diagonal between two rock corners: hack.c test_move, it needs 600 or less carried) and digging into rock
         (TUNNEL_DIG_COST a square, orthogonally only -- a dug square is entered straight). Returns (path, walk
@@ -933,6 +1188,15 @@ class MinetownTrip:
         agent = self.agent
         bl = agent.blstats
         walk, dig = self._tunnel_masks()
+        if skip_passive:
+            walk = walk & ~self._passive_mask()   # ORCISH_ALTAR: round a floating eye, never into it
+        if overlay is not None:
+            # ORCISH_ALTAR: floor known from the level's map though not yet seen, and squares the route keeps off
+            extra, forbid = overlay
+            level = agent.current_level()
+            unseen = extra & ~level.seen & dig
+            walk = (walk | unseen) & ~forbid
+            dig = dig & ~unseen & ~forbid
         start = (int(bl.y), int(bl.x))
         targets = set((int(y), int(x)) for y, x in targets) - {start}
         if not targets:
@@ -977,7 +1241,7 @@ class MinetownTrip:
         path.reverse()
         return path, walk
 
-    def _tunnel_step(self, targets, what):
+    def _tunnel_step(self, targets, what, town=False, near=3, overlay=None):
         """PICK_TUNNEL: one step of a walk-and-dig route to the nearest of `targets` with the carried pick-axe or
         mattock (the way back up from the temple: tunnel_up). True: the tunnel acted."""
         # hypothesis: the way back from the temple is where the trip stalls without anything to gain: on 26% of the
@@ -1022,19 +1286,21 @@ class MinetownTrip:
         bl = agent.blstats
         level = agent.current_level()
         key = level.key()
-        if not jf_config.PICK_TUNNEL or level.dungeon_number != Level.GNOMISH_MINES or self.is_town_level(level):
-            return False
+        if not jf_config.PICK_TUNNEL or level.dungeon_number != Level.GNOMISH_MINES or \
+                (self.is_town_level(level) and not (town and self.orcish(level))):
+            return False   # (Orcish Town has no Watch: ORCISH_ALTAR digs there)
         tool = dive.digging_tool()
         if tool is None or agent.character.prop.polymorph or int(bl.time) < dive._dig_blocked_until:
             return False
         prop = agent.character.prop
         if prop.stun or prop.confusion or prop.hallu or prop.blind:
             return False
-        if self._tunnel_digs.get(key, 0) >= TUNNEL_MAX_DIGS or self._hostiles_within(3):
+        if self._tunnel_digs.get(key, 0) >= TUNNEL_MAX_DIGS or \
+                (self._active_hostiles_within(near) if town else self._hostiles_within(near)):
             return False
         if int(bl.time) < self._tunnel_quiet.get(key, -1):
             return False
-        route = self._tunnel_route(targets)
+        route = self._tunnel_route(targets, overlay, skip_passive=town)
         if route is None:
             self._tunnel_quiet[key] = int(bl.time) + 15   # nothing to tunnel to right now: not asked every step
             return False
@@ -1232,6 +1498,10 @@ class MinetownTrip:
                 if agent.step_count == before:
                     agent.search()
                 return True
+        if self._orc_step():
+            if agent.step_count == before:
+                agent.search()
+            return True
         if jf_config.TRIP_KICK_OUT and self._town_since is not None and \
                 int(bl.time) - self._town_since >= KICK_OUT_AFTER and self._kick_out():
             return True

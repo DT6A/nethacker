@@ -81,6 +81,14 @@ SQUEEZE_CORNER_FIX = True
 # TRIP_KICK_OUT (minetown_trip._kick_out): shut in a stair room of a room-built town behind a locked door, with
 # nobody of the town in view, the trip kicks the door open (explore1 never kicks a door in the Mines)
 TRIP_KICK_OUT = True
+# ORCISH_ALTAR (minetown_trip._orc_go / _orc_step): Orcish Town's altar is used too -- a fit hero with a digging
+# tool and her prayer in hand digs in through the wall south of the temple, holds the breach from outside, then
+# BUC-tests on the altar. See the fifth-iteration block at the top of minetown_trip.py
+ORCISH_ALTAR = True
+# SECOND_WIND (minetown_trip._second_wind, exploration_logic.mines_walk): a level budget that runs out on a Mines
+# level still opening (new ground in reach) gives a fit hero 1200 more turns, walked without the explorer's
+# searching. See the same block
+SECOND_WIND = True
 # no direction (move, attack, zap) is given while stunned or confused with a shopkeeper, watchman or priest next to us:
 # the random direction would land on them (agent.direction)
 STUN_TOWN_GUARD = True

@@ -1,3 +1,17 @@
+# Minetown trip, fifth iteration: Orcish Town's altar and a second wind for a slow level (2026-11-19)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `exploration_logic.py`, flags in `jf_config.py`). Two things
+act only where the parent's trip was over, so every other game is unchanged move for move. `ORCISH_ALTAR`: Orcish Town
+has no priest but its altar shows curse status like any other, and its map is fixed -- a hero with a pick-axe or
+mattock, XL 7+ (and not below the level's depth), AC 3 or better, not Weak and with her prayer in hand walks round the
+town outside its wall, digs in south of the temple (two walls, four steps), holds the opened wall from outside until
+the town stops sending orcs, then BUC-tests on the altar. `SECOND_WIND`: a 1500-turn level budget that runs out on a
+Mines level still opening (new ground in reach during the last 400 turns) gives a fit hero 1200 more turns, walked
+without the explorer's dead-end and trap searching (the Mines' caves have no secret passages). Measured against the
+parent on the same seeds: temple used 64% -> 73% of 70 development games and 49% -> 59% of 105 held-out games, raw
+progress unchanged within noise (0.429 -> 0.429 and 0.341 -> 0.337), nobody died in Orcish Town with the final
+version. Numbers, dropped ideas and sources: the fifth-iteration block at the top of `minetown_trip.py`.
+
 # Minetown trip, fourth iteration: through the Mines' tight spots (2026-11-19)
 
 Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `agent.py`, `utils.py`, flags in `jf_config.py`). Trips that
