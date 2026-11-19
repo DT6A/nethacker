@@ -1,3 +1,21 @@
+# Minetown trip, seventh iteration: the trip comes loose from the dive and is made again (2026-11-19)
+
+Engine `nhbot_valk79297_armor` only (`dive_logic.py`, `minetown_trip.py`, `character.py`, flags in `jf_config.py`).
+The trip was one attempt welded to the start of the dive. Now (`EARLY_TRIP`) it leaves from the grind at XL 7 with or
+without a digging tool and hands the game back to the grind on Dlvl 2-4 (the dive keeps its own trigger), and
+(`TRIP_RETRY`) a trip that ended alive without the altar is made once more when what stopped it has changed: at the
+dive's start for a level / town budget or a branch found since, and for Orcish Town as soon as the hero can breach it
+-- a tool holder turned away at XL 7 grinds on to XL 8 instead of diving, one who had just prayed gets her prayer
+back first, one whose tool arrives later in the Mines goes straight back to the wall. Smaller rescues:
+`ALTAR_GATHER` (a temple altar that stayed dark gets the weapons and armor lying about the town level),
+`BRANCH_BOULDER` (boulders closing off unexplored ground on Dlvl 2-4 are pushed before the level is written off as
+having no Mines branch). Fixes: `BRANCH_CLOCK_FIX` (the branch budget no longer ends a trip thrown back into the
+Dungeons by a level teleporter), `FRIDAY13_FIX` (the game's date is read from the attributes screen: on a Friday the
+13th Luck is -1 and no prayer is said). Measured against the parent on the same seeds: altar used 62% -> 66% of 187
+development games and 60% -> 69% of 162 held-out games (81588-81641, 84082-84135, 71140-71193), mean progress
+0.369 -> 0.379 and 0.367 -> 0.382. Numbers, dropped ideas and sources: `dive_logic.DiveLogic._early_trip_due` and the
+seventh-iteration block at the top of `minetown_trip.py`.
+
 # Minetown trip, sixth iteration: the two trip rescues re-measured, the breach from XL 8 (2026-11-19)
 
 Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, `exploration_logic.py`, flags in `jf_config.py`). The entry

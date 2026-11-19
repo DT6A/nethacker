@@ -92,6 +92,53 @@ from .glyph import G, MON, Hunger
 from .level import Level
 from .strategy import Strategy
 
+# ---- seventh iteration: THE TRIP COMES LOOSE FROM THE DIVE -- IT LEAVES FROM THE GRIND, AND IT IS MADE AGAIN ----
+# (EARLY_TRIP, TRIP_RETRY; with ALTAR_GATHER, BRANCH_BOULDER and the fixes BRANCH_CLOCK_FIX, FRIDAY13_FIX)
+# The hypothesis and its sources stand at dive_logic.DiveLogic._early_trip_due; this block has the numbers.
+# Where the parent's games end, 187 of them replayed with logs (fresh blocks 22427-22480, 56070-56123,
+# 11423-11476, the public seeds, the extra development seeds): the temple altar flashed in 116 (62%); dead in the
+# grind before the trip 25 (13%); dead on the trip 18 (10%); alive with the trip over 27 (14%): Orcish Town 10,
+# the Mines branch not found 10, a level budget 5, a dark altar 2. Of the 25 dead in the grind 12 had lost a
+# hunger prayer (two of them on a Friday the 13th, see FRIDAY13_FIX) and 4 more died within 50 turns of a hunger
+# prayer that had left them none for their HP: the grind lives on prayer (5-9 a game).
+# Ideas tried, each against the parent on the same seeds (used = the altar flashed, counted from the game's own
+# flash messages; raw = mean progress):
+#   1. EARLY_TRIP at XL 7 + hand-back to the grind + TRIP_RETRY at the dive's start (dive_logic._early_trip_due,
+#      _early_trip_handback, MinetownTrip.retry): 187 games: used 116 -> 115, raw 0.369 -> 0.378; dead before
+#      the trip 25 -> 21, dead on it 18 -> 18. Alone it only moves the losses about -- kept as the frame for 2.
+#   2. TRIP_RETRY for Orcish Town (orc_pending, orc_grind, the retry in DiveLogic.plan_step): a tool holder turned
+#      away at XL 7 grinds on to XL 8 instead of diving and goes again; so does one who had just prayed; one whose
+#      tool comes later in the Mines goes straight back. The 11 games of 1. that ended at the wall: 9 used the
+#      altar, nobody died in the town (6 of 6 of the XL-7 tool holders). Kept.
+#   3. ALTAR_GATHER (_gather_job): a dark altar gets the weapons and armor lying on the town level's squares the
+#      hero has stood on. 5 dark altars looked at: 1 flashed (5 stacks fetched), 2 had nothing to fetch, 2 one
+#      potion. Small, kept: it acts only at an altar that has answered nothing.
+#   4. BRANCH_BOULDER (dive_logic._branch_boulder_push): boulders closing off unexplored ground are pushed before
+#      a Dlvl 2-4 is written off. 16 trips that had ended without the branch: 2 found it. Small, kept.
+#   5. EARLY_TRIP at XL 6 (54 games): used 28 -> 27, raw 0.372 -> 0.375: dead before the trip 10 -> 5, but the
+#      XL 6 trips run out their level budgets (first-try success 46% against 65%) and stand before Orcish Town
+#      unfit. Dropped for XL 7.
+#   6. a hero fit for Orcish Town but for her prayer waits outside the wall for it (2 games): both waited, one
+#      turned Weak in front of the wall and one ran out the town's budget inside; one died later. Dropped for
+#      2.'s way (back to the grind, where the prayer comes back among weaker monsters).
+#   7. no escape hole on the trip (the 18 parent trips that dug one): dead 7 -> 7, used 10 -> 9. Dropped (as in the
+#      fourth iteration).
+#   8. FRIDAY13_FIX on its 3 known games: the prayer is not said and nobody is smitten, but all three still die
+#      on Dlvl 1-7 (0.024 -> 0.029, 0.048 -> 0.048, 0.024): the fix is right, the game stays lost. Kept as a rule
+#      of the game; a real answer needs a food plan without prayer.
+# Final version against the parent (1-4 and the two fixes; the rows marked * were run before 4. was added):
+#   development: 22427-22480*: used 28 -> 33, raw 0.372 -> 0.381; 56070-56123*: 37 -> 37, 0.371 -> 0.387;
+#     11423-11476* (drawn as held-out, read after an intermediate version lost there, 32 -> 27): 32 -> 34,
+#     0.334 -> 0.339; public 0-14*: 12 -> 11, 0.499 -> 0.513 (the judge's parent run: 0.506); extra
+#     386141-386150*: 7 -> 8, 0.330 -> 0.345. All 187: used 116 -> 123 (62% -> 66%), raw 0.369 -> 0.379.
+#   held-out, each run once: 81588-81641*: used 36 -> 40, raw 0.411 -> 0.388; 84082-84135 (final code): used
+#     26 -> 31, raw 0.329 -> 0.348; 71140-71193 (final code): used 36 -> 41, raw 0.360 -> 0.410. All three
+#     (162 games): used 98 -> 112 (60% -> 69%), raw 0.367 -> 0.382.
+#   Games ending on Dlvl 1-4: 82 -> 76 of 349. No game was aborted or errored in any run.
+# What is left (the final version's 349 games; used 214 -> 235, 61% -> 67%): dead in the grind 11%, dead on the
+# trip 9%, the Mines branch not found 6% (hidden for good: the wall search finds nothing in its 1700 turns), a
+# level or town budget 3%, a dark altar 1%, Orcish Town 1% (AC above 3, or the breach ran out its 1500 turns).
+#
 # ---- sixth iteration: THE TRIPS THAT END ALIVE WITHOUT THE TEMPLE, AGAIN -- THE BREACH FROM XL 8, A SHORTER
 # ---- BRANCH SEARCH ----
 # hypothesis: (stage "use Minetown") of 130 parent games replayed with logs -- 45 fresh development games
@@ -355,10 +402,17 @@ ORC_PRAYER_GAP = 800            # ... with the emergency prayer in hand (turns s
 ORC_WAIT = 40                   # ... turns the tunnel waits for a hostile within three squares to come and be fought
 ORC_HOLD_QUIET = 25             # ... the opened wall is held from outside until nothing hostile was in view this long
 ORC_HOLD_MAX = 150              # ... or for this many turns
+ORC_GRIND_TURNS = 5000          # TRIP_RETRY: turns a hero short of ORC_MIN_XL grinds for it before she dives without the altar
 ORC_RECT = (2, 18, 21, 55)      # the town's outer wall on the screen: rows 2-18, columns 21-55 (map 1-17 / 1-35)
 ORC_ENTRY = ((18, 40), (17, 40), (16, 40), (15, 40))   # the way in from the south: the outer wall, the lane behind
 #                                 it, the temple's back wall, the temple floor in front of the altar
 ALTAR_PICKUP_TRIES = 4
+GATHER_TURNS = 400              # ALTAR_GATHER: turns spent fetching things for a dark altar
+GATHER_BATCH = 6                # ... stacks carried to the altar at a time
+GATHER_ROUNDS = 2               # ... drops of fetched things
+GATHER_DIST = 70                # ... steps to a square worth fetching from
+GATHER_STACK_WEIGHT = 60        # ... weight of one stack fetched (no mail coats)
+GATHER_TOTAL_WEIGHT = 160       # ... and of a whole batch
 DONATE_TRIES = 6
 
 
@@ -417,6 +471,16 @@ class MinetownTrip:
         self._up_since = 0
         self.holes = 0
         self._reach_log = {}           # SECOND_WIND: level key -> [(turn, squares in reach)]
+        self._retried = False          # TRIP_RETRY: the second trip has been started
+        self.end_turn = None           # ... the turn the trip ended
+        self._gather_since = None      # ALTAR_GATHER: the turn the fetching began
+        self._gather_skip = set()      # ... (level key, y, x) looked at
+        self._gather_glyphs = set()    # ... glyphs of what was fetched
+        self._gather_weight = 0        # ... weight fetched for the next drop
+        self._gather_rounds = 0        # ... drops made
+        self._gather_over = False
+        self._mines_seen = False       # BRANCH_CLOCK_FIX: this trip has stood in the Mines
+        self._branch_since = 0         # ... the turn it was thrown back into the Dungeons of Doom
         self._winds = {}               # ... level key -> the turn its extended budget ends
         self._orc_since = None         # ORCISH_ALTAR: the turn Orcish Town was recognised
         self._orc_wait = 0
@@ -588,6 +652,78 @@ class MinetownTrip:
                  f'hp {bl.hitpoints}/{bl.max_hitpoints}, AC {bl.armor_class}, tool {self.dive.digging_tool()!r}')
         return True
 
+    def min_xl(self):
+        return TRIP_MIN_XL
+
+    def orc_pending(self):
+        """TRIP_RETRY: the trip ended alive at Orcish Town's wall and has not been made again."""
+        return bool(jf_config.TRIP_RETRY and jf_config.ORCISH_ALTAR and self.done and not self.active and
+                    self.end_reason == 'Orcish Town' and not self._retried and not self.altar_tested and
+                    self.start_turn is not None and not self.agent.prayer_failed)
+
+    def orc_fit(self, min_xl=None, prayer=True, hunger=True):
+        """... and the hero could breach it, by _orc_go's own rule: a digging tool, the armor class, the level
+        (min_xl None: ORC_MIN_XL and the town's depth), not Weak, and -- with `prayer` -- her prayer in hand."""
+        agent = self.agent
+        bl = agent.blstats
+        town = agent.global_logic.minetown_level
+        depth = 8 if town is None else int(town[1]) + 4
+        need = max(ORC_MIN_XL, depth) if min_xl is None else min_xl
+        if self.dive.digging_tool() is None or bl.experience_level < need or bl.armor_class > ORC_MAX_AC or \
+                agent.character.prop.polymorph or (hunger and bl.hunger_state >= Hunger.WEAK):
+            return False
+        last = agent.last_prayer_turn
+        return not prayer or last is None or int(bl.time) - last >= ORC_PRAYER_GAP
+
+    def orc_grind(self):
+        """TRIP_RETRY: a hero with the tool and the armor for Orcish Town's breach who lacks what the grind brings
+        -- the level (ORC_MIN_XL: a tool holder's dive starts at XL 7), or the prayer she has just said -- goes
+        back to it instead of diving without the altar; ORC_GRIND_TURNS at most."""
+        bl = self.agent.blstats
+        if not self.orc_pending() or self.end_turn is None or int(bl.time) - self.end_turn > ORC_GRIND_TURNS:
+            return False
+        return self.orc_fit(min_xl=TRIP_MIN_XL, prayer=False, hunger=False) and not self.orc_fit()
+
+    def retry(self, rescue):
+        """TRIP_RETRY (called when the dive proper starts, before start()): the early trip ended alive without the
+        altar -- it is made once more when what stopped it has changed: a level / town budget (the level's known
+        part stays known, the hero is stronger, a pick-axe may have come), Orcish Town for a hero who can now
+        breach it, the Mines branch once a second '>' is known. Only resets the trip; start() does the rest."""
+        agent = self.agent
+        bl = agent.blstats
+        if not jf_config.TRIP_RETRY or not self.done or self.start_turn is None or self.altar_tested or \
+                self._retried or rescue or agent.prayer_failed:
+            return False
+        why = self.end_reason
+        if why in ('level budget', 'town budget'):
+            ok = True
+        elif why == 'Orcish Town':
+            ok = self.orc_fit()
+        elif why in ('branch budget', 'no Mines branch', 'no Mines branch above'):
+            ok = self.dive._mines_branch_target() is not None
+        else:
+            ok = False
+        if not ok:
+            return False
+        self._retried = True
+        self._mines_seen = False
+        self._branch_since = 0
+        self.log(f'trip retry (the first ended: {why}): XL {bl.experience_level}, '
+                 f'AC {bl.armor_class}, tool {self.dive.digging_tool()!r}')
+        self.done = False
+        self.end_reason = None
+        self._town_since = None
+        self._level_key = None
+        self._winds = {}
+        self._reach_log = {}
+        self._orc_ok = None
+        self._orc_since = None
+        self._gather_over = False
+        self._hold_over = False
+        self._hold_start = None
+        self.holding = False
+        return True
+
     def business_done(self):
         """The altar has answered and nothing is left to do with the priest."""
         if not self.altar_tested or self.pending is not None:
@@ -595,6 +731,8 @@ class MinetownTrip:
         if self.can_donate() and self.in_town():
             return False
         if self._flash_due():
+            return False
+        if self._gather_due():
             return False
         return True
 
@@ -628,6 +766,137 @@ class MinetownTrip:
             return [main]
         return []
 
+    # ---- ALTAR_GATHER: A DARK ALTAR GETS WHAT LIES ABOUT THE TOWN ----
+    # hypothesis: the temple's altar answers with a flash only for a cursed or blessed object, and only a flash
+    # shows that curse status was checked there (the run's scorer counts the flash messages). A hero whose pack
+    # holds few things that can be cursed at all -- food and most tools never are (mkobj.c), weapons and armor are
+    # in about 2 cases of 10 -- drops everything and sees nothing: of 54 fresh trips of this iteration's early-trip
+    # heroes 4 ended at a dark altar with 4 to 6 stacks tested (a key, 3 daggers, a dwarvish cloak, a towel: two
+    # objects that could have flashed), 2 of 187 for the parent's later trips. ALTAR_FLASH (third iteration)
+    # helps only when something already known to be cursed or blessed is carried. What a player does at a dark
+    # altar is fetch more: the town level is strewn with what its dead gnomes, dwarves and orcs dropped (2 to 14
+    # object squares in view at the end of 7 of 9 trips looked at). So when the altar has stayed dark the hero
+    # walks to the squares of this level she has stood on where weapons, armor, rings, amulets or potions of
+    # unknown status lie (never a shop: a square she has stood on in a shop is known as one; never a corpse, a
+    # scroll, a gem or a stone; nothing heavier than GATHER_STACK_WEIGHT), carries up to GATHER_BATCH stacks to
+    # the altar, drops them and leaves them there. GATHER_TURNS at most, GATHER_ROUNDS drops; nothing hostile in
+    # view while fetching. Acts only where the trip had already finished its business.
+    # sources: NetHack 3.6.6 src/do.c doaltarobj() (the flash for every blessed or cursed object dropped, "lands
+    # on the altar" otherwise) and src/mkobj.c mksobj() (weapons: 1 in 11 blessed-or-enchanted, 1 in 10 of the
+    # rest cursed, blessorcurse(otmp, 10) for the others; armor alike; FOOD_CLASS and most TOOL_CLASS objects: no
+    # curse state rolled), read at https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/
+    # ; https://nethackwiki.com/wiki/Altar ("dropping objects on an altar ... a black flash ... an amber flash";
+    # players "drop everything they find on the altar") ; https://nethackwiki.com/wiki/Curse (the generation
+    # table by class) ; https://nethackwiki.com/wiki/Minetown (the temple as the place to learn curse status
+    # early) ; /refs/history.md #3 (ALTAR_FLASH, and that the scorer counts flashes).
+    def _gather_ok(self, it):
+        try:
+            if it.category not in (nh.WEAPON_CLASS, nh.ARMOR_CLASS, nh.RING_CLASS, nh.AMULET_CLASS,
+                                   nh.POTION_CLASS):
+                return False
+            if _buc_shown(it) or it.is_corpse() or self._is_digging_tool(it):
+                return False
+            return it.weight() <= GATHER_STACK_WEIGHT
+        except Exception:
+            return False
+
+    def _gather_fetched(self):
+        """What has been fetched and not dropped yet."""
+        return [it for it in self.altar_items() if _glyph(it) in self._gather_glyphs]
+
+    def _gather_spots(self, dis):
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        mask = (level.item_count > 0) & level.was_on & ~level.shop & ~level.shop_interior
+        out = []
+        for y, x in zip(*mask.nonzero()):
+            y, x = int(y), int(x)
+            if (key, y, x) in self._gather_skip or dis[y, x] == -1 or dis[y, x] > GATHER_DIST:
+                continue
+            if level.objects[y, x] in G.ALTAR or utils.isin(level.objects[y:y + 1, x:x + 1], G.TRAPS).any():
+                continue
+            if any(self._gather_ok(it) for it in (level.items[y, x] or ())):
+                out.append((int(dis[y, x]), (y, x)))
+        return [p for _, p in sorted(out)]
+
+    def _gather_due(self):
+        if not jf_config.ALTAR_GATHER or not self.altar_tested or self.pending is not None or self.flashes or \
+                self._gather_over or not self.in_town():
+            return False
+        key = tuple(int(v) for v in self.agent.current_level().key())
+        if getattr(self.agent, '_altar_flash_levels', {}).get(key, 0):
+            return False
+        return not self._flash_due()
+
+    def _gather_job(self, here, dis):
+        """('gather', square) | ('more', altar) | None (and the fetching is over)."""
+        agent = self.agent
+        now = int(agent.blstats.time)
+        alts = [p for p in self._altars() if p == here or dis[p] != -1]
+        if self._gather_since is None:
+            self._gather_since = now
+        fetched = self._gather_fetched()
+        if alts and now - self._gather_since <= GATHER_TURNS and len(fetched) < GATHER_BATCH and \
+                self._gather_weight < GATHER_TOTAL_WEIGHT and self._gather_rounds < GATHER_ROUNDS and \
+                not self._hostiles_within(8):
+            spots = self._gather_spots(dis)
+            if spots:
+                return 'gather', spots[0]
+        if alts and fetched:
+            return 'more', min(alts, key=lambda p: 0 if p == here else dis[p])
+        self._gather_over = True
+        self.log(f'dark altar: nothing (more) to fetch on this level after {now - self._gather_since} turns, '
+                 f'{self._gather_rounds} drops')
+        return None
+
+    def _gather(self, pos):
+        agent = self.agent
+        bl = agent.blstats
+        if (int(bl.y), int(bl.x)) != tuple(pos):
+            self._walk(pos)
+            return
+        key = agent.current_level().key()
+        self._gather_skip.add((key, int(pos[0]), int(pos[1])))
+        inv = agent.inventory
+        below = inv.get_items_below_me()
+        take, weight = [], self._gather_weight
+        for it in below:
+            if len(take) >= 4 or not self._gather_ok(it):
+                continue
+            w = it.weight()
+            if weight + w > GATHER_TOTAL_WEIGHT:
+                continue
+            take.append(it)
+            weight += w
+        if not take:
+            return
+        self.log(f'dark altar: fetching {[it.text for it in take]} at {tuple(pos)}')
+        for it in take:
+            self._gather_glyphs.add(_glyph(it))
+        self._gather_weight = weight
+        inv.pickup(take)
+
+    def _gather_drop(self, pos):
+        agent = self.agent
+        bl = agent.blstats
+        if (int(bl.y), int(bl.x)) != tuple(pos):
+            self._walk(pos)
+            return
+        items = self._gather_fetched()
+        self._gather_rounds += 1
+        self._gather_weight = 0
+        if self._gather_rounds >= GATHER_ROUNDS:
+            self._gather_over = True
+        if not items:
+            return
+        self.altar_drops += 1
+        seen = self._flash_count()
+        ok = agent.inventory.drop(items)
+        self.flashes += self._flash_count() - seen
+        self.log(f'dark altar: {len(items)} fetched stacks dropped on it (ok={ok}): {[i.text for i in items][:12]} '
+                 f'-> flashes {self.flashes}')
+
     def _flash_due(self):
         """ALTAR_FLASH: the altar has been used but has not flashed, and something that will flash is carried."""
         if not jf_config.ALTAR_FLASH or not self.altar_tested or self.pending is not None or self.flashes or \
@@ -646,6 +915,10 @@ class MinetownTrip:
         if level.key() != self._level_key:
             self._level_key = level.key()
             self._level_since = now
+            if level.dungeon_number == Level.GNOMISH_MINES:
+                self._mines_seen = True
+            elif self._mines_seen and jf_config.BRANCH_CLOCK_FIX:
+                self._branch_since = now   # BRANCH_CLOCK_FIX: thrown back into the Dungeons, the way is known
         if self.in_town() and self._town_since is None:
             self._town_since = now
             self.log(f'in town at turn {now} (trip turn {now - self.start_turn}), XL {bl.experience_level}, '
@@ -663,7 +936,7 @@ class MinetownTrip:
         if self.pending is not None:
             return None
         if level.dungeon_number == Level.DUNGEONS_OF_DOOM:
-            if now - self.start_turn > BRANCH_TURNS:
+            if now - max(self.start_turn, self._branch_since) > BRANCH_TURNS:
                 return 'branch budget'
         elif self._town_since is not None:
             if now - self._town_since > TOWN_TURNS and (self.altar_tested or self._next_job() is None):
@@ -717,6 +990,7 @@ class MinetownTrip:
         self.active = False
         self.done = True
         self.end_reason = why
+        self.end_turn = int(bl.time)
         self.log(f'trip ends ({why}) after {int(bl.time) - self.start_turn} turns: town={gl.minetown_level}, '
                  f'altar_tested={self.altar_tested} drops={self.altar_drops} flashes={self.flashes}, '
                  f'donations={self.donations} protection={self.protection}, XL {bl.experience_level}, '
@@ -1549,6 +1823,10 @@ class MinetownTrip:
                 self._altar(target)
             elif kind == 'flash':
                 self._flash(target)
+            elif kind == 'gather':
+                self._gather(target)
+            elif kind == 'more':
+                self._gather_drop(target)
             elif kind == 'priest':
                 self._donate(target)
             else:
@@ -1622,6 +1900,10 @@ class MinetownTrip:
             if alts:
                 return 'flash', min(alts, key=lambda p: 0 if p == here else dis[p])
             return None
+        if self._gather_due():
+            job = self._gather_job(here, dis)
+            if job is not None:
+                return job
         if self.can_donate() and self.in_town():
             priests = self._priests()
             near = [p for p in priests if utils.adjacent(here, p) or

@@ -66,6 +66,38 @@ STARVE_CLOCK = False
 # MINETOWN_TRIP (minetown_trip.py): before the planned dive, a stairs trip to Minetown's temple -- BUC-test the pack
 # on the altar, buy protection from the priest when the gold is there -- then the dive
 MINETOWN_TRIP = True
+# EARLY_TRIP (dive_logic._early_trip_due / _early_trip_handback): the Minetown trip leaves from the grind at
+# EARLY_TRIP_XL -- with the same readiness the dive asks for (prayer in hand, HP, not Weak) -- and hands the game
+# back to the grind when the hero is on Dlvl 2-4 again; the dive starts at its usual trigger. Hypothesis, sources
+# and numbers: dive_logic._early_trip_due and the seventh-iteration block at the top of minetown_trip.py.
+# (EARLY_TRIP_XL 6 was measured too: 54 games, altar used 28 -> 27, the XL 6 trips run out their level budgets.)
+EARLY_TRIP = True
+EARLY_TRIP_XL = 7
+EARLY_TRIP_MAX_AC = 99          # ... only with this armor class or better
+EARLY_TRIP_PRAYER_GAP = 800     # ... this many turns since the last prayer (the trip's lifeline)
+EARLY_TRIP_HP = 0.8             # ... at least this fraction of max HP
+# TRIP_RETRY (MinetownTrip.retry / orc_pending / orc_grind, dive_logic.should_dive and plan_step): a trip that ended
+# alive without the altar (Orcish Town, a level / branch budget) is made once more when what stopped it has changed
+TRIP_RETRY = True
+# BRANCH_CLOCK_FIX (minetown_trip._over), a correctness fix found in the seventh iteration's replays.
+# hypothesis: the trip's budget for finding the Mines branch (BRANCH_TURNS) counted from the trip's start even after
+# the Mines had been reached: a hero sent back to the Dungeons of Doom from Mines level 3 by a level teleporter
+# 2000 turns into her trip (development seed 22467) ended it on the spot as "branch budget", with the branch
+# stairs known and 20 turns away. The clock restarts when she is thrown back (that game: the altar used, 0.426 ->
+# 0.554); no other game of 187 changes.
+# sources: NetHack 3.6.6 src/teleport.c random_teleport_level() (in a branch "min_depth = 1 ... max_depth =
+# dunlevs_in_dungeon() + (dungeons[].depth_start - 1)": a level teleporter in the Mines can name a depth above the
+# branch, which lies in the Dungeons of Doom) ; https://nethackwiki.com/wiki/Level_teleporter ; this run's
+# /refs/history.md #12 (BRANCH_TURNS 1700, measured on trips that had not found the branch).
+BRANCH_CLOCK_FIX = True
+# FRIDAY13_FIX (character.parse, dive_logic.should_dive): see dive_logic._friday13_rescue
+FRIDAY13_FIX = True
+# BRANCH_BOULDER (dive_logic._branch_boulder_push): before a Dlvl 2-4 is written off as "explored, no Mines branch",
+# the boulders that close off unexplored ground are pushed (the path-finder takes a boulder for a wall)
+BRANCH_BOULDER = True
+# ALTAR_GATHER (minetown_trip._gather_job): an altar that stayed dark for the whole pack gets the weapons, armor,
+# rings, amulets and potions lying on the squares of the town level the hero has stood on (never a shop)
+ALTAR_GATHER = True
 # ALTAR_FLASH (minetown_trip._flash): when the temple altar showed no flash for what was dropped, something known to
 # be cursed or blessed goes on it as well (the altar flashes for every cursed or blessed object, known or not)
 ALTAR_FLASH = True

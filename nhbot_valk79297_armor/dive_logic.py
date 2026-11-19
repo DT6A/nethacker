@@ -926,6 +926,10 @@ class DiveLogic:
         self.dive_start_turn = None     # DIVE_TOOL_HUNGER_GAP: the turn the dive phase began (None: set by a scenario)
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
+        self.early_trip = False            # EARLY_TRIP: this dive phase is only the Minetown trip, then the grind again
+        self.early_trip_done = False
+        self._orc_grind_logged = False
+        self._handback_step = -1
         from .minetown_trip import MinetownTrip
         self.minetown = MinetownTrip(self)  # jf_config.MINETOWN_TRIP: the temple trip at the start of the dive
         self.undiggable = set()            # level keys where the floor is too hard to dig
@@ -1046,6 +1050,7 @@ class DiveLogic:
         self._branch_hidden = False        # FAST_BRANCH: Dlvl 2-4 explored without the branch, searching walls
         self._branch_search_start = {}     # level key -> turn the wall search for the hidden branch began there
         self._branch_trap_walk = set()     # level keys explored once more past their known traps
+        self._branch_boulder_tried = {}    # BRANCH_BOULDER: (level key, spot, boulder) -> pushes
         self._branch_skip = set()          # (level key, (y, x)) candidate branch '>' we could not reach
         self._branch_reach = {}            # (level key, (y, x)) -> turn we began trying to reach it
         self._climb_start = {}             # level key -> turn we began climbing back from it for the branch
@@ -1574,6 +1579,7 @@ class DiveLogic:
         gl = agent.global_logic
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
+        self._friday13_rescue()
         rescue = RESCUE_DIVE and agent.prayer_failed and gl.milestone == Milestone.BE_ON_FIRST_LEVEL
         late_rescue = LATE_RESCUE and agent.prayer_failed and gl.milestone != Milestone.BE_ON_FIRST_LEVEL and \
             agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
@@ -1589,6 +1595,28 @@ class DiveLogic:
             (xl >= self._dig_dive_xl() and self.digging_tool() is not None)
         if jf_config.SOKOBAN_TRIP and self._sokoban_trip(xl_trigger, rescue or late_rescue):
             return False
+        if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and \
+                not (rescue or late_rescue or planned) and self.minetown.orc_grind():
+            # TRIP_RETRY: Orcish Town was left alone for want of what the grind brings (the level: a tool holder
+            # dives from XL 7, the breach needs XL 8; the prayer just said; a full stomach): the grind goes on
+            # for it -- orc_grind's own budget ends the wait -- then the trip is made again. (The same question
+            # plan_step asks before it sends a diving hero back: the two never disagree within one step.)
+            if not self._orc_grind_logged:
+                self._orc_grind_logged = True
+                agent.log(f'DIVE held for Orcish Town: XL {xl} with a tool, grinding on for the breach')
+            xl_trigger = False
+        if self._early_trip_due(xl, xl_trigger, rescue or late_rescue or planned):
+            agent.log(f'DIVE early Minetown trip from the grind (XL {xl}, AC {agent.blstats.armor_class}, '
+                      f'hp {agent.blstats.hitpoints}/{agent.blstats.max_hitpoints}, turn {agent.blstats.time})')
+            self.diving = True
+            self.early_trip = True
+            self.dive_start_turn = agent.blstats.time
+            self.rescue = False
+            self.mines_done = False    # as a planned dive's trip (the camp / tool quest are skipped in plan_step)
+            if not self.minetown.start(False):
+                self._early_trip_handback('not started')
+                return False
+            return True
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.fed_for_dive():
             xl_trigger = False   # DIVE_FED: finish the hunger cycle on Dlvl 1 first
         if xl_trigger and gl.milestone == Milestone.BE_ON_FIRST_LEVEL and not self.prayer_ready_for_dive():
@@ -1602,6 +1630,8 @@ class DiveLogic:
             self.diving = True
             self.dive_start_turn = agent.blstats.time
             self.rescue = rescue or late_rescue
+            self.early_trip = False
+            self.minetown.retry(rescue or late_rescue)   # TRIP_RETRY
             # MINETOWN_TRIP (minetown_trip.py): a planned dive first takes the stairs to Minetown's temple
             self.minetown.start(rescue or late_rescue)
             # the tour handled the Mines; from here it's the main dungeon. A rescue used to take the Mines
@@ -1616,6 +1646,131 @@ class DiveLogic:
                 # the main dungeon -- 7 of 33 such dives never got a digging tool
                 self.mines_done = gl.milestone > Milestone.FIND_GNOMISH_MINES and not planned
         return self.diving
+
+    def _friday13_rescue(self):
+        """FRIDAY13_FIX. On Friday the 13th Luck is -1 for the whole game, and no prayer is answered while Luck is
+        negative -- the god is angered instead. The grind lives on its hunger prayers, so in such a game the first
+        one fails (Luck -3 more, 1 time in 2 a lost level, an angry god) and the game goes on as a rescue dive
+        anyway. Here the hero knows the day from her attributes screen: she never prays, eats what she carries
+        when Weak (eat_from_inventory already does, no prayer being safe), and when she is Weak with nothing left
+        the same rescue starts without the god's wrath on top."""
+        # hypothesis: the first hunger prayer of a Friday-13th game always fails (3 of 379 seeds of this arena
+        # draw that date; development seeds 22448 and 22453 lost theirs at turns 1341 and 1497 and died on Dlvl 2
+        # and 7 as rescue dives, their prayer model blind to it: "luck>=0=1.00"). Knowing the date, the prayer is
+        # not made: the rescue starts as before but with Luck -1 instead of -4, no lost level and no smiting.
+        # sources: NetHack 3.6.6 src/allmain.c ("if (flags.friday13) { pline(\"Watch out!  Bad things can happen on
+        # Friday the 13th.\"); change_luck(-1); }"), src/pray.c can_pray() ("else if ((int) Luck < 0 || u.ugangr ||
+        # alignment < 0) p_type = 1; /* too naughty... */" -> angrygods()), src/cmd.c background_enlightenment()
+        # (the attributes line) ; https://nethackwiki.com/wiki/Luck ("Friday the 13th: base Luck -1; prayer
+        # never works") ; https://nethackwiki.com/wiki/Prayer.
+        agent = self.agent
+        if not jf_config.FRIDAY13_FIX or not getattr(agent, 'friday13', False) or agent.prayer_failed:
+            return
+        try:
+            if agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food():
+                agent.log('FRIDAY13: Weak with nothing to eat and no prayer to make: the rescue starts unprayed')
+                agent.prayer_failed = True
+        except Exception:
+            pass
+
+    def _early_trip_due(self, xl, xl_trigger, other_start):
+        """EARLY_TRIP: the grind hands over to the Minetown trip (and only to it) once the hero is ready for the
+        Mines; _early_trip_handback gives the game back to the grind afterwards. With MinetownTrip.retry /
+        orc_grind (TRIP_RETRY) this is the seventh iteration's change: the whole of it, with every number, is the
+        "seventh iteration" block at the top of minetown_trip.py."""
+        # hypothesis: (stage "use Minetown") the trip was welded to the start of the dive: one attempt, at the
+        # moment the dive's own trigger fired (XL 7 with a digging tool, XL 8 without), and whatever stopped it
+        # -- Orcish Town's wall, a level or branch budget -- the dig-dive began the moment it was over. Of 187
+        # parent games replayed with logs the temple altar flashed in 116 (62%); in 27 the hero was alive and
+        # her one trip had simply ended (Orcish Town 10, the Mines branch not found 10, a level budget 5, a dark
+        # altar 2). A player goes to Minetown when she is ready for the Mines, comes back, and goes again when
+        # she is ready for what stopped her. So: (1) the trip leaves from the grind at XL 7 with or without a tool
+        # (the progression schedule's "Minetown at XL 6-8"; the tool-less hero no longer grinds on to XL 8 on
+        # hunger prayers first -- a median 3,800 turns) and hands the game back to the grind on Dlvl 2-4; the
+        # dive keeps its own trigger; (2) when the dive starts, a trip that ended alive without the altar is made
+        # once more if what stopped it has changed (TRIP_RETRY: a budget -- the level's known part stays known;
+        # the branch once a second '>' is known; Orcish Town for a hero who can now breach it); (3) a hero whom
+        # Orcish Town turned away for her level alone (a tool holder's dive starts at XL 7, the breach needs
+        # XL 8) or for a prayer just said goes back to the grind for it instead of diving, and one whose tool
+        # arrives later in the Mines goes straight back to the wall. Measured against the parent on the same
+        # seeds (used = the altar flashed; raw = mean progress): 187 development games (22427-22480,
+        # 56070-56123, 11423-11476, public 0-14, 386141-386150), (1)+(2) alone: used 116 -> 115, raw 0.369 ->
+        # 0.378 (the losses only move: dead before the trip 25 -> 21, dead on it 18 -> 18); with (3), on the 11
+        # games that had ended at Orcish Town's wall: 9 used the altar and none died in the town. The whole
+        # change (with ALTAR_GATHER, BRANCH_BOULDER and the two fixes): development 187 games: used 116 -> 123
+        # (62% -> 66%), raw 0.369 -> 0.379; held-out 81588-81641, 84082-84135 and 71140-71193 (162 games, each
+        # block run once): used 98 -> 112 (60% -> 69%), raw 0.367 -> 0.382 (0.411 -> 0.388, 0.329 -> 0.348,
+        # 0.360 -> 0.410).
+        # sources: https://nethackwiki.com/wiki/Gnomish_Mines ("lawful humans will often be ignored by the
+        # dwarves, although the gnomes will still be hostile"; "stay close to the upstairs ... and run upstairs to
+        # heal") ; https://nethackwiki.com/wiki/Valkyrie ("being lawful makes the Mines somewhat safe since most
+        # of the dwarves will be peaceful") ; https://nethackwiki.com/wiki/Minetown (Orcish Town: no priest, the
+        # altar still there, entry "requires a digging tool") ; https://nethackwiki.com/wiki/Protection_racket
+        # ("Some players recommend becoming level 3 before entering the mines") ; NetHack 3.6.6 dat/mines.des
+        # (minetn-1: the closed wall with its iron bars, "ALTAR:(20,13),noalign,shrine") and dat/dungeon.def
+        # ('BRANCH "The Gnomish Mines" @ (2,3)', 'RNDLEVEL "minetn" "town" @ (3,2) 7': one town in seven) ;
+        # player discussions: https://www.reddit.com/r/nethack/comments/fap1nz/ ("With a Valk ... I dont hesitate
+        # to hit the mines ... The trick is not to get surrounded. Retreat if you must, heal up"; "As a valk I go
+        # into the mines after exploring level four"), https://gaming.stackexchange.com/questions/16976 (peek at
+        # Mines level 1 and back out when it looks bad: "a dwarf with a mattock can do a lot of damage fairly
+        # quickly") and https://gaming.stackexchange.com/questions/233700 (Minetown as the early food and altar
+        # stop) ; the NeurIPS 2021 NetHack Challenge report https://arxiv.org/abs/2203.11889 (agents held on the
+        # top levels starve: "very high incidence of death due to 'fainted of starvation'") ; /refs/history.md #12
+        # (ORC_MIN_XL 8: all 7 breaches at XL 8 lived, 2 of 3 at XL 7 died; MINES_FINISH, a tool-less trip at
+        # XL 7 without a way back to the grind: mixed), #9 (a trip at XL 6: worse), #11 (ORCISH_ALTAR) ;
+        # /refs/reference/README.md, reference run 20261102-161819 #918 (autoascend/global_logic.py
+        # _update_mines_grind: a Mines visit from the grind that returns to it) ; /refs/top/README.md (the hub's
+        # leaders for the three Valkyries are this engine family without a Minetown trip).
+        if not (jf_config.EARLY_TRIP and jf_config.MINETOWN_TRIP) or self.early_trip_done or self.minetown.done or \
+                self.minetown.active or xl_trigger or other_start:
+            return False
+        agent = self.agent
+        gl = agent.global_logic
+        bl = agent.blstats
+        from .global_logic import Milestone
+        if gl.milestone != Milestone.BE_ON_FIRST_LEVEL or agent.prayer_failed or self.pick_trip:
+            return False
+        if xl < max(jf_config.EARLY_TRIP_XL, self.minetown.min_xl()) or bl.armor_class > jf_config.EARLY_TRIP_MAX_AC:
+            return False
+        level = agent.current_level()
+        if level.dungeon_number != Level.DUNGEONS_OF_DOOM or bl.depth > 4:
+            return False
+        if bl.hitpoints < jf_config.EARLY_TRIP_HP * bl.max_hitpoints or bl.hunger_state >= Hunger.WEAK:
+            return False
+        last = agent.last_prayer_turn
+        if last is not None and bl.time - last < jf_config.EARLY_TRIP_PRAYER_GAP:
+            return False
+        if agent.character.prop.polymorph:
+            return False
+        return True
+
+    def _early_trip_handback(self, why=None):
+        """EARLY_TRIP: the trip is over and the hero is back in the Dungeons of Doom: the tour's grind goes on
+        (strategy() returns, GlobalLogic.current_strategy().repeat() starts the tour again) until the dive's own
+        trigger. True: handed back."""
+        if not self.early_trip:
+            return False
+        agent = self.agent
+        if why is None:
+            if self.minetown.active or not self.minetown.done:
+                return False
+            if agent.current_level().dungeon_number != Level.DUNGEONS_OF_DOOM:
+                return False
+            why = f'trip over ({self.minetown.end_reason})'
+        from .global_logic import Milestone
+        bl = agent.blstats
+        agent.log(f'DIVE early trip handed back to the grind ({why}): XL {bl.experience_level}, AC {bl.armor_class}, '
+                  f'hp {bl.hitpoints}/{bl.max_hitpoints}, turn {bl.time}, depth {bl.depth}, tool {self.digging_tool()!r}')
+        self.diving = False
+        self.early_trip = False
+        self.early_trip_done = True
+        self._handback_step = agent.step_count
+        self.dive_start_turn = None
+        self.mines_done = False
+        self.minetown.holding = False
+        self._last_task = None
+        agent.global_logic.milestone = Milestone.BE_ON_FIRST_LEVEL
+        return True
 
     def _sokoban_trip(self, xl_trigger, rescue):
         """SOKOBAN_TRIP (power-route): when the grind would hand over to the dive, first the tour's Sokoban milestones
@@ -1754,6 +1909,8 @@ class DiveLogic:
         yield True
         idle = 0
         while True:
+            if self._early_trip_handback():
+                return
             before = self.agent.step_count
             self.plan_step()
             if self.agent.step_count != before:
@@ -1859,6 +2016,37 @@ class DiveLogic:
         # priest -- before the camp / tool quest / return to the main dungeon, which follow once it is over
         if self.minetown.active and self.minetown.plan_step():
             return
+
+        if jf_config.TRIP_RETRY and not self.early_trip and not self.rescue and self.minetown.orc_pending():
+            if dnum == Level.GNOMISH_MINES and level.level_number <= 4 and self.minetown.orc_fit() and \
+                    self.minetown.retry(False) and self.minetown.start(False):
+                # TRIP_RETRY: the tool Orcish Town's wall wanted is in the pack now (the Mines camp, a dwarf met
+                # on the way back): the trip is made again from here
+                return
+            if self.minetown.orc_grind():
+                # ... or the tool is there and only the level (or the prayer) is missing: back to the grind for
+                # it (the trip is made again when the dive starts), as from an early trip
+                if self._handback_step == agent.step_count:
+                    # (a guard, never seen: handed back and sent off again without a single action -- give
+                    # Orcish Town up rather than spin)
+                    agent.log('DIVE Orcish Town given up: the hold and the dive disagree')
+                    self.minetown._retried = True
+                else:
+                    agent.log('DIVE Orcish Town left alone at this level: back to the grind for the breach')
+                    self.early_trip = True
+
+        if self.early_trip:
+            # EARLY_TRIP: the trip is over -- none of the dive's own business (camp, tool quest, holes): up the
+            # known stairs to the main dungeon, where strategy() hands the game back to the grind
+            if dnum == Level.GNOMISH_MINES:
+                if self.minetown.passing() or self.minetown.tunnel_up() or self.minetown.unblock(G.STAIR_UP):
+                    return
+                self._task('early trip: return to main dungeon')
+                return self.return_to_main_dungeon()
+            if dnum != Level.DUNGEONS_OF_DOOM:
+                self._task('early trip: return to main dungeon')
+                return self.return_to_main_dungeon()
+            return   # in the Dungeons: strategy() hands back before the next step
 
         if self.should_camp():
             return self.camp_step()
@@ -2858,6 +3046,8 @@ class DiveLogic:
                 agent._allow_walking_through_traps_turn = agent._last_turn
                 agent.last_bfs_step = -1
                 return True
+            if jf_config.BRANCH_BOULDER and self._branch_boulder_push():
+                return True
             agent.log(f'DIVE no Mines branch on {level.key()} (explored)')
             self.fully_explored.add(level.key())
         if not BRANCH_HIDDEN_TURNS or (depth < MINES_BRANCH_MAX_DEPTH and not self._branch_hidden):
@@ -2894,6 +3084,70 @@ class DiveLogic:
         agent.log('DIVE hidden Mines branch not found on Dlvl 2-4; giving the Mines route up')
         self.mines_done = True
         return False
+
+    def _branch_boulder_push(self):
+        """BRANCH_BOULDER: one step of pushing a boulder that closes off unexplored ground on a Dlvl 2-4 about to be
+        written off as "explored, no branch". True: acted."""
+        # hypothesis: the Mines branch is "not found" in 5% of games (10 of 187 parent trips end on the branch
+        # budget), and in the replays the level that hid it was often not explored at all: AutoAscend's path-finder
+        # takes a boulder for a wall, so a boulder in a doorway or a corridor (mklev.c puts them in corridors) cuts
+        # the level in two and the search declares the reachable half "explored" within 100-600 turns, then spends
+        # its budget searching walls for a secret door that is not there (development seed 22465: a boulder in the
+        # east doorway of a room on Dlvl 4, the corridor behind it never walked; public seed 7: three on Dlvl 3-4).
+        # A player pushes it. So before a level is written off, every boulder with a reachable square on one side
+        # and unreached ground straight behind it is pushed from that square (twice at most per side; never in
+        # Sokoban, which this search never sees); the exploration then goes on behind it.
+        # sources: NetHack 3.6.6 src/mklev.c dig_corridor() / corr() ("if (nxcor && !rn2(50)) (void) mksobj_at(
+        # BOULDER, xx, yy, TRUE, FALSE)": boulders are made in corridors) and src/hack.c moverock() (a boulder
+        # moves when the square behind it is free) ; https://nethackwiki.com/wiki/Boulder ("you can push a boulder
+        # by walking into it ... a boulder will not move if there is another boulder, a wall or a monster behind
+        # it") ; player discussion https://gaming.stackexchange.com/questions/16146 (finding the second down
+        # staircase: "Stairs always happen in rooms. Thus, you should look for 'holes' in the map where a room could
+        # fit"; dead-end corridors point at them) ; this engine's own Agent.boulder_unbox and STALL_BOULDER (the
+        # same push, used when the hero is boxed in or a known '>' is cut off).
+        agent = self.agent
+        level = agent.current_level()
+        if level.dungeon_number != Level.DUNGEONS_OF_DOOM:
+            return False
+        bl = agent.blstats
+        key = level.key()
+        dis = agent.bfs()
+        tried = self._branch_boulder_tried
+        best = None
+        for by, bx in zip(*utils.isin(agent.glyphs, G.BOULDER).nonzero()):
+            by, bx = int(by), int(bx)
+            for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                y, x = by - dy, bx - dx          # where we stand
+                ty, tx = by + dy, bx + dx        # where the boulder goes
+                if not (0 <= y < dis.shape[0] and 0 <= x < dis.shape[1] and 1 <= ty < dis.shape[0] - 1 and
+                        1 <= tx < dis.shape[1] - 1):
+                    continue
+                if dis[y, x] == -1 or dis[ty, tx] != -1 or tried.get((key, (y, x), (by, bx)), 0) >= 2:
+                    continue
+                if int(agent.glyphs[ty, tx]) in G.BOULDER or agent.monster_tracker.monster_mask[ty, tx]:
+                    continue
+                if level.seen[ty, tx] and not level.walkable[ty, tx]:
+                    continue                     # known rock or wall behind it
+                cost = int(dis[y, x])
+                if best is None or cost < best[0]:
+                    best = (cost, (y, x), (by, bx))
+        if best is None:
+            return False
+        _, spot, boulder = best
+        self._task('search mines branch: push a boulder')
+        if (int(bl.y), int(bl.x)) != spot:
+            before = agent.step_count
+            agent.go_to(*spot, max_steps=30)
+            if agent.step_count == before:
+                tried[(key, spot, boulder)] = 2
+            return True
+        tried[(key, spot, boulder)] = tried.get((key, spot, boulder), 0) + 1
+        agent.log(f'DIVE branch search: pushing the boulder at {boulder} from {spot} on {key}')
+        try:
+            agent.move(agent.calc_direction(spot[0], spot[1], *boulder))
+        except AgentPanic:
+            agent.log(f'DIVE branch search: the boulder did not move: {agent.message[:80]!r}')
+        return True
 
     def _search_toward_void(self, found, t0, budget):
         """HIDDEN_SEARCH2: the branch room of an 'explored' Dlvl 2-4 hides behind a secret door or corridor.
@@ -3583,6 +3837,8 @@ class DiveLogic:
         agent = self.agent
         if not DIG_FIRST or not self.diving:
             yield False
+        if self.early_trip and not self.minetown.active:
+            yield False   # EARLY_TRIP: over, on the way back to the grind -- no hole
         if self.minetown.holding and not self.minetown._hold_over:
             yield False   # MINETOWN_TRIP: the post-trip prayer hold on Dlvl 2-4 fights what comes
         if self.minetown.active:
@@ -5859,6 +6115,8 @@ class DiveLogic:
             # development games had hunted on the way and died at 18-47 HP without a prayer (seeds 23097, 23119,
             # 67295). The Mines camp for a pick-axe comes after the trip, as before.
             return False
+        if self.early_trip:
+            return False   # EARLY_TRIP: nor on the way back -- the grind that follows lives on its prayers
         grind = self._grind_hunting()
         if not self.diving and not self.pick_trip and not grind and \
                 (not HUNT_IN_TOUR or agent.blstats.experience_level < self._min_xl(HUNT_MIN_XL)):

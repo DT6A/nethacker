@@ -430,7 +430,28 @@ class Character:
             self.agent.step(A.Command.ATTRIBUTES)
             text = ' '.join(self.agent.popup)
             self._parse(text)
+            self._note_luck_base(text)
             self.self_glyph = self.agent.glyphs[self.agent.blstats.y, self.agent.blstats.x]
+
+    def _note_luck_base(self, text):
+        """FRIDAY13_FIX: the attributes screen names the day's Luck base (cmd.c background_enlightenment: "Bad
+        things can happen on Friday the 13th.", "There is a full moon in effect.") -- the prayer model reads it
+        from the game's first message, which the arena's first observation does not always carry."""
+        try:
+            from . import jf_config
+            if not jf_config.FRIDAY13_FIX:
+                return
+            model = getattr(self.agent, 'prayer_model', None)
+            friday = 'on Friday the 13th' in text
+            self.agent.friday13 = friday
+            if model is None:
+                return
+            if friday:
+                model.initial_message(model._M_FRIDAY13)
+            elif 'full moon in effect' in text:
+                model.initial_message(model._M_FULL_MOON)
+        except Exception:
+            pass
 
     def _parse(self, text):
         matches = re.findall('You are a ([a-z]+) (([a-z]+) )?([a-z]+) ([A-Z][a-z]+).', text)
