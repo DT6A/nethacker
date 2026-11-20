@@ -139,6 +139,19 @@ class Agent:
             where = f't{bl.time} d{bl.depth} {bl.dungeon_number}:{bl.level_number} xl{bl.experience_level} ' \
                     f'hp{bl.hitpoints}/{bl.max_hitpoints}' if bl is not None else 't?'
             jf_log.log(f'[s{self.step_count} {where}] {msg}')
+            if jf_log.screen_wanted(msg):
+                jf_log.screen(self.last_observation)
+                try:   # dev-only: the squares the path-finder reaches ('~' where the screen is blank, upper case else)
+                    dis = self.bfs()
+                    rows = []
+                    for y in range(dis.shape[0]):
+                        line = bytes(self.last_observation['tty_chars'][y + 1]).decode(errors='replace')
+                        rows.append(''.join(('~' if c == ' ' else '%' if c == '#' else ':' if c == '.' else c)
+                                            if dis[y, x] != -1 else c for x, c in enumerate(line[:dis.shape[1]])))
+                    jf_log.log('REACH (weight %s)\n' % getattr(self.inventory.items, 'total_weight', '?') +
+                               '\n'.join(rows))
+                except Exception as e:
+                    jf_log.log(f'REACH failed: {e!r}')
 
     @property
     def has_pet(self):
@@ -659,6 +672,8 @@ class Agent:
             self.last_observation = observation
 
         self.blstats = BLStats(*self.last_observation['blstats'])
+        if jf_log.enabled() and self.step_count % 25 == 0:
+            jf_log.last_screen(self.last_observation, self.step_count)
         self.glyphs = self.last_observation['glyphs']
 
         if self._prayer_model_active():
@@ -3457,6 +3472,9 @@ class Agent:
         if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
                 self.blstats.hunger_state < Hunger.WEAK:
             yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
+        # FLOOR_FOOD_FIX: a levitating hero is not offered the floor's corpses (the why and the proof: jf_config)
+        if jf_config.FLOOR_FOOD_FIX and self.global_logic.dive.levitating():
+            yield False
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
@@ -3935,6 +3953,147 @@ class Agent:
         self.log(f'HUNGER_DEEP eating {food[0].text!r} (hunger {bl.hunger_state}, depth {bl.depth})')
         self.inventory.eat(food[0])
 
+    def note_shed(self, pack=False):
+        """SHED_REDRESS: remember the square where a change of form made us drop what we wore and wielded
+        (character.update, at the change) or where an Overloaded were form put the pack down (were_unload)."""
+        if not jf_config.SHED_REDRESS:
+            return
+        try:
+            bl = self.blstats
+            if bl.depth > jf_config.SHED_REDRESS_MAX_DEPTH:
+                return   # (the castle's own polymorph plans are not this)
+            spot = (self.current_level().key(), (int(bl.y), int(bl.x)))
+            shed = getattr(self, '_shed', None)
+            if shed is None:
+                shed = self._shed = {'spots': [], 'back': None, 'tries': 0, 'pack': set()}
+            shed['back'] = None
+            shed['tries'] = 0
+            if spot not in shed['spots']:
+                shed['spots'].append(spot)
+            if pack:
+                shed['pack'].add(spot)
+            self.log(f'REDRESS noted {"the pack" if pack else "a change of form"} at {spot}')
+        except Exception:
+            pass
+
+    @utils.debug_log('shed_redress')
+    @Strategy.wrap
+    def shed_redress(self):
+        """SHED_REDRESS: back in her own form, the hero fetches what the change of form made her drop and puts it
+        on again."""
+        # hypothesis: (stage "use Minetown"; the eighth iteration of the trip -- the numbers are in the block of that
+        # name at the top of minetown_trip.py) the trip loses one hero in five on the way, and a third of the
+        # early deaths looked at had ended with far worse armor than the hero had owned: THE ARMOR THAT COMES OFF ON
+        # THE TRIP NEVER GOES BACK ON. The tour gathers and wears; the dive -- and the trip is a dive task -- does
+        # neither (ARMOR_UP is off, nothing picks items up). Two ways it comes off, each fixed where it happens:
+        #   1. SHED_REDRESS (this function): a hero who turns into a were animal (or steps on a polymorph trap)
+        #      shrinks out of everything -- polyself.c break_armor() drops suit, cloak, shield, gloves and boots
+        #      on her square and polymon() makes her drop the weapon -- and, diving, walks away from the pile at
+        #      AC 10 (5 of 13 early deaths of one 54-game block; one hero played on naked for 2700 turns after the
+        #      prayer that had cured her). Back in her own form, with nothing hostile within two squares, she
+        #      walks to the square(s), takes the armor, weapons and digging tool (the whole pile where an
+        #      Overloaded were form unloaded its pack, while diving) and dresses. A square behind a trap -- the
+        #      polymorph trap itself -- is out of the path-finder's reach and is left alone. Measured: the kit
+        #      was back on in 9 of 12 logged changes of form (AC 10 -> 2, 10 -> 1, 6 -> 1 ...; in the Mines an
+        #      armed monster had taken the pile first in the other 3); 7 development games took the errand:
+        #      2 heroes who had died before their trip used the temple and dived (0.037 -> 0.292, 0.051 ->
+        #      0.507), 2 died later on (-0.37 each), mean progress of the seven -0.005.
+        #   2. SHIELD_KEEP (dive_logic.reshield): the trip's tunnels DROPPED the shield to dig with a two-handed
+        #      mattock; it is kept and worn again when the tunnel is done. 8 development games took it: +0.135
+        #      mean progress over the eight, early deaths 4 -> 2, temple used +1.
+        # With them, two fixes of the search for the Mines branch (the trip's first leg; each has its own
+        # hypothesis): BRANCH_LOOSE_ENDS (dive_logic._branch_loose_ends) and BRANCH_FRESH_TURNS (minetown_trip).
+        # All four against the parent on the same seeds: 133 development games (37348-37401, 61200-61253, public
+        # 0-14, 386141-386150): temple used 87 -> 92 (65% -> 69%), mean progress 0.372 -> 0.378; held-out, each
+        # block against the parent's one run: 84766-84825 (60 games): used 36 -> 36, progress 0.371 -> 0.374,
+        # early deaths 16 -> 14; 30282-30341 (60 games, the final code): used 35 -> 38, progress 0.313 -> 0.326,
+        # early deaths 23 -> 18. No game of any run of the final code was aborted or errored.
+        # Tried first and dropped (each measured on the same 79-133 games): the trip from XL 4, 5 or 6 with a
+        # branch budget for unexplored levels, and from XL 5 for AC 3 or better only -- hunger prayers 6.2 -> 4.9
+        # a game and fewer deaths before the trip, as many more on it (133 games: used 87 -> 89, progress
+        # 0.372 -> 0.360); a walk past the known traps in the hidden-branch search (8 games, -0.10 each);
+        # HIDDEN_SEARCH2 (0 of 6 branch-less trips found it).
+        # sources: NetHack 3.6.6 src/polyself.c break_armor() ("Your armor falls around you!", "You shrink out of
+        # your cloak!", "You can no longer hold your shield!", "Your boots slide off your feet!": each followed
+        # by dropx()) and polymon() (drop_weapon(1): "You find you must drop your weapon!"), src/were.c you_were()
+        # ; https://nethackwiki.com/wiki/Lycanthropy ("Werejackals and wererats ... will be forced out of their
+        # armor and drop it", werewolves "destroy their shirt, cloak, and body armor and drop any remaining
+        # armor"; "a 1/80 chance each turn of changing forms", 1/60 at night; cures: wolfsbane, holy water,
+        # prayer -- "a major trouble"; "kill werecreatures before they can reach melee range") ;
+        # https://nethackwiki.com/wiki/Valkyrie ("The +3 small shield is extremely useful armor that is
+        # incredibly light for its AC"; "An AC of roughly -5 by the end of the Gnomish Mines is a reasonable goal";
+        # "smart retreating and Elbereth usage can prevent YASD") ; https://nethackwiki.com/wiki/Dwarvish_mattock
+        # ("a two-handed weapon-tool ... uses the pick-axe skill", "requires both hands free to wield") ;
+        # https://nethackwiki.com/wiki/Gnomish_Mines ("a mines level is often substantially harder than a level
+        # of the main dungeon"; "be willing to back off and try again later rather than press on to a glorious
+        # death"; stay near the up stairs, Elbereth) ; NetHack 3.6.6 dat/mines.des (minefill: "STAIR: random,
+        # up / STAIR: random, down" -- no side of the level to head for) ; player discussions:
+        # https://forums.anandtech.com/threads/i-am-playing-nethack-again.304543/ (a werejackal's bite, the
+        # hero's gear on the floor), https://nethackwiki.com/wiki/User:Furey/Furey's_NetHack_Tips (a pick-axe or
+        # mattock for the Mines; the shield is early-game armor worth keeping) and
+        # https://forum.rpg.net/index.php?threads/lets-play-nethack-spoiled-to-the-bone.368365/page-4 (armor is
+        # taken off before a change of form, put on again after) ; /refs/history.md #14 (EARLY_TRIP at XL 6:
+        # dropped there too), #12 (BRANCH_TURNS), #9/#10 (the squeeze rule) ; this engine's own were_unload
+        # docstring ("nothing is picked up again until we change back; then the usual pickup logic collects
+        # the pile" -- the tour's logic, not the dive's).
+        shed = getattr(self, '_shed', None)
+        if not jf_config.SHED_REDRESS or shed is None or self.character.prop.polymorph:
+            yield False
+        bl = self.blstats
+        now = int(bl.time)
+        if shed['back'] is None:
+            shed['back'] = now
+        if not shed['spots'] or now - shed['back'] > jf_config.SHED_REDRESS_TURNS or \
+                shed['tries'] >= jf_config.SHED_REDRESS_TRIES:
+            self.log(f'REDRESS over ({len(shed["spots"])} squares left, {shed["tries"]} tries)')
+            self._shed = None
+            yield False
+        if self.global_logic.dive._near_hostiles(2):
+            yield False
+        level = self.current_level()
+        key = level.key()
+        here = (int(bl.y), int(bl.x))
+        # (never in a shop: what falls there may have been sold on the spot, and the shop's rules are the tour's)
+        shed['spots'] = [s for s in shed['spots']
+                         if not (s[0] == key and (level.shop[s[1]] or level.shop_interior[s[1]]))]
+        dis = self.bfs()
+        spots = [s for s in shed['spots'] if s[0] == key and (s[1] == here or dis[s[1]] != -1)]
+        if not spots:
+            yield False
+        spot = min(spots, key=lambda s: 0 if s[1] == here else int(dis[s[1]]))
+        yield True
+        shed['tries'] += 1
+        if spot[1] != here:
+            self.go_to(*spot[1], max_steps=20)
+            return
+        inv = self.inventory
+        below = inv.get_items_below_me()
+        whole = spot in shed['pack'] and self.global_logic.dive.diving
+        mine = [it for it in below
+                if it.category in (nh.ARMOR_CLASS, nh.WEAPON_CLASS) or
+                any(w in it.text for w in ('pick-axe', 'mattock')) or
+                (whole and it.category not in (nh.ROCK_CLASS, nh.BALL_CLASS, nh.CHAIN_CLASS) and
+                 not it.is_corpse())]
+        self.log(f'REDRESS at {spot}: taking {[it.text for it in mine][:12]} of {len(below)} stacks, AC {bl.armor_class}')
+        shed['spots'].remove(spot)
+        if not mine and spot not in shed.get('derived', ()):
+            # nothing of ours here: the change was seen a step or two late (it came inside a fight's moves) --
+            # the piles within two squares are looked at as well, each once
+            y0, x0 = spot[1]
+            objects = utils.isin(self.glyphs, G.OBJECTS)
+            for y in range(max(y0 - 2, 0), min(y0 + 3, objects.shape[0])):
+                for x in range(max(x0 - 2, 0), min(x0 + 3, objects.shape[1])):
+                    near = (spot[0], (y, x))
+                    if objects[y, x] and near != spot and near not in shed['spots'] and \
+                            near not in shed.setdefault('derived', set()):
+                        shed['derived'].add(near)
+                        shed['spots'].append(near)
+        if mine:
+            inv.pickup(mine)
+        ac = int(self.blstats.armor_class)
+        inv.wear_best_stuff().run()
+        self.log(f'REDRESS dressed: AC {ac} -> {int(self.blstats.armor_class)}')
+
     @utils.debug_log('were_unload')
     @Strategy.wrap
     def were_unload(self):
@@ -3968,6 +4127,7 @@ class Agent:
             yield False
         yield True
         self.log(f'LYCAN were form Overloaded (hunger {self.blstats.hunger_state}): dropping {len(to_drop)} items')
+        self.note_shed(pack=True)
         self.inventory.drop(to_drop, smart=False)
 
     _TIN_SMELL = re.compile(r'It smells like (?:the )?([A-Za-z -]+?)\.')

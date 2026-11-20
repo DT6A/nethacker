@@ -3067,6 +3067,13 @@ class DiveLogic:
         budget = HIDDEN_SEARCH2_TURNS if HIDDEN_SEARCH2 else BRANCH_HIDDEN_TURNS
         if agent.blstats.time - t0 < budget:
             self._task('search hidden mines branch')
+            if jf_config.BRANCH_LOOSE_ENDS and self.minetown.active:
+                before = agent.blstats.time
+                if self._branch_loose_ends(level, found):
+                    # (the wall search keeps its own budget: the errand's turns are added to it)
+                    if agent.current_level().key() == level.key():
+                        self._branch_search_start[level.key()] = t0 + (agent.blstats.time - before)
+                    return True
             if HIDDEN_SEARCH2 and self._search_toward_void(found, t0, budget):
                 return True
             self.exploration(None).until(agent, lambda: found() or
@@ -3084,6 +3091,24 @@ class DiveLogic:
         agent.log('DIVE hidden Mines branch not found on Dlvl 2-4; giving the Mines route up')
         self.mines_done = True
         return False
+
+    def _branch_loose_ends(self, level, found):
+        """BRANCH_LOOSE_ENDS: before walls are searched for a secret door on a Dlvl 2-4, the boulders that close off
+        unseen ground are pushed. (_search_branch's first pass does that, but it is skipped whole on a level first
+        stood on long ago in the grind: turns_on_level() is past its budget.) True: acted."""
+        # hypothesis: the hidden-branch search of a level the hero first stood on thousands of turns earlier
+        # never runs _branch_boulder_push -- the first pass of _search_branch is gated on turns_on_level(), which
+        # counts from the first visit -- so a boulder in a corridor still hides the branch from a hero who then
+        # searches walls for a secret door that is not there (public seed 2: the trip ended "no Mines branch"
+        # with a boulder at a corridor's end on Dlvl 4; with the push in the wall-search phase the branch was
+        # found and the temple used). Tried with it and dropped: walking past the level's known traps in the
+        # same phase -- 8 development games took it, 2 of them stepped on a just-found trap and lost the level
+        # (one a temple the parent had used), mean progress -0.10 over the eight.
+        # sources: /refs/history.md #14 (BRANCH_BOULDER, the first pass) ; NetHack 3.6.6 src/mklev.c
+        # dig_corridor() ("if (nxcor && !rn2(50)) (void) mksobj_at(BOULDER, ...)": boulders are made in
+        # corridors) ; https://nethackwiki.com/wiki/Boulder ; https://nethackwiki.com/wiki/Gnomish_Mines (the
+        # branch staircase on Dlvl 2-4).
+        return bool(jf_config.BRANCH_BOULDER and self._branch_boulder_push())
 
     def _branch_boulder_push(self):
         """BRANCH_BOULDER: one step of pushing a boulder that closes off unexplored ground on a Dlvl 2-4 about to be
@@ -3819,6 +3844,73 @@ class DiveLogic:
         if item.object == O.from_name('pick-axe'):
             return True
         return item.object == O.from_name('dwarvish mattock') and not shield_stuck
+
+    def _shield_keep_here(self):
+        """SHIELD_KEEP: where a dig is the Minetown trip's (a tunnel round an obstacle, the escape hole, the way back
+        to the main dungeon) and not the dig-dive's: in the Gnomish Mines, and in the Dungeons while the trip or
+        the early trip's hand-back is still on."""
+        level = self.agent.current_level()
+        return level.dungeon_number == Level.GNOMISH_MINES or self.minetown.active or self.early_trip
+
+    @Strategy.wrap
+    def reshield(self):
+        """SHIELD_KEEP: the shield that came off for a two-handed dig goes back on once the digging is over."""
+        # hypothesis: a dwarvish mattock needs both hands, and to dig with one the dive DROPPED the hero's shield
+        # ("a digger falls through the floor anyway, so leave the shield"). That is the dig-dive's reasoning; the
+        # Minetown trip digs too -- a tunnel of two to twenty squares round a trap or to the cut-off stairs, an
+        # escape hole -- and then walks and fights on for a thousand turns or more, and after an early trip grinds
+        # on. A Valkyrie's +3 small shield is 4 points of armor class: in the five logged development runs 4 of 39
+        # early deaths had left the shield on a Mines level this way (AC 1 -> 5, -4 -> 0, -3 -> 5, 1 -> 5), all
+        # killed in melee or by arrows afterwards. Here the shield is taken off and kept, and when no dig has been
+        # made for SHIELD_KEEP_QUIET turns and nothing hostile is near she takes up her best one-handed weapon and
+        # wears it again (inventory.wield refuses a two-hander while a shield is worn, so fights keep the sword;
+        # the next tunnel takes the shield off again, one turn). The dig-dive proper drops it as before.
+        # sources: https://nethackwiki.com/wiki/Dwarvish_mattock ("two-handed ... cannot be used with a shield") ;
+        # https://nethackwiki.com/wiki/Applying_a_digging_tool ; https://nethackwiki.com/wiki/Armor_class (each
+        # point of AC lowers a monster's to-hit by 1 in 20) ; https://nethackwiki.com/wiki/Valkyrie (starting
+        # inventory: a +3 small shield) ; NetHack 3.6.6 src/wield.c ready_weapon()/cant_wield_corpse and
+        # src/apply.c use_pick_axe2 -> wield_tool() ("You cannot wield a two-handed tool while wearing a shield").
+        agent = self.agent
+        kept = getattr(self, '_shield_kept', None)
+        if not jf_config.SHIELD_KEEP or kept is None or not self.diving:
+            yield False
+        bl = agent.blstats
+        inv = agent.inventory
+        now = int(bl.time)
+        if inv.items.off_hand is not None:
+            self._shield_kept = None
+            yield False
+        if not self._shield_keep_here():
+            yield False   # the dig-dive has begun: the shield stays in the pack
+        if now - getattr(self, '_side_dig_turn', 0) < jf_config.SHIELD_KEEP_QUIET or \
+                now < getattr(self, '_reshield_after', 0) or agent.character.prop.polymorph or \
+                self._near_hostiles(4) or agent.hands_welded():
+            yield False
+        shield = next((i for i in flatten_items(inv.items) if i.is_armor() and not i.equipped and
+                       'shield' in i.text and i.status != Item.CURSED), None)
+        if shield is None:
+            self._shield_kept = None
+            yield False
+        main = inv.items.main_hand
+        weapon = None
+        if main is not None and (main.objs[0].bi or not main.is_weapon()):
+            weapon = inv.get_best_melee_weapon(items=[i for i in flatten_items(inv.items)
+                                                      if i.is_weapon() and not i.objs[0].bi])
+            if weapon is None and main.objs[0].bi:
+                self._shield_kept = None
+                yield False   # nothing one-handed to fight with: the two-hander stays
+        yield True
+        if weapon is not None and weapon is not main:
+            agent.log(f'SHIELD_KEEP wielding {weapon.text!r} for the shield')
+            if not inv.wield(weapon):
+                self._reshield_after = now + 30
+            return   # (the inventory is read again: the shield goes on at the next step)
+        self._reshield_after = now + 30
+        ac = int(agent.blstats.armor_class)
+        done = inv.wear(shield)
+        agent.log(f'SHIELD_KEEP {shield.text!r} worn again: {done}, AC {ac} -> {int(agent.blstats.armor_class)}')
+        if inv.items.off_hand is not None:
+            self._shield_kept = None
 
     def _shield_stuck(self):
         shield = self.agent.inventory.items.off_hand
@@ -7006,6 +7098,14 @@ class DiveLogic:
         if self._elbereth_before_digging():
             return
         shield = agent.inventory.items.off_hand
+        if tool.object == O.from_name('dwarvish mattock') and shield is not None and jf_config.SHIELD_KEEP and \
+                self._shield_keep_here():
+            # SHIELD_KEEP: the trip's escape hole -- the shield is taken off and kept (see reshield)
+            agent.log(f'DIVE taking off {shield.text!r} to dig with a mattock (kept)')
+            agent.inventory.takeoff(shield)
+            self._shield_kept = int(agent.blstats.time)
+            self._side_dig_turn = int(agent.blstats.time)
+            return
         if tool.object == O.from_name('dwarvish mattock') and shield is not None:
             # a mattock needs both hands; a digger falls through the floor anyway, so leave the shield
             agent.log(f'DIVE dropping {shield.text!r} to dig with a mattock')
@@ -8280,7 +8380,14 @@ class DiveLogic:
         """Apply the digging tool sideways into (y, x): a (secret or locked) door breaks in a few turns."""
         agent = self.agent
         shield = agent.inventory.items.off_hand
+        self._side_dig_turn = int(agent.blstats.time)
         if tool.object == O.from_name('dwarvish mattock') and shield is not None:
+            if jf_config.SHIELD_KEEP and self._shield_keep_here():
+                # SHIELD_KEEP: taken off and kept -- reshield() puts it back on when the tunnel is done
+                agent.log(f'DIVE taking off {shield.text!r} to dig with a mattock (kept)')
+                agent.inventory.takeoff(shield)
+                self._shield_kept = int(agent.blstats.time)
+                return
             agent.log(f'DIVE dropping {shield.text!r} to dig with a mattock')
             agent.inventory.takeoff(shield)
             shield = next((i for i in agent.inventory.items if i.is_armor() and not i.equipped and
@@ -9477,7 +9584,10 @@ class DiveLogic:
             # a mattock needs both hands: the shield comes off first (as for digging down)
             agent.log(f'DIVE taking off {shield.text!r} to break a boulder with a mattock')
             agent.inventory.takeoff(shield)
+            if jf_config.SHIELD_KEEP and self._shield_keep_here():
+                self._shield_kept = self._side_dig_turn = int(agent.blstats.time)   # reshield() wears it again
             return
+        self._side_dig_turn = int(agent.blstats.time)
         direction = agent.calc_direction(agent.blstats.y, agent.blstats.x, *b)
         agent.log(f'DIVE breaking the boulder on the stairs at {b} with {tool.text!r} ({direction})')
         with agent.atom_operation():

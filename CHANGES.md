@@ -1,16 +1,25 @@
-# Minetown trip, eighth iteration: straight to the temple by the town's map (2026-11-20)
+# Minetown trip, eighth iteration: the armor that comes off on the trip goes back on (2026-11-20)
 
-Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, flag `TEMPLE_MAP` in `jf_config.py`). On the town level the
-trip found the temple by exploring the whole level until an altar came into view (a median 300 and up to 1900 turns;
-8 of 81 logged parent games died in the town before seeing it). The six towns with a priest are fixed maps
-(`mines.des`), so the town is now told apart by its fountains, its walls (a wall where a town has a street rules that
-town out) or Grotto Town's fixed up stairs, and the hero walks a route planned over what she has seen plus the town's
-floor plan to the temple's door wall, opens the door and steps in; the altar business is unchanged. No door is
-kicked, Orcish Town is left to `ORCISH_ALTAR`, and without a route the old search goes on. Measured against the
-parent on the same seeds: altar used 48 -> 54 of 81 development games (seed 12, 386146, 386150, 40100-40177), mean
-progress 0.317 -> 0.347; held-out 22238-22267 and 41912-41941 (60 games): used 44 -> 45, progress 0.392 -> 0.402;
-public 0-14 0.506 -> 0.518; turns from the town's first sign to the altar: median about 300 -> 100.
-Numbers, the dropped first version and sources: `MinetownTrip._temple_walk`.
+Engine `nhbot_valk79297_armor` only (`agent.py`, `dive_logic.py`, `global_logic.py`, `character.py`,
+`minetown_trip.py`, flags in `jf_config.py`). The tour gathers items and wears the best armor; the dive -- and the
+Minetown trip is a dive task -- does neither, so armor that came off on the trip stayed off. `SHED_REDRESS`
+(`agent.shed_redress`): a hero who shrank out of her armor and dropped her weapon in a were change (or on a polymorph
+trap) walks back to the square once she is herself again, picks the kit up and dresses (while diving also the pack an
+Overloaded were form had put down). `SHIELD_KEEP` (`dive_logic.reshield`): on the trip a shield that has to come
+off for a two-handed dwarvish mattock is taken off and kept instead of dropped, and worn again -- with the best
+one-handed weapon -- twelve turns after the last dig; the dig-dive proper drops it as before. Two fixes of the search
+for the Mines branch: `BRANCH_LOOSE_ENDS` (the hidden-branch search pushes the boulders that close off unseen ground,
+which the first pass skips on a level first stood on long ago) and `BRANCH_FRESH_TURNS` (the branch budget grows by
+1000 turns for each of Dlvl 2-4 the hero had never stood on when the trip began). Tried and left out: the trip from
+XL 4, 5 or 6 (also for AC 3 or better only) -- fewer hunger prayers and fewer deaths before the trip, as many more on
+it; a walk past known traps in the hidden-branch search; `HIDDEN_SEARCH2`. `jf_log.py` gained dev-only screen dumps
+(`JF_SCREEN`, with `JF_LOG_DIR`; a no-op in the arena). Against the parent on the same seeds: 133 development games:
+temple altar used 87 -> 92 (65% -> 69%), mean progress 0.372 -> 0.378; held-out 84766-84825 (60 games): used
+36 -> 36, progress 0.371 -> 0.374; held-out 30282-30341 (60 games): used 35 -> 38, progress 0.313 -> 0.326. A fix
+found in the held-out games, `FLOOR_FOOD_FIX` (`agent.eat_corpses_from_ground`): a levitating hero is not offered
+the corpse under her (eat.c `floorfood`), and the retry was a clock-less loop that the arena cuts off as an aborted
+game; the floor's corpses are left alone while levitating. The
+numbers of every idea are in the "eighth iteration" block at the top of `minetown_trip.py`.
 
 # Minetown trip, seventh iteration: the trip comes loose from the dive and is made again (2026-11-19)
 

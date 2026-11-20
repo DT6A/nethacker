@@ -1078,6 +1078,12 @@ class GlobalLogic:
             # an Overloaded were form can neither fight nor eat: drop its load first (LYCAN_FIXES)
             .preempt(self.agent, [
                 self.agent.were_unload().condition(lambda: jf_config.LYCAN_FIXES),
+                # SHIELD_KEEP: the shield taken off for a two-handed tunnel dig goes back on
+                self.dive.reshield().condition(lambda: jf_config.SHIELD_KEEP and
+                                               getattr(self.dive, '_shield_kept', None) is not None),
+                # SHED_REDRESS: back in our own form, fetch and put on what the change of form made us drop
+                self.agent.shed_redress().condition(lambda: jf_config.SHED_REDRESS and
+                                                    getattr(self.agent, '_shed', None) is not None),
                 # a hold that is over must not leave us standing on its Elbereth (see wipe_hold_elbereth)
                 self.dive.wipe_hold_elbereth().condition(lambda: jf_config.HOLD_LOOP),
             ])

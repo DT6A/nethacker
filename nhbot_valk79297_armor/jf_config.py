@@ -70,9 +70,46 @@ MINETOWN_TRIP = True
 # EARLY_TRIP_XL -- with the same readiness the dive asks for (prayer in hand, HP, not Weak) -- and hands the game
 # back to the grind when the hero is on Dlvl 2-4 again; the dive starts at its usual trigger. Hypothesis, sources
 # and numbers: dive_logic._early_trip_due and the seventh-iteration block at the top of minetown_trip.py.
-# (EARLY_TRIP_XL 6 was measured too: 54 games, altar used 28 -> 27, the XL 6 trips run out their level budgets.)
+# (EARLY_TRIP_XL 6 was measured too: 54 games, altar used 28 -> 27, the XL 6 trips run out their level budgets.
+# Eighth iteration: XL 4, 5 and 6 once more, with the branch budget that fits unexplored levels
+# (minetown_trip.BRANCH_FRESH_TURNS) and, for XL 5, only for a hero of AC 3 or better: fewer hunger prayers (6.2 -> 4.9
+# a game, failed ones 17 -> 11 in 133 games) and fewer deaths before the trip, but as many more on it -- 133
+# development games: altar used 87 -> 89, mean progress 0.372 -> 0.360. Left at 7.)
 EARLY_TRIP = True
 EARLY_TRIP_XL = 7
+# SHED_REDRESS (agent.shed_redress / note_shed): back in her own form after a were change or a polymorph trap, the
+# hero walks to the square where her armor and weapon fell (and, while diving, where an Overloaded were form put the
+# pack down), picks them up and dresses. Hypothesis and sources at agent.shed_redress
+SHED_REDRESS = True
+SHED_REDRESS_TURNS = 400        # ... within this many turns of being herself again
+SHED_REDRESS_TRIES = 60         # ... and this many steps of the errand
+SHED_REDRESS_MAX_DEPTH = 20     # ... above the castle (its polymorph plans are their own)
+# FLOOR_FOOD_FIX (agent.eat_corpses_from_ground): no corpse is eaten from the floor while levitating. A livelock
+# found in the eighth iteration's held-out games (a proven fix, apart from that iteration's main idea).
+# hypothesis: a levitating hero cannot eat from the floor -- eat.c floorfood() skips the "There is a
+# corpse here; eat it?" question when can_reach_floor() fails and asks "What do you want to eat?" of
+# the pack at once -- so inventory.eat() raised 'no such food is lying here' with the corpse still on
+# the level's list of corpses to eat; the next step chose it again, and no game time passed: held-out
+# seed 30323 (levitating on Dlvl 25 at HP 7 over a fresh corpse) repeated the question until the arena
+# cut the game off after 10,000 clock-less actions (end_status -1, 0.466 for a hero still alive). While
+# levitating the floor's corpses are left alone. Expected: no such aborted games; nothing else changes
+# (a hero on her feet is offered the corpse). (Taking a refused corpse off the level's list as well was
+# tried and dropped: the same refusal comes, once, in most games on foot -- a pile read a step late --
+# and the corpse is eaten at the next try; without that try 25 development games lost 5 heroes early.)
+# sources: NetHack 3.6.6 src/eat.c floorfood() ("if (feeding && ... can_reach_floor(TRUE))" guards the
+# floor branch; otherwise "skipfloor:" goes to getobj()) and src/hack.c can_reach_floor() ("return
+# (boolean) (!Levitation || ...)") ; https://nethackwiki.com/wiki/Levitation ("Because levitation causes you
+# to lose contact with the ground, many actions become impossible: ... eating food from the floor") ; the
+# task's rule on stuck games (end_status -1).
+FLOOR_FOOD_FIX = True
+# SHIELD_KEEP (dive_logic.reshield / dig_toward / dig_with_tool): on the Minetown trip a shield that has to come off
+# for a dwarvish mattock is kept, not dropped, and worn again when the tunnel is done. Hypothesis and sources at
+# dive_logic.reshield
+SHIELD_KEEP = True
+SHIELD_KEEP_QUIET = 12          # ... turns without a dig before it goes back on
+# BRANCH_LOOSE_ENDS (dive_logic._branch_loose_ends): the hidden-branch search of a Dlvl 2-4 first pushes the
+# boulders that close off unseen ground (the first pass, which does, is skipped on a level first stood on long ago)
+BRANCH_LOOSE_ENDS = True
 EARLY_TRIP_MAX_AC = 99          # ... only with this armor class or better
 EARLY_TRIP_PRAYER_GAP = 800     # ... this many turns since the last prayer (the trip's lifeline)
 EARLY_TRIP_HP = 0.8             # ... at least this fraction of max HP
@@ -113,31 +150,6 @@ SQUEEZE_CORNER_FIX = True
 # TRIP_KICK_OUT (minetown_trip._kick_out): shut in a stair room of a room-built town behind a locked door, with
 # nobody of the town in view, the trip kicks the door open (explore1 never kicks a door in the Mines)
 TRIP_KICK_OUT = True
-# TEMPLE_MAP (minetown_trip.MinetownTrip._temple_walk; every number and the ideas dropped on the way stand there).
-# hypothesis: (stage "use Minetown") the trip is lost in the town itself more often than it needs to be: "find the
-# temple" was the engine's level exploration, run until an altar glyph happened to come into view -- a median 300 and
-# up to 1900 turns on the town level, and 8 of 81 logged parent games died there before seeing the altar. The six
-# towns with a priest are fixed maps (mines.des) and no two share an altar or fountain square, so the hero now walks
-# as a player who knows Minetown does: the town is told apart by the first fountain in view, by its walls (a wall
-# where a town has a street rules that town out) or by Grotto Town's fixed up stairs; a route to the temple's door
-# wall is planned over what she has seen plus the town's floor plan and walked as far as it is known; the door is
-# opened, she steps in, and the trip's own altar business takes over. Ideas combined, each measured against the
-# parent on the same seeds: (1) a straight-line walk to the known square nearest the temple -- 27 games: altar used
-# 14 -> 17 but 3 of 20 towns stood in a closet beside the temple: dropped for (2) the route over the floor plan,
-# town told by fountains: 14 -> 17, nothing given up, but 100-700 turns until a fountain showed; (3) the town told
-# by its walls too; (4) no stop for a floating eye or mold beside the route; (5) bounded waits at a taken doorway
-# and inside a temple whose altar stays out of view. (2)-(5) together: 81 development games: altar used 48 -> 54
-# (59% -> 67%), mean progress 0.317 -> 0.347, turns from the town's first sign to the altar about 300 -> 100;
-# held-out 22238-22267 + 41912-41941 (60 games): used 44 -> 45, progress 0.392 -> 0.402; public 0-14 0.506 -> 0.518.
-# sources: NetHack 3.6.6 dat/mines.des (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des:
-# minetn-2..7: every temple SUBROOM / REGION, ALTAR, DOOR, FOUNTAIN and MAP line) and src/sp_lev.c create_room
-# (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/sp_lev.c) ;
-# https://nethackwiki.com/wiki/Minetown ; https://nethackwiki.com/wiki/Gnomish_Mines ;
-# https://nethackwiki.com/wiki/Temple ; https://nethackwiki.com/wiki/Altar ; https://nethackwiki.com/wiki/Valkyrie ;
-# player discussions: https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ,
-# https://gaming.stackexchange.com/questions/289572 , https://gaming.stackexchange.com/questions/271263 ;
-# /refs/history.md #1-#14 ; /refs/top/README.md (no top program has a Minetown trip).
-TEMPLE_MAP = True
 # ORCISH_ALTAR (minetown_trip._orc_go / _orc_step): Orcish Town's altar is used too -- a fit hero with a digging
 # tool and her prayer in hand digs in through the wall south of the temple, holds the breach from outside, then
 # BUC-tests on the altar. See the fifth-iteration block at the top of minetown_trip.py

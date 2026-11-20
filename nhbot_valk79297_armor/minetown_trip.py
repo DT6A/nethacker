@@ -92,6 +92,46 @@ from .glyph import G, MON, Hunger
 from .level import Level
 from .strategy import Strategy
 
+# ---- eighth iteration: THE ARMOR THAT COMES OFF ON THE TRIP GOES BACK ON (SHED_REDRESS, SHIELD_KEEP) ----
+# (with BRANCH_LOOSE_ENDS and BRANCH_FRESH_TURNS). The hypothesis and its sources stand at agent.shed_redress; the
+# other three have their own at dive_logic.reshield, dive_logic._branch_loose_ends and BRANCH_FRESH_TURNS below.
+# Where the parent's games end, 193 of them replayed with logs (fresh blocks 37348-37401, 61200-61253 and, drawn as
+# held-out, 84766-84825; the public and the extra development seeds): the temple altar used in 64%; dead in the
+# grind before the trip 12%; dead on the trip or within it 12%; the Mines branch not found 8%; Orcish Town, a
+# level budget 4%. Deaths per 100,000 turns: about 1.5 in the grind, 1-2 on Dlvl 2-4 during the trip's branch
+# search, 7-12 on each Mines level -- the trip, 1500 Mines turns, costs one hero in five whatever her level.
+# Of 39 early deaths looked at, 8 had lost 4-10 points of armor class on the way: all of it to a were change
+# (5 of 13 on one block), the shield to a mattock dig (4). 17 of 85 died Fainting, 13% of games lose a prayer
+# (7 a game are said, 6.2 of them for hunger).
+# Ideas tried, each against the parent on the same seeds (used = the trip dropped something on an altar, from the
+# trip's own log; raw = mean progress):
+#   1. the trip from XL 5 instead of 7, the hero leaving the Dlvl 1-3 prayer grind for the Mines (54 games):
+#      dead before the trip 11 -> 2, but 13 trips ran out the 1700-turn branch budget on Dlvl 2-4 they had never
+#      seen: used 28 -> 30, raw 0.320 -> 0.348;
+#   2. 1. with BRANCH_FRESH_TURNS (1000 turns more for each of Dlvl 2-4 never visited), from XL 4 / 5 / 6
+#      (79 games each): used 47 -> 50 / 53 / 48, raw 0.355 -> 0.35 / 0.356 / 0.358, early deaths 23 -> 28 / 25 /
+#      27: the deaths move from the grind to the trip;
+#   3. 2. at XL 5 only for a hero of AC 3 or better (trips that began at AC 3 or better had died half as often),
+#      with 5.-7. below: 133 games: used 87 -> 89, raw 0.372 -> 0.360, hunger prayers 6.2 -> 4.9 a game, failed
+#      prayers 17 -> 11 -- dropped with 1. and 2.: no gain that 133 games can show;
+#   4. the hidden-branch search walking past the level's known traps first (as the first pass does): 8 games
+#      took it, 2 stepped on a just-found trap and lost the level, raw -0.10 over the eight -- dropped; and
+#      dive_logic.HIDDEN_SEARCH2 (search next to the widest unseen part): 0 of 6 branch-less trips found it;
+#   5. SHED_REDRESS (agent.shed_redress): kept -- see the numbers there;
+#   6. SHIELD_KEEP (dive_logic.reshield): kept -- 8 games took it, raw +0.135 over the eight, early deaths 4 -> 2;
+#   7. BRANCH_LOOSE_ENDS (boulders pushed in the hidden-branch search too) and BRANCH_FRESH_TURNS without 1.:
+#      kept -- of the parent's 9 branch-less trips 3 reached the Mines (2 used the temple and dived on, 1 died
+#      there).
+# 5-7 together, parent -> this version: 133 development games: used 87 -> 92 (65% -> 69%), raw 0.372 -> 0.378
+# (49 games differ, 82 replay move for move); held-out: 84766-84825 (60 games): used 36 -> 36, raw 0.371 ->
+# 0.374, early deaths 16 -> 14; 30282-30341 (60 games): used 35 -> 38, raw 0.313 -> 0.326, early deaths 23 -> 18.
+# A first run of the second block showed one aborted game (a levitating hero asked to eat a corpse off the floor
+# for 10,000 clock-less actions): FLOOR_FOOD_FIX, agent.eat_corpses_from_ground; the numbers are the final code's.
+# What is left: the grind's food is prayer (a failed one in 13% of games), the Mines' packs and wands kill one
+# trip in five, and the branch stays unfound in 5-8% -- three of the four such development trips looked at
+# carried a digging tool and stood before a level whose '>' they had never seen (one boxed in by a floating eye
+# in a doorway when the level was written off as explored).
+#
 # ---- seventh iteration: THE TRIP COMES LOOSE FROM THE DIVE -- IT LEAVES FROM THE GRIND, AND IT IS MADE AGAIN ----
 # (EARLY_TRIP, TRIP_RETRY; with ALTAR_GATHER, BRANCH_BOULDER and the fixes BRANCH_CLOCK_FIX, FRIDAY13_FIX)
 # The hypothesis and its sources stand at dive_logic.DiveLogic._early_trip_due; this block has the numbers.
@@ -358,6 +398,13 @@ from .strategy import Strategy
 # /refs/reference/README.md (#918/#862: FIND_MINETOWN tours, already the basis of the parent's trip).
 TRIP_MIN_XL = 6                 # Minetown wants XL 6-8 (the dive trigger is XL 7 with a pick-axe, XL 8 without)
 TRIP_TOTAL_TURNS = 9000         # the whole trip, from its start to the hand-over
+# hypothesis: BRANCH_TURNS (1700) was measured on trips whose Dlvl 2-4 the grind had already walked; a trip that
+# starts with one of them never visited has that level to explore first (600-1100 turns each in the logged trips)
+# and ran out the budget one level short of the branch (development seed 37349: 1704 turns, the branch on the
+# level it had just reached; with the allowance the temple was used). Each never-visited level adds its share.
+# sources: NetHack 3.6.6 dat/dungeon.def ('BRANCH "The Gnomish Mines" @ (2,3)': the branch level is one of Dlvl
+# 2-4) ; /refs/history.md #12 (BRANCH_TURNS 3000 -> 1700 and the trips it was measured on).
+BRANCH_FRESH_TURNS = 1000       # ... more for each of Dlvl 2-4 the hero had never stood on at the trip's start
 BRANCH_TURNS = 1700             # looking for the Mines branch on Dlvl 2-4 (3000 before the sixth iteration: no
 #                                 trip found the branch after turn 1532 of its search -- see the top, 3.)
 TRIP_LEVEL_TURNS = 1500         # on one Mines level without the trip moving on
@@ -407,123 +454,6 @@ ORC_RECT = (2, 18, 21, 55)      # the town's outer wall on the screen: rows 2-18
 ORC_ENTRY = ((18, 40), (17, 40), (16, 40), (15, 40))   # the way in from the south: the outer wall, the lane behind
 #                                 it, the temple's back wall, the temple floor in front of the altar
 ALTAR_PICKUP_TRIES = 4
-# TEMPLE_MAP (MinetownTrip._temple_walk): where the six towns with a priest keep their temple, in screen squares.
-# mines.des places every one of them at a fixed spot: minetn-5 / minetn-6 are MAPs (GEOMETRY center,center /
-# center,top: map (0,0) is screen column 2, row 0 / column 20, row 3) and minetn-2/3/4/7 are one big ROOM at grid
-# (3,3), (center,center), whose inside starts at screen column 25, row 4, the temple a SUBROOM
-# at a fixed offset with its one door somewhere along one named wall ("ROOMDOOR: false, closed, north, random").
-# (create_room places a ROOM with a grid position deterministically; the offset is the one the logged altars give.)
-# Each row: name, altar (y, x), the squares its door can be on, the step from the door to the square outside it,
-# the town's fountains (they tell the towns apart from afar: no two towns share a fountain square). The altar
-# squares were checked against 81 logged parent games: (11,46) x7, (7,36) x13, (8,38) x7, (11,51) x8, (3,33) x11,
-# (16,55) x11 and Orcish Town's (14,40) -- no altar anywhere else.
-TOWN_TEMPLES = (
-    ('Town Square', (11, 46), tuple((8, x) for x in range(44, 48)), (-1, 0), ((9, 42), (12, 38))),
-    ('Alley Town', (7, 36), tuple((y, 38) for y in range(6, 10)), (0, 1), ((10, 26), (17, 54))),
-    ('College Town', (8, 38), tuple((11, x) for x in range(36, 41)), (1, 0), ((11, 33), (11, 43))),
-    ('Bazaar Town', (11, 51), tuple((y, 48) for y in range(10, 14)), (0, -1), ((11, 37), (17, 36))),
-    ('Grotto Town', (3, 33), ((5, 33),), (1, 0), ((9, 52), (15, 12), (18, 68))),
-    ('Bustling Town', (16, 55), ((16, 50),), (0, -1), ((10, 42), (16, 29))),
-)
-GROTTO_UP = (1, 3)              # minetn-5: "STAIR:(01,01),up" -- the one town whose stairs are fixed
-# The towns' floor plans, for the route to the temple over squares not seen yet. Room-built towns: the big room's
-# (width, height) and every SUBROOM (x, y, width, height) of mines.des -- what lies between the buildings is the
-# room's lit floor (a "[75%]" building that was not built is floor too: the route just does not count on it).
-_ROOM_TOWNS = {
-    'Town Square': ((31, 15), ((2, 0, 2, 2), (5, 0, 2, 2), (8, 0, 2, 2), (16, 0, 2, 2), (19, 0, 2, 2), (22, 0, 2, 2),
-                               (25, 0, 2, 2), (2, 5, 2, 2), (5, 5, 2, 2), (8, 5, 2, 2), (2, 10, 4, 3), (23, 10, 4, 3),
-                               (24, 5, 3, 4), (11, 10, 4, 3), (7, 10, 3, 3), (19, 5, 4, 4), (18, 10, 4, 3))),
-    'Alley Town': ((31, 15), ((2, 2, 2, 2), (5, 3, 2, 3), (2, 10, 2, 3), (5, 9, 2, 2), (10, 2, 3, 4), (11, 7, 2, 2),
-                              (10, 10, 3, 3), (14, 8, 2, 2), (14, 11, 2, 2), (17, 10, 3, 3), (21, 11, 2, 2),
-                              (26, 8, 3, 2), (16, 2, 2, 2), (19, 2, 2, 2), (19, 5, 3, 2), (25, 2, 3, 3))),
-    'College Town': ((30, 15), ((4, 2, 3, 3), (8, 2, 2, 2), (11, 3, 5, 4), (19, 2, 2, 2), (22, 2, 3, 3), (26, 2, 2, 2),
-                                (4, 10, 3, 3), (8, 11, 2, 2), (11, 11, 3, 2), (17, 11, 2, 2), (20, 10, 2, 2),
-                                (23, 10, 3, 3))),
-    'Bazaar Town': ((30, 15), ((2, 2, 4, 2), (7, 2, 2, 2), (7, 5, 2, 2), (10, 2, 3, 4), (14, 2, 4, 2), (16, 5, 2, 2),
-                               (19, 2, 2, 2), (19, 5, 2, 3), (2, 7, 2, 2), (2, 10, 2, 3), (5, 10, 3, 3), (11, 10, 2, 2),
-                               (14, 10, 2, 3), (17, 11, 4, 2), (22, 11, 2, 2), (25, 11, 3, 2), (25, 2, 3, 3),
-                               (24, 6, 4, 4))),
-}
-_ROOM_TOWN_ORIGIN = (4, 25)     # screen (row, column) of the big room's first inside square
-# MAP towns: (screen row, column of map (0,0)) and the MAP of mines.des ('.' and '{' are floor; Grotto Town's five
-# random TERRAIN changes are not in it: a square seen to be something else is taken off the route).
-_MAP_TOWNS = {
-    'Grotto Town': ((0, 2), (
-        '-----         ---------                                                    ',
-        '|...---  ------.......--    -------                       ---------------  ',
-        '|.....----.........--..|    |.....|          -------      |.............|  ',
-        '--..-....-.----------..|    |.....|          |.....|     --+---+--.----+-  ',
-        ' --.--.....----     ----    |.....|  ------  --....----  |..-...--.-.+..|  ',
-        '  ---.........----  -----   ---+---  |..+.|   ---..-..----..---+-..---..|  ',
-        '    ----.-....|..----...--    |.|    |..|.|    ---+-.....-+--........--+-  ',
-        '       -----..|....-.....---- |.|    |..|.------......--................|  ',
-        '    ------ |..|.............---.--   ----.+..|-.......--..--------+--..--  ',
-        '    |....| --......---...........-----  |.|..|-...{....---|.........|..--  ',
-        '    |....|  |........-...-...........----.|..|--.......|  |.........|...|  ',
-        '    ---+--------....-------...---......--.-------....---- -----------...|  ',
-        ' ------.---...--...--..-..--...-..---...|.--..-...-....------- |.......--  ',
-        ' |..|-.........-..---..-..---.....--....|........---...-|....| |.-------   ',
-        ' |..+...............-+---+-----..--..........--....--...+....| |.|...S.    ',
-        '-----.....{....----...............-...........--...-...-|....| |.|...|     ',
-        '|..............-- --+--.---------.........--..-........------- |.--+-------',
-        '-+-----.........| |...|.|....|  --.......------...|....---------.....|....|',
-        '|...| --..------- |...|.+....|   ---...---    --..|...--......-...{..+..-+|',
-        '|...|  ----       ------|....|     -----       -----.....----........|..|.|',
-        '-----                   ------                     -------  ---------------',
-    )),
-    'Bustling Town': ((3, 20), (
-        '.-----................----------------.-',
-        '.|...|................|...|..|...|...|..',
-        '.|...+..--+--.........|...|..|...|...|..',
-        '.|...|..|...|..-----..|...|..|-+---+--..',
-        '.-----..|...|--|...|..--+---+-.........|',
-        '........|...|..|...+.............-----..',
-        '........-----..|...|......--+-...|...|..',
-        '.----...|...|+------..{...|..|...+...|..',
-        '.|..+...|...|.............|..|...|...|..',
-        '.|..|...|...|-+-.....---+-------------.|',
-        '.----...--+--..|..-+-|..................',
-        '...|........|..|..|..|----....---------.',
-        '...|..T.....----..|..|...+....|......|-.',
-        '...|-....{........|..|...|....+......|-.',
-        '...--..-....T.....--------....|......|-.',
-        '.......--.....................----------',
-    )),
-}
-
-
-def _town_floor(name):
-    """The squares the town's map says are open floor outside its buildings: bool (21, 79)."""
-    floor = np.zeros((21, 79), bool)
-    if name in _ROOM_TOWNS:
-        (w, h), subs = _ROOM_TOWNS[name]
-        y0, x0 = _ROOM_TOWN_ORIGIN
-        floor[y0:y0 + h, x0:x0 + w] = True
-        for x, y, sw, sh in subs:
-            floor[y0 + y - 1:y0 + y + sh + 1, x0 + x - 1:x0 + x + sw + 1] = False
-    else:
-        (y0, x0), rows = _MAP_TOWNS[name]
-        for r, line in enumerate(rows):
-            for c, ch in enumerate(line):
-                if ch in '.{' and r + y0 < 21 and c + x0 < 79:
-                    floor[r + y0, c + x0] = True
-    return floor
-
-
-TOWN_FLOOR = {v[0]: _town_floor(v[0]) for v in TOWN_TEMPLES}
-# ... and the same plans as evidence: a wall seen on a square that a town's plan has as open floor speaks against
-# that town (TEMPLE_WALL_CLASH such squares rule it out). Grotto Town's random TERRAIN lines can wall up a few floor
-# squares: they are left out of its evidence.
-TOWN_SURE_FLOOR = {name: floor.copy() for name, floor in TOWN_FLOOR.items()}
-for _x, _y in ((25, 8), (25, 9), (16, 13), (17, 13), (36, 10), (36, 11), (32, 15), (33, 15), (14, 9), (14, 10),
-               (46, 13), (43, 5), (44, 5), (45, 5), (46, 5), (47, 5), (69, 11), (70, 11), (71, 11)):
-    TOWN_SURE_FLOOR['Grotto Town'][_y, _x + 2] = False
-TEMPLE_WALL_CLASH = 2
-ORC_FOUNTAINS = ((10, 36), (10, 45))   # minetn-1: FOUNTAIN (16,09), (25,09) -- Orcish Town before its bars are seen
-TEMPLE_WALK_CALLS = 250         # ... steps the walk by the map may take on one town level before the old search takes over
-TEMPLE_DOOR_TRIES = 8           # ... tries at a stuck temple door
-TEMPLE_IDLE = 20                # ... waits (two turns each) at a taken doorway or beside an altar that is not in view
-TEMPLE_STEP_WAITS = 3           # ... turns waited for a square of the route that is taken (a peaceful in an alley)
 GATHER_TURNS = 400              # ALTAR_GATHER: turns spent fetching things for a dark altar
 GATHER_BATCH = 6                # ... stacks carried to the altar at a time
 GATHER_ROUNDS = 2               # ... drops of fetched things
@@ -598,13 +528,13 @@ class MinetownTrip:
         self._gather_over = False
         self._mines_seen = False       # BRANCH_CLOCK_FIX: this trip has stood in the Mines
         self._branch_since = 0         # ... the turn it was thrown back into the Dungeons of Doom
+        self._branch_fresh = 0         # BRANCH_FRESH_TURNS: Dlvl 2-4 never visited when the trip began
         self._winds = {}               # ... level key -> the turn its extended budget ends
         self._orc_since = None         # ORCISH_ALTAR: the turn Orcish Town was recognised
         self._orc_wait = 0
         self._orc_ok = None
         self._orc_hold = None          # [first turn, last turn something hostile was in view] at the opened wall
         self._orc_held = False
-        self._temple = {}              # TEMPLE_MAP: level key -> the state of the walk by the map
 
     # ------------------------------------------------------------------ helpers
 
@@ -764,6 +694,8 @@ class MinetownTrip:
             return False
         self.active = True
         self.start_turn = int(bl.time)
+        # BRANCH_FRESH_TURNS: Dlvl 2-4 the hero has never stood on have to be explored before their branch can show
+        self._branch_fresh = sum(1 for d in range(2, 5) if (Level.DUNGEONS_OF_DOOM, d) not in agent.levels)
         self._level_key = level.key()
         self._level_since = int(bl.time)
         self.log(f'trip starts at XL {bl.experience_level}, turn {bl.time}, depth {bl.depth}, gold {bl.gold}, '
@@ -1054,7 +986,7 @@ class MinetownTrip:
         if self.pending is not None:
             return None
         if level.dungeon_number == Level.DUNGEONS_OF_DOOM:
-            if now - max(self.start_turn, self._branch_since) > BRANCH_TURNS:
+            if now - max(self.start_turn, self._branch_since) > BRANCH_TURNS + BRANCH_FRESH_TURNS * self._branch_fresh:
                 return 'branch budget'
         elif self._town_since is not None:
             if now - self._town_since > TOWN_TURNS and (self.altar_tested or self._next_job() is None):
@@ -1983,10 +1915,6 @@ class MinetownTrip:
         if jf_config.TRIP_KICK_OUT and self._town_since is not None and \
                 int(bl.time) - self._town_since >= KICK_OUT_AFTER and self._kick_out():
             return True
-        if jf_config.TEMPLE_MAP and self._temple_walk_guarded():
-            if agent.step_count == before:
-                agent.search()
-            return True
         dive._task('minetown trip: find the temple')
         found = lambda: any(agent.bfs()[p] != -1 or dive._neighbour_distance(agent.bfs(), *p) is not None
                             for p in self._altars())
@@ -1995,294 +1923,6 @@ class MinetownTrip:
         if agent.step_count == before:
             agent.search()
         return True
-
-    # ------------------------------------------------------------------ TEMPLE_MAP: straight to the temple
-
-    def _temple_variants(self, level):
-        """The towns of TOWN_TEMPLES this level can still be: the one whose fountain (or fixed staircase) is in
-        view, else every one that nothing seen contradicts (walls where it has its streets, its altar square, its
-        fountain squares, its temple's door wall)."""
-        objs = level.objects
-        founts = set((int(y), int(x)) for y, x in zip(*utils.isin(objs, G.FOUNTAIN).nonzero()))
-        if any(f in founts for f in ORC_FOUNTAINS):
-            return []
-        walls = utils.isin(objs, G.WALL)
-        live = []
-        for v in TOWN_TEMPLES:
-            name, altar, doors, step, fs = v
-            if int((walls & TOWN_SURE_FLOOR[name]).sum()) >= TEMPLE_WALL_CLASH:
-                continue      # walls where this town has its streets
-            if objs[altar] != -1 and objs[altar] not in G.ALTAR:
-                continue      # floor, a wall or a door where its altar would be
-            if all(objs[d] in G.WALL for d in doors):
-                continue      # its temple's door wall is seen and has no door
-            grotto = name == 'Grotto Town'
-            if grotto and objs[GROTTO_UP] != -1 and objs[GROTTO_UP] not in G.STAIR_UP:
-                continue
-            if any(f in founts for f in fs) or (grotto and objs[GROTTO_UP] in G.STAIR_UP):
-                return [v]
-            if founts or any(objs[f] != -1 for f in fs):
-                continue      # another town's fountain, or no fountain where this one has it
-            live.append(v)
-        return live
-
-    def _temple_path(self, here, goals, floor, level, st):
-        """The shortest way [here, ..., a goal] over what is known to be walkable plus the town map's floor where
-        nothing has been seen yet; None when there is none. No diagonal step past a corner or through a door."""
-        agent = self.agent
-        objs = level.objects
-        mask = level.walkable & ~utils.isin(agent.glyphs, G.BOULDER) & ~utils.isin(objs, G.TRAPS)
-        mask |= floor & ~level.seen
-        for p in st['blocked']:
-            mask[p] = False
-        goals = set(g for g in goals if mask[g] or g == here)
-        if not goals:
-            return None
-        mask[here] = True
-        doors = utils.isin(objs, G.DOORS)
-        prev = {here: None}
-        queue = [here]
-        qi = 0
-        while qi < len(queue):
-            p = queue[qi]
-            qi += 1
-            if p in goals:
-                path = []
-                while p is not None:
-                    path.append(p)
-                    p = prev[p]
-                return path[::-1]
-            y, x = p
-            for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
-                ny, nx = y + dy, x + dx
-                if not (0 <= ny < 21 and 0 <= nx < 79) or (ny, nx) in prev or not mask[ny, nx]:
-                    continue
-                if dy and dx and (doors[y, x] or doors[ny, nx] or not (mask[y, nx] and mask[ny, x])):
-                    continue
-                prev[(ny, nx)] = p
-                queue.append((ny, nx))
-        return None
-
-    def _temple_route(self, st, goals, name, level, dis, here):
-        """Walk the known part of the route to the nearest of `goals`. False: there is no route yet."""
-        agent = self.agent
-        path = self._temple_path(here, goals, TOWN_FLOOR[name], level, st)
-        if path is None:
-            return False
-        if len(path) == 1:
-            agent.search()
-            return True
-        k = 0
-        while k + 1 < len(path) and dis[path[k + 1]] != -1:
-            k += 1
-        if k == 0:
-            # the next square of the route cannot be stepped on: somebody stands there, or the map is wrong here
-            nxt = path[1]
-            st['wait'][nxt] = st['wait'].get(nxt, 0) + 1
-            if st['wait'][nxt] > TEMPLE_STEP_WAITS:
-                st['blocked'].add(nxt)
-            agent.search()
-            return True
-        return self._temple_go(path[k])
-
-    def _temple_go(self, pos, one_before=False):
-        """Up to eight steps toward `pos`, stopping for a hostile that comes and fights (not for a floating eye or a
-        mold: _walk stops for those too, and the first version stood 250 steps beside a floating eye). False when
-        no step was made: the trip's old search and the fight strategy have the turn."""
-        agent = self.agent
-        if self._active_hostiles_within(3):
-            return False
-        t0 = agent.step_count
-        agent.go_to(*pos, stop_one_before=one_before, max_steps=8,
-                    callback=lambda: bool(self._active_hostiles_within(3)))
-        return agent.step_count != t0
-
-    def _temple_state(self, level, now):
-        return self._temple.setdefault(level.key(), {'since': now, 'calls': 0, 'off': False, 'name': None,
-                                                     'blocked': set(), 'wait': {}})
-
-    def _temple_walk_guarded(self):
-        """_temple_walk, with a programming error in it (not an AgentPanic: those are the engine's own) ending the
-        walk on this level instead of the game: the old search goes on."""
-        try:
-            return self._temple_walk()
-        except (AssertionError, IndexError, KeyError, ValueError, TypeError, AttributeError) as e:
-            agent = self.agent
-            self._temple_state(agent.current_level(), int(agent.blstats.time))['off'] = True
-            self.log(f'temple map: {type(e).__name__} {str(e)[:80]!r}: the old search')
-            return False
-
-    def _temple_walk(self):
-        """One step of the walk to the temple by the town's map. False: nothing to go by (the old search goes on).
-
-        # hypothesis: (stage "use Minetown") the trip dies in the town, not on the way to it: of 81 parent games
-        # replayed with logs (0-14's seed 12, 386146, 386150, 40100-40177) the hero stood on the town level without
-        # having seen its altar in 8 games that ended there (10% of all games; fire ants, soldier ants, wargs, a
-        # human mummy, poisoned arrows -- 300 to 1600 turns after the town was recognised), and the 49 heroes who
-        # did use the altar needed a median 300 and up to 1900 turns from the town's first sign to it: "find the
-        # temple" was AutoAscend's level exploration -- every shop door, every item pile, every dead end searched --
-        # run until an altar glyph happened to come into view. But the six towns with a priest are fixed maps
-        # (mines.des), no two share an altar or fountain square, and a player who has seen Minetown before walks
-        # straight to the temple. So: the town is told by the first fountain in view or by its walls -- a wall
-        # seen where a town's plan has a street rules that town out -- (else every town that nothing
-        # seen contradicts is in play, and the walk waits for the one that is left); the hero walks to the square
-        # outside the temple's door wall (room-built towns put the door at a random spot of one known wall), opens
-        # the door, steps in and the altar is in view -- the trip's own altar business takes over from there. The
-        # route is planned over what she knows to be walkable plus the town map's floor where nothing has been seen
-        # yet (the alleys between the buildings; a square seen to be something else drops out), and walked as far
-        # as it is known. (A first version walked to the known square nearest to the door instead: it ran into the
-        # closets next to the temple and stood there -- 3 of 20 towns.) Without a route -- she is not in the town
-        # proper yet -- the old search goes on. The walk never kicks a door (the Watch), is not used in Orcish Town
-        # (walled: ORCISH_ALTAR) and hands back to the old search after TEMPLE_WALK_CALLS. Expected: fewer turns on the town
-        # level before the altar (less of the Mines' random arrivals, one hunger prayer less), so more of the heroes
-        # who reach the town use it and leave it alive.
-        # Ideas tried this iteration, each against the parent on the same seeds (used = the altar was stood on for
-        # its BUC test, counted from the trip's own log; raw = mean progress):
-        #   1. the walk to the known square nearest to the temple door (straight-line greedy), every town not yet
-        #      contradicted tried nearest altar first -- 27 development games: used 14 -> 17, raw 0.271 -> 0.342, but
-        #      3 of 20 towns stood in a closet next to the temple until the walk's budget ran out (one lost the
-        #      altar the parent had found). Dropped for 2.
-        #   2. the route over the town's floor plan, the town told by its fountains only (same 27 games): used
-        #      14 -> 17, raw 0.271 -> 0.323; no walk given up; the median time from the town being told to the altar
-        #      30 turns, but 100-700 turns passed before a fountain came into view. Kept, with 3.
-        #   3. the town told by its walls as well (TOWN_SURE_FLOOR) and by Grotto Town's fixed up stairs: kept.
-        #   4. _temple_go: no stop for a floating eye or mold (the first 54-game run of 2.+3. stood 250 steps beside
-        #      a floating eye in one game and lost that altar): kept.
-        #   5. bounded waits (TEMPLE_IDLE): at a taken doorway, and inside the temple with no altar in view (a hero
-        #      who walked in on two gas spores beside the altar went back to the door and in again for 250 steps and
-        #      died there 2400 turns later; with the bound the old search took over and she used the altar): kept.
-        # Final version (2.-5.), parent -> this, same seeds, every block run with the final code:
-        #   development (seed 12, 386146, 386150, 40100-40177; 81 games): used 48 -> 54 (59% -> 67%), raw
-        #     0.317 -> 0.347, games ending on Dlvl 1-4: 24 -> 22; turns from the town's first sign to the altar:
-        #     median about 300 -> 100 (of the parent's 8 heroes who died in the town without the altar, 5 use it
-        #     with 2.-4. and 4 of them go on to the dive);
-        #   held-out 22238-22267 (30 games): raw 0.386 -> 0.410; held-out 41912-41941 (30 games): raw 0.397 -> 0.394;
-        #   both held-out blocks (60 games): used 44 -> 45, raw 0.392 -> 0.402, games ending on Dlvl 1-4: 13 -> 14
-        #     (the build before 5.: 0.417 / 0.394, used 23 -> 23 and 21 -> 22);
-        #   public 0-14: raw 0.506 -> 0.518; extra 386141-386150: raw 0.341 -> 0.482. No game aborted or errored.
-        #   (About 1 game in 10 differs between two runs of the same program -- some move of the dive is timed --
-        #   so single blocks move by +-0.02 on their own: the parent's block 22238-22267 gave 0.386 and 0.391.)
-        # What is left (the 81 development games, the build before 5.: 28 without the altar): dead in the grind before
-        # the trip 7, dead in the Mines above the town 8, the Mines branch not found 5, Orcish Town without a tool or
-        # below XL 8 3, dead in the town before the altar 3, a level budget 2. The stage's 80% is not reached: the
-        # town itself is no longer where it is lost.
-        # sources: NetHack 3.6.6 dat/mines.des (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des:
-        # minetn-2 "Town Square" SUBROOM "temple" (19,5),(4,4) ALTAR (02,02) "ROOMDOOR: false, closed, north, random";
-        # minetn-3 "Alley Town" (10,2),(3,4) ALTAR (1,1) door east; minetn-4 "College Town" (11,3),(5,4) ALTAR (2,1)
-        # door south; minetn-7 "Bazaar Town" (24,6),(4,4) ALTAR (02,01) door west; minetn-5 "Grotto Town" MAP, ALTAR
-        # (31,03), "DOOR:closed,(31,05)", "STAIR:(01,01),up"; minetn-6 "Bustling Town" MAP, ALTAR (35,13),
-        # "DOOR:closed,(30,13)"; every SUBROOM and FOUNTAIN line; minetn-1 Orcish Town's fountains) and src/sp_lev.c
-        # create_room (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/sp_lev.c: "xabs =
-        # (((xtmp - 1) * COLNO) / 5) + 1 ... case CENTER: xabs += ((COLNO / 5) - wtmp) / 2" -- a ROOM given a grid
-        # position lands on a fixed spot; the exact offset used here is the one the logged altar squares give) ;
-        # https://nethackwiki.com/wiki/Minetown (the town maps and what each guarantees: "The temple and Izchak's
-        # lighting shop ... are guaranteed to appear"; Grotto Town "Most of the level is also unlit"; "the temple
-        # offers a chance to buy valuable protection and discover the beatitude of items"; what angers the Watch) ;
-        # https://nethackwiki.com/wiki/Gnomish_Mines ("a mines level is often substantially harder than a level of
-        # the main dungeon"; "You will tend to get swarmed as you enter each new level"; "watch your stats and not
-        # get overwhelmed") ; https://nethackwiki.com/wiki/Temple (the priest tends the altar in the middle of the
-        # room; the messages on entering) ; https://nethackwiki.com/wiki/Altar (objects dropped on an altar show
-        # their beatitude; not while blind or hallucinating) ; https://nethackwiki.com/wiki/Valkyrie ("For a human
-        # Valkyrie, being lawful makes the Mines somewhat safe since most of the dwarves will be peaceful"; the Mines
-        # as "a plentiful source of armor and weapons") ; player discussions:
-        # https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ("I like to hit the mines with
-        # about 50 HP and AC 0 ... you have to cultivate the art of dipping a toe into them and getting back out if
-        # it's too hot"; "Minetown is a good play. The resources there are huge. I'd head for Minetown as soon as I
-        # was, oh, maybe level 4 or 5") and https://gaming.stackexchange.com/questions/289572 (a player in Minetown
-        # who "rushed to the temple" the moment it mattered -- people go to it, they do not search for it) with
-        # https://gaming.stackexchange.com/questions/271263 (Orctown: the priest's corpse "right in the remains of
-        # the temple" -- the same square in every game) ; /refs/history.md #1-#14 (the trip's earlier iterations:
-        # none used the towns' fixed maps except ORC_ALTAR for Orcish Town; #2/#6/#9: changes that re-drew every trip
-        # were discarded -- this one acts only on the town level, before the altar) ; /refs/top/README.md (the top
-        # programs are dive-first engines of this lineage without a Minetown trip).
-        """
-        agent = self.agent
-        bl = agent.blstats
-        level = agent.current_level()
-        if self.pending is not None or self.altar_tested or self.orcish(level):
-            return False
-        prop = agent.character.prop
-        if prop.hallu or prop.blind or prop.confusion or prop.stun:
-            return False
-        now = int(bl.time)
-        st = self._temple_state(level, now)
-        if st['off']:
-            return False
-        if st['calls'] > TEMPLE_WALK_CALLS:
-            st['off'] = True
-            self.log(f'temple map: given up after {now - st["since"]} turns / {st["calls"]} steps '
-                     f'({st["name"]}): the old search')
-            return False
-        live = self._temple_variants(level)
-        if len(live) != 1:
-            return False      # not told apart yet (or no town of the list): the old search shows more of it
-        name, altar, doors, step, _ = live[0]
-        here = (int(bl.y), int(bl.x))
-        if st['name'] != name:
-            st['name'] = name
-            self.log(f'temple map: this is {name}: altar {altar}, from {here}, turn {now}')
-        objs = level.objects
-        dis = agent.bfs()
-        door = next((d for d in doors if objs[d] != -1 and objs[d] not in G.WALL), None)
-        acted = None
-        if door is not None:
-            out = (door[0] + step[0], door[1] + step[1])
-            if here == door or st.get('arrived'):
-                # in the doorway (or past it) and no altar in view: somebody or something is on it -- go and stand
-                # next to it for a while, then leave it to the old search
-                st['arrived'] = True
-                st['idle'] = st.get('idle', 0) + 1
-                if st['idle'] > TEMPLE_IDLE:
-                    st['off'] = True
-                    self.log(f'temple map: inside the temple of {name}, no altar in view: the old search')
-                    return False
-                if here != altar and not utils.adjacent(here, altar) and \
-                        self.dive._neighbour_distance(dis, *altar) is not None:
-                    acted = self._temple_go(altar, one_before=True)
-                else:
-                    agent.search(2)
-                    acted = True
-            elif agent.glyphs[door] in G.DOOR_CLOSED:
-                if here == out:
-                    opened = False
-                    for _ in range(TEMPLE_DOOR_TRIES):
-                        if agent.glyphs[door] not in G.DOOR_CLOSED or agent.open_door(*door):
-                            opened = True
-                            break
-                        if 'locked' in agent.message:
-                            break
-                    if not opened:
-                        st['off'] = True
-                        self.log(f'temple map: the door at {door} does not open ({agent.message.strip()[:60]!r}): '
-                                 f'the old search')
-                    acted = True
-                else:
-                    acted = self._temple_route(st, [out], name, level, dis, here)
-            elif dis[door] != -1:
-                acted = self._temple_go(door)
-            elif here == out:
-                # the doorway is taken: wait for whoever stands in it
-                st['idle'] = st.get('idle', 0) + 1
-                if st['idle'] > TEMPLE_IDLE:
-                    st['off'] = True
-                    self.log(f'temple map: the doorway at {door} stays taken: the old search')
-                    return False
-                agent.search(2)
-                acted = True
-            else:
-                acted = self._temple_route(st, [out], name, level, dis, here)
-        else:
-            # no door of the temple in view yet: to the outside of its door wall
-            cand = [(d[0] + step[0], d[1] + step[1]) for d in doors if objs[d] == -1]
-            if here in cand:
-                agent.search()
-                acted = True
-            elif cand:
-                acted = self._temple_route(st, cand, name, level, dis, here)
-        if acted:
-            st['calls'] += 1
-            self.dive._task(f'minetown trip: to the temple ({name})')
-        return bool(acted)
 
     # ------------------------------------------------------------------ the town's business
 
