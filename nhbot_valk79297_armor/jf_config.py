@@ -113,6 +113,31 @@ SQUEEZE_CORNER_FIX = True
 # TRIP_KICK_OUT (minetown_trip._kick_out): shut in a stair room of a room-built town behind a locked door, with
 # nobody of the town in view, the trip kicks the door open (explore1 never kicks a door in the Mines)
 TRIP_KICK_OUT = True
+# TEMPLE_MAP (minetown_trip.MinetownTrip._temple_walk; every number and the ideas dropped on the way stand there).
+# hypothesis: (stage "use Minetown") the trip is lost in the town itself more often than it needs to be: "find the
+# temple" was the engine's level exploration, run until an altar glyph happened to come into view -- a median 300 and
+# up to 1900 turns on the town level, and 8 of 81 logged parent games died there before seeing the altar. The six
+# towns with a priest are fixed maps (mines.des) and no two share an altar or fountain square, so the hero now walks
+# as a player who knows Minetown does: the town is told apart by the first fountain in view, by its walls (a wall
+# where a town has a street rules that town out) or by Grotto Town's fixed up stairs; a route to the temple's door
+# wall is planned over what she has seen plus the town's floor plan and walked as far as it is known; the door is
+# opened, she steps in, and the trip's own altar business takes over. Ideas combined, each measured against the
+# parent on the same seeds: (1) a straight-line walk to the known square nearest the temple -- 27 games: altar used
+# 14 -> 17 but 3 of 20 towns stood in a closet beside the temple: dropped for (2) the route over the floor plan,
+# town told by fountains: 14 -> 17, nothing given up, but 100-700 turns until a fountain showed; (3) the town told
+# by its walls too; (4) no stop for a floating eye or mold beside the route; (5) bounded waits at a taken doorway
+# and inside a temple whose altar stays out of view. (2)-(5) together: 81 development games: altar used 48 -> 54
+# (59% -> 67%), mean progress 0.317 -> 0.347, turns from the town's first sign to the altar about 300 -> 100;
+# held-out 22238-22267 + 41912-41941 (60 games): used 44 -> 45, progress 0.392 -> 0.402; public 0-14 0.506 -> 0.518.
+# sources: NetHack 3.6.6 dat/mines.des (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/dat/mines.des:
+# minetn-2..7: every temple SUBROOM / REGION, ALTAR, DOOR, FOUNTAIN and MAP line) and src/sp_lev.c create_room
+# (https://raw.githubusercontent.com/NetHack/NetHack/NetHack-3.6.6_Released/src/sp_lev.c) ;
+# https://nethackwiki.com/wiki/Minetown ; https://nethackwiki.com/wiki/Gnomish_Mines ;
+# https://nethackwiki.com/wiki/Temple ; https://nethackwiki.com/wiki/Altar ; https://nethackwiki.com/wiki/Valkyrie ;
+# player discussions: https://nethackwiki.com/wiki/Forum:Have_a_good_strategy_for_descension%3F ,
+# https://gaming.stackexchange.com/questions/289572 , https://gaming.stackexchange.com/questions/271263 ;
+# /refs/history.md #1-#14 ; /refs/top/README.md (no top program has a Minetown trip).
+TEMPLE_MAP = True
 # ORCISH_ALTAR (minetown_trip._orc_go / _orc_step): Orcish Town's altar is used too -- a fit hero with a digging
 # tool and her prayer in hand digs in through the wall south of the temple, holds the breach from outside, then
 # BUC-tests on the altar. See the fifth-iteration block at the top of minetown_trip.py

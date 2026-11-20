@@ -1,3 +1,17 @@
+# Minetown trip, eighth iteration: straight to the temple by the town's map (2026-11-20)
+
+Engine `nhbot_valk79297_armor` only (`minetown_trip.py`, flag `TEMPLE_MAP` in `jf_config.py`). On the town level the
+trip found the temple by exploring the whole level until an altar came into view (a median 300 and up to 1900 turns;
+8 of 81 logged parent games died in the town before seeing it). The six towns with a priest are fixed maps
+(`mines.des`), so the town is now told apart by its fountains, its walls (a wall where a town has a street rules that
+town out) or Grotto Town's fixed up stairs, and the hero walks a route planned over what she has seen plus the town's
+floor plan to the temple's door wall, opens the door and steps in; the altar business is unchanged. No door is
+kicked, Orcish Town is left to `ORCISH_ALTAR`, and without a route the old search goes on. Measured against the
+parent on the same seeds: altar used 48 -> 54 of 81 development games (seed 12, 386146, 386150, 40100-40177), mean
+progress 0.317 -> 0.347; held-out 22238-22267 and 41912-41941 (60 games): used 44 -> 45, progress 0.392 -> 0.402;
+public 0-14 0.506 -> 0.518; turns from the town's first sign to the altar: median about 300 -> 100.
+Numbers, the dropped first version and sources: `MinetownTrip._temple_walk`.
+
 # Minetown trip, seventh iteration: the trip comes loose from the dive and is made again (2026-11-19)
 
 Engine `nhbot_valk79297_armor` only (`dive_logic.py`, `minetown_trip.py`, `character.py`, flags in `jf_config.py`).
